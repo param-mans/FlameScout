@@ -89,7 +89,8 @@ export function houseBrief(sample: CatalogHouse, doc: HouseDoc | null, overlay: 
   const address = [street, city, rec?.state].filter(Boolean).join(", ");
   // scan date: Matterport model creation (the API has no capture date)
   const created = doc?.scan?.created ?? null, months = created ? monthsSince(created, now) : null;
-  const scanLabel = created ? `Scan: ${new Date(created).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" })} · ${months! < 1 ? "<1" : months} mo` : "Scan date: not available";
+  const createdMonth = created ? new Date(created).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" }) : null;
+  const scanLabel = createdMonth ? `Model created ${createdMonth}` : "Model created: not available";
 
   // incident card
   const floorTxt = (loc?: Loc) => {
@@ -123,7 +124,7 @@ export function houseBrief(sample: CatalogHouse, doc: HouseDoc | null, overlay: 
   const exits = !plan ? NA : `${plural(exitDoors.length, "exterior door")} · ${stairsTxt}`;
   const ratio = num(doc?.quality?.ratio_superficie);
   const scanPartial = ratio != null && ratio < 0.7;
-  const scanCard = !plan ? "No interior scan on file" : `${created ? scanLabel.replace("Scan: ", "") : "date not available"} · plan/listing area ${ratio != null ? ratio.toFixed(2) : NA}`;
+  const scanCard = !plan ? "No interior scan on file" : `${createdMonth ? `${createdMonth} · ${months! < 1 ? "<1" : months} mo` : "date not available"} · plan/listing area ${ratio != null ? ratio.toFixed(2) : NA}`;
 
   // size-up: listing vs plan
   const planSqft = num(doc?.quality?.superficie_plano_sqft);
@@ -135,10 +136,10 @@ export function houseBrief(sample: CatalogHouse, doc: HouseDoc | null, overlay: 
     { label: "Bedrooms", value: `${L?.beds ?? NA} (listing) · plan: ${plan ? beds.length : NA}` },
     { label: "Baths", value: `${L?.baths ?? NA}${rec?.baths_full != null ? ` (${rec.baths_full} full${rec.baths_half ? `, ${rec.baths_half} half` : ""})` : ""} (listing) · plan: ${plan ? plural(baths.length, "bathroom") : NA}` },
   ];
-  // hazards from the listing text only
+  // hazards from the listing text only; a term without data (not mentioned, or no listing text) is not shown
   const hazards: Row[] = rec
-    ? listingMentions(rec).map((m) => ({ label: m.name, value: m.found ? "mentioned in listing" : "not mentioned in listing", detail: m.found ? `Listing: ${m.snippet}` : undefined, status: m.found ? ("verified" as const) : undefined }))
-    : HAZARD_TERMS.map(([name]) => ({ label: name, value: "Not available (no listing text on file)" }));
+    ? listingMentions(rec).filter((m) => m.found).map((m) => ({ label: m.name, value: "mentioned in listing", detail: `Listing: ${m.snippet}`, status: "verified" as const }))
+    : [];
   const unknowns = ["Utility shutoffs", "Street side", ...((overlay?.occupants ?? []).length ? [] : ["Occupants"]), "Roof type"];
 
   // considerations: brief (none yet for houses) + incident overlay; level only when there is evidence

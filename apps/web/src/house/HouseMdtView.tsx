@@ -61,8 +61,10 @@ export function HouseMdtView({ sampleId, sampleError }: { sampleId: string; samp
         <aside className="hv-side">
           <div className="hv-section">Size-up</div>
           <Rows rows={x.sizeUp} />
-          <div className="hv-section">Hazards (from listing text)</div>
-          <Rows rows={x.hazards} />
+          {x.hazards.length > 0 && <>
+            <div className="hv-section">Hazards (from listing text)</div>
+            <Rows rows={x.hazards} />
+          </>}
         </aside>
         <section className="hv-center">
           <BuildingViewer layout="split" sampleId={sampleId} sampleError={sampleError} host
