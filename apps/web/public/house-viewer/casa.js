@@ -15,7 +15,9 @@ import { OutputPass } from './vendor/three/examples/jsm/postprocessing/OutputPas
 import { FLOOR_H, SALA_MIN, esEscalera, poligonoValido, dibujable, puntoInterior, evacuacion, baseElev, antepecho, dentroSala, centroide } from './evac.js'
 import { T, OP, FX, colorDistancia, aplicarCSS, aplicarTema } from './theme.js'
 import { analizar, emparejar, rectangulo, distContorno } from './escaleras.js'
-import { buildPlanIndex } from './incident/plan-index.js'
+import { buildPlanIndex, emptyPlanIndex } from './incident/plan-index.js'
+import { planRoutes, floorOf, anchorPoint } from './incident/planner.js'
+import { scenariosFor } from './incident/scenarios.js'
 import { validate as validarOverlay } from './incident/validate.js'
 
 aplicarCSS()
@@ -31,6 +33,7 @@ const SIN_RUTA = 'no computable route'
 // ---------------------------------------------------------------- modo embed y mensajes con la pagina que lo contiene
 const Q = new URLSearchParams(location.search)
 const EMBED = Q.get('embed') === '1', MODO = Q.get('mode') === '2d' ? '2d' : '3d'
+const DEBUG = Q.get('debug') === '1' // selector de escenarios de incidente de prueba (chip DEBUG)
 const SPLIT = EMBED && Q.get('layout') === 'split' // 3D (izquierda, ~2/3) y 2D a la vez; apilados por debajo de 900 px
 const SOLO_2D = EMBED && !SPLIT && MODO === '2d'
 const ORIGEN = location.origin // solo se aceptan y envian mensajes al mismo origen
@@ -41,7 +44,7 @@ const C = (h) => new THREE.Color(h)
 // ---------------------------------------------------------------- estado
 const S = {
   id: null, plan: null, ev: null, cal: null, fila: null,
-  capas: { walls: true, doors: true, windows: true, slabs: true, stairs: true, points: true, labels: true, route: true },
+  capas: { walls: true, doors: true, windows: true, slabs: true, stairs: true, points: true, labels: true, route: true, incident: true },
   color: 'type', foco: 0, f2d: 0, sep: 0, ctx: FX.ctxDefault, niveles: [], alturas: [], nivelEst: [], escaleras: [], ocultarSup: false, fx: true, detalle: false,
   tipos: new Set(), sel: null, hover: null, vb: null, ms: {}, fps: 0, muros: [],
 }
@@ -398,6 +401,7 @@ function construir3D() {
   if (S.detalle) construirDetalle()
   objetivos(true)
   estilo3D()
+  dibujarIncidente3D()
 }
 const alturaTotal = () => plantaY(S.plan.floors.length - 1) + altura(S.plan.floors.length - 1)
 
@@ -544,6 +548,7 @@ function paso() {
     if (t >= 1) anim = null
   }
   if (P.length && rotSucio) { ajustarLegibles(); rotulos(); rotSucio = false }
+  animarIncidente()
 }
 function aplicarPlantas() {
   P.forEach((F) => {
@@ -819,6 +824,7 @@ function render2D() {
       const fin = ruta.puntos[ruta.puntos.length - 1]; if (fin.fi === fi) h += `<circle cx="${fin.x}" cy="${-fin.y}" r="0.18" fill="none" stroke="${T.sel}" stroke-width="1.6" ${ns} filter="url(#brillo)"/>`
     }
   }
+  h += svgIncidente2D(fi, ns)
   cont.innerHTML = `<svg xmlns="${NS}" viewBox="${S.vb.join(' ')}" preserveAspectRatio="xMidYMid meet">${h}</svg>`
 }
 function selectoresPlanta() {
@@ -1021,7 +1027,7 @@ function panelIzq() {
   const capa = (k, txt) => `<label class="fila"><input type="checkbox" data-capa="${k}" ${S.capas[k] ? 'checked' : ''}> ${txt}</label>`
   // MDT (split): menu reducido a escaleras, puertas, ruta y mapa de calor; muros, losas, etiquetas y ventanas siguen visibles sin interruptor
   if (SPLIT) {
-    $('izq').innerHTML = '<h2>Layers</h2>' + capa('stairs', 'Stairs') + capa('doors', 'Doors') + capa('route', 'Route of the selected room') +
+    $('izq').innerHTML = '<h2>Layers</h2>' + capa('stairs', 'Stairs') + capa('doors', 'Doors') + capa('route', 'Route of the selected room') + capa('incident', 'Incident layer') +
       `<label class="fila"><input type="checkbox" id="heat" ${S.color === 'evac' ? 'checked' : ''}> Evacuation heat map</label>`
     return
   }
@@ -1034,7 +1040,7 @@ function panelIzq() {
     `<div class="ctl-fila"><span>Context</span><span id="ctx-v">${Math.round(S.ctx * 100)} %</span></div><input type="range" id="ctx" min="0" max="100" step="5" value="${Math.round(S.ctx * 100)}">` +
     `<label class="fila"><input type="checkbox" id="ocultar" ${S.ocultarSup ? 'checked' : ''}> Hide upper floors</label>` +
     `<div class="hint">Floors stacked at their real level, derived from door heights; walls reach the next floor's slab (${FX.slabThick} m). Top floor wall height ${FLOOR_H} m — <span class="aviso">estimate</span>.${S.nivelEst.some(Boolean) ? ' <span class="aviso">Level of floor ' + S.nivelEst.map((x, i) => (x ? i + 1 : 0)).filter(Boolean).join(', ') + ' estimated</span> (no consistent door heights).' : ''} No roof.</div>` +
-    '<h2>Layers</h2>' + capa('walls', 'Walls') + capa('doors', 'Doors') + capa('windows', 'Windows') + capa('slabs', 'Rooms') + capa('stairs', '3D stairs') + capa('labels', 'Room labels') + capa('route', 'Route of the selected room') +
+    '<h2>Layers</h2>' + capa('walls', 'Walls') + capa('doors', 'Doors') + capa('windows', 'Windows') + capa('slabs', 'Rooms') + capa('stairs', '3D stairs') + capa('labels', 'Room labels') + capa('route', 'Route of the selected room') + capa('incident', 'Incident layer') +
     '<h2>Room type filter</h2><div class="fila-btn"><button data-tipos="all">All</button><button data-tipos="stairs">Stairs</button><button data-tipos="bed">Bedrooms</button></div>' +
     ord.map((k) => `<label class="fila"><input type="checkbox" data-tipo="${esc(k)}" ${S.tipos.has(k) ? 'checked' : ''}> ${esc(k)} <span class="hint">(${tipos[k]})</span></label>`).join('') +
     '<div id="notas"></div>'
@@ -1056,7 +1062,7 @@ function setDetalle(v) { S.detalle = v; if (v) construirDetalle(); panelIzq(); a
 function eventos() {
   $('izq').addEventListener('change', (e) => {
     const t = e.target
-    if (t.dataset.capa) S.capas[t.dataset.capa] = t.checked
+    if (t.dataset.capa) { S.capas[t.dataset.capa] = t.checked; if (t.dataset.capa === 'incident') dibujarIncidente3D() }
     else if (t.dataset.tipo) { t.checked ? S.tipos.add(t.dataset.tipo) : S.tipos.delete(t.dataset.tipo) }
     else if (t.id === 'heat') { S.color = t.checked ? 'evac' : 'type'; panelIzq(); refrescar(); return }
     else if (t.id === 'fx') { S.fx = t.checked; aplicarPlantas(); avisoHud(); return }
@@ -1152,10 +1158,19 @@ function tema(vars) {
 // la pagina contenedora. setIncident: si el plano aun no ha cargado se guarda el ultimo overlay y se aplica al cargar; las
 // versiones menores que la actual se ignoran (respuesta incidentRejected); se valida con incident/validate.js (port de
 // validate_overlay.py) contra el indice del plano cargado; si es valido se aplica y se guarda para el control de versiones.
-const INC = { index: null, versions: new Map(), actual: null, pendiente: null }
+const INC = { index: null, versions: new Map(), actual: null, pendiente: null, vista: null, rutas: null, resaltar: new Set(), escenarios: [], escenario: null }
 function prepararIncidente(plan) {
-  INC.versions = new Map(); INC.actual = null
-  try { INC.index = buildPlanIndex(plan) } catch (e) { INC.index = null; avisarPadre({ type: 'planIndex', index: null, error: e.message }); return }
+  INC.versions = new Map(); INC.actual = null; INC.vista = null; INC.rutas = null; INC.resaltar = new Set()
+  try { INC.index = plan ? buildPlanIndex(plan) : emptyPlanIndex() } catch (e) { INC.index = null; avisarPadre({ type: 'planIndex', index: null, error: e.message }); return }
+  INC.escenarios = DEBUG ? scenariosFor(S.id, S.modelId || S.id, plan, INC.index) : []
+  reconstruirIncidente()
+  // ?debug=1&scenario=S4&v=2: aplica ese escenario hasta esa version (las anteriores quedan en el control de versiones)
+  const pedido = DEBUG && INC.escenarios.find((x) => x.key === Q.get('scenario'))
+  if (pedido && !INC.pendiente) {
+    const hasta = Math.max(1, Math.min(pedido.versions.length, Number(Q.get('v')) || 1))
+    INC.escenario = { key: pedido.key, i: hasta - 1 }
+    pedido.versions.slice(0, hasta).forEach((v) => aplicarIncidente(structuredClone(v)))
+  }
   avisarPadre({ type: 'planIndex', index: INC.index })
   if (INC.pendiente) { const ov = INC.pendiente; INC.pendiente = null; aplicarIncidente(ov) }
 }
@@ -1169,9 +1184,343 @@ function aplicarIncidente(ov) {
     return avisarPadre({ type: 'incidentRejected', version, errors: [`version ${version} is older than the current version ${INC.actual.version} (ignored)`] })
   const errors = ov && typeof ov === 'object' && !Array.isArray(ov) ? validarOverlay(ov, INC.index) : ['overlay must be an object']
   if (errors.length) return avisarPadre({ type: 'incidentRejected', version, errors })
+  if (INC.actual && ov.incident_id !== INC.actual.incident_id) { INC.versions = new Map(); INC.resaltar = new Set() } // otro incidente
   INC.actual = structuredClone(ov)
   INC.versions.set(version, INC.actual)
+  INC.vista = version
+  reconstruirIncidente()
   avisarPadre({ type: 'incidentApplied', version })
+}
+
+// ---------------------------------------------------------------- capa de incidente: dibujo (spec, "What the viewer draws")
+// Colores saturados SOLO aqui (verde ocupantes, rojo fuego, ambar peligros), siempre con icono y texto. Nada se simula: ni
+// propagacion ni personas no reportadas. Rutas del planificador (incident/planner.js), nunca del overlay.
+const IC = { green: '#22c55e', red: '#ef4444', amber: '#f59e0b', smoke: '#a88780', route: '#ffffff', nearFire: '#ff8a80' }
+const STALE_MIN = 10
+const ovVista = () => (INC.vista != null && INC.versions.get(INC.vista)) || INC.actual
+const fuente = (e) => [...new Set((e.evidence_ids || []).map((x) => String(x).split(':')[0]))].join(', ') || 'no evidence'
+const minutos = (ov, e) => Math.max(0, Math.round((Date.parse(ov.as_of) - Date.parse(e.reported_at)) / 60000))
+const caduco = (ov, e) => minutos(ov, e) > STALE_MIN
+const nuevo = (ov, e) => { const prev = [...INC.versions.keys()].filter((v) => v < ov.version).sort((a, b) => b - a)[0]; if (prev === undefined) return false; const p = INC.versions.get(prev); return !['occupants', 'fire', 'hazards', 'blocked'].some((k) => (p[k] || []).some((x) => x.id === e.id && JSON.stringify(x) === JSON.stringify(e))) }
+const nOcc = (o) => (o.count_range ? `${o.count_range[0]}-${o.count_range[1]}` : String(o.count))
+const maxOcc = (o) => (o.count_range ? o.count_range[1] : o.count)
+const salaDe = (fi, id) => fi === null ? null : piso(fi).rooms.find((r) => r.id === id) || null
+const marcado = (e) => INC.resaltar.has(e.id) || (e.group_id && INC.resaltar.has(e.group_id))
+
+/** Lugar dibujable de una entidad: { fi, room, p } (sala o ancla), { fi, floorOnly } (solo planta) o null (desconocido / fuera del escaneo). */
+function lugar(e) {
+  const loc = e.location
+  if (!S.plan || !loc) return null
+  const fi = floorOf(S.plan, loc)
+  if (fi === null) return null
+  if (loc.kind === 'floor') return { fi, floorOnly: true }
+  const room = salaDe(fi, loc.kind === 'room' ? loc.room_id : loc.anchor.room_id)
+  if (!room) return null
+  const p = loc.kind === 'anchor' ? anchorPoint(S.plan, S.ev, loc) || centroSala(room) : centroSala(room)
+  return p ? { fi, room, p, anchor: loc.kind === 'anchor' } : null
+}
+
+function reconstruirIncidente() {
+  const ov = ovVista()
+  INC.rutas = ov && S.plan ? planRoutes(S.plan, ov, S.ev) : null
+  if (INC.rutas) { // las rutas del planificador sustituyen a las del overlay y se validan como parte de el
+    const errs = validarOverlay({ ...ov, routes: INC.rutas.routes }, INC.index)
+    if (errs.length) { console.warn('[house-viewer] planner routes rejected by the validator', errs); INC.rutas = { ...INC.rutas, routes: [], geometry: new Map(), noRoute: (ov.objectives || []).map((o) => o.id) } }
+  }
+  if (S.plan) { dibujarIncidente3D(); render2D() }
+  pintarPanelIncidente()
+}
+
+// ---------------------------------------------------------------- 3D
+let incG = [], incRutas = null
+function texRadial(color, a0 = 0.85) {
+  const c = document.createElement('canvas'); c.width = c.height = 256
+  const g = c.getContext('2d'), gr = g.createRadialGradient(128, 128, 4, 128, 128, 128), col = new THREE.Color(color)
+  const rgb = `${Math.round(col.r * 255)},${Math.round(col.g * 255)},${Math.round(col.b * 255)}`
+  gr.addColorStop(0, `rgba(${rgb},${a0})`); gr.addColorStop(0.55, `rgba(${rgb},${a0 * 0.45})`); gr.addColorStop(1, `rgba(${rgb},0)`)
+  g.fillStyle = gr; g.fillRect(0, 0, 256, 256)
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t
+}
+function texRayas(color) {
+  const c = document.createElement('canvas'); c.width = c.height = 64
+  const g = c.getContext('2d'); g.strokeStyle = color; g.lineWidth = 10
+  for (let i = -64; i < 128; i += 22) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 64, 64); g.stroke() }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; return t
+}
+// rotulo con fondo, icono y color de la capa (legible: tamano minimo en pantalla)
+function rotuloInc(lineas, color, op = 1) {
+  const c = document.createElement('canvas'), g = c.getContext('2d'), px = 34, f = (w) => `${w} ${px}px ${T.font}`
+  g.font = f(700); const w = Math.max(...lineas.map((l, i) => { g.font = f(i ? 500 : 700); return g.measureText(l).width })) + 36
+  c.width = Math.ceil(w); c.height = 20 + lineas.length * (px + 10)
+  g.fillStyle = 'rgba(8,10,14,0.82)'; g.fillRect(0, 0, c.width, c.height)
+  g.fillStyle = color; g.fillRect(0, 0, 8, c.height)
+  lineas.forEach((l, i) => { g.font = f(i ? 500 : 700); g.fillStyle = i ? '#e5e7eb' : color; g.textBaseline = 'top'; g.fillText(l, 22, 12 + i * (px + 10)) })
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.minFilter = THREE.LinearMipmapLinearFilter
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true, opacity: op, fog: false }))
+  sp.renderOrder = 40; sp.center.set(0.5, 0)
+  const h = 0.3 * lineas.length; legible(sp, h * c.width / c.height, h, 18 * lineas.length)
+  return sp
+}
+const formaSala = (room, y) => { const g = new THREE.ShapeGeometry(new THREE.Shape(room.polygon.map((p) => new THREE.Vector2(p[0], p[1])))); g.rotateX(-Math.PI / 2); g.translate(0, y, 0); return g }
+const matInc = (color, op, extra = {}) => new THREE.MeshBasicMaterial({ color: C(color), transparent: true, opacity: op, depthWrite: false, side: THREE.DoubleSide, fog: false, ...extra })
+function contornoDiscontinuo(room, color, y, op) {
+  const pts = [...room.polygon, room.polygon[0]].map((p) => m3(p[0], p[1], y))
+  const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineDashedMaterial({ color: C(color), dashSize: 0.3, gapSize: 0.2, transparent: true, opacity: op, depthTest: false, fog: false }))
+  l.computeLineDistances(); l.renderOrder = 35; return l
+}
+function persona(color, op) {
+  const g = new THREE.Group(), m = matInc(color, op, { depthTest: true })
+  const cuerpo = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 0.95, 10), m); cuerpo.position.y = 0.48
+  const cabeza = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), m); cabeza.position.y = 1.08
+  g.add(cuerpo, cabeza); return g
+}
+function limpiarIncidente3D() {
+  const tirar = (o) => o.traverse((x) => { if (x.geometry) x.geometry.dispose(); if (x.material) { if (x.material.map) x.material.map.dispose(); x.material.dispose() } })
+  incG.forEach((o) => { o.parent?.remove(o); tirar(o) }); incG = []
+  if (incRutas) { escena.remove(incRutas.grupo); tirar(incRutas.grupo); incRutas = null }
+}
+function dibujarIncidente3D() {
+  if (!escena || !P.length) return
+  limpiarIncidente3D()
+  const ov = ovVista()
+  if (!ov || !S.capas.incident) return
+  const pon = (fi, o) => { P[fi].g.add(o); incG.push(o) }
+  const H = alturaTotal() + 1.5
+  const tinte = (fi, color, op) => salasDe(piso(fi)).filter(poligonoValido).forEach((r) => pon(fi, new THREE.Mesh(formaSala(r, 0.04), matInc(color, op))))
+  // ocupantes
+  for (const o of ov.occupants || []) {
+    const L = lugar(o); if (!L) continue
+    const op = caduco(ov, o) ? 0.35 : 1, age = `${minutos(ov, o)} min ago${caduco(ov, o) ? ' · stale' : ''}`, tag = nuevo(ov, o) ? ' · NEW' : ''
+    const contra = o.status === 'contradicted'
+    if (L.floorOnly) {
+      if (contra) salasDe(piso(L.fi)).filter(poligonoValido).forEach((r) => pon(L.fi, contornoDiscontinuo(r, IC.green, 0.06, 0.7 * op)))
+      else tinte(L.fi, IC.green, 0.1 * op)
+      const b = limitesPiso(piso(L.fi)), sp = rotuloInc([`${contra ? '? ' : ''}${nOcc(o)} reported · floor ${L.fi + 1}${tag}`, `room unknown · ${age} · ${fuente(o)}`], IC.green, op)
+      sp.position.copy(m3((b.minX + b.maxX) / 2, b.maxY + 0.4, 1.2)); pon(L.fi, sp)
+      continue
+    }
+    if (contra) {
+      pon(L.fi, contornoDiscontinuo(L.room, IC.green, 0.06, 0.95 * op))
+      const q = rotuloInc([`? ${nOcc(o)} reported (contradicted)${tag}`, `${age} · ${fuente(o)}`], IC.green, op); q.position.copy(m3(L.p[0], L.p[1], 1.5)); pon(L.fi, q)
+    } else {
+      const n = Math.min(5, maxOcc(o))
+      for (let i = 0; i < n; i++) { const a = (i / Math.max(1, n)) * Math.PI * 2, r = n > 1 ? 0.35 : 0, f = persona(IC.green, 0.9 * op); f.position.copy(m3(L.p[0] + Math.cos(a) * r, L.p[1] + Math.sin(a) * r, 0)); pon(L.fi, f) }
+      const glow = new THREE.Mesh(new THREE.CircleGeometry(1.1, 40), new THREE.MeshBasicMaterial({ map: texRadial(IC.green, 0.8), transparent: true, opacity: op, depthWrite: false, fog: false }))
+      glow.rotation.x = -Math.PI / 2; glow.position.copy(m3(L.p[0], L.p[1], 0.03)); pon(L.fi, glow)
+      const lbl = rotuloInc([`${nOcc(o)}${maxOcc(o) > 5 ? ` (x${maxOcc(o)})` : ''} reported${tag}`, `${age} · ${fuente(o)}`], IC.green, op); lbl.position.copy(m3(L.p[0], L.p[1], 1.45)); pon(L.fi, lbl)
+    }
+    const baliza = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, H - plantaY(L.fi), 8), matInc(IC.green, 0.55 * op, { depthTest: false }))
+    baliza.position.copy(m3(L.p[0], L.p[1], (H - plantaY(L.fi)) / 2)); baliza.renderOrder = 34; pon(L.fi, baliza)
+    if (marcado(o)) pon(L.fi, contornoDiscontinuo(L.room, '#ffffff', 0.08, 1))
+  }
+  // fuego y humo
+  for (const f of ov.fire || []) {
+    const L = lugar(f); if (!L) continue
+    const op = caduco(ov, f) ? 0.4 : 1, age = `${minutos(ov, f)} min ago${caduco(ov, f) ? ' · stale' : ''}`, tag = nuevo(ov, f) ? ' · NEW' : ''
+    const nombre = `${f.kind.toUpperCase()} (${f.status})`
+    if (L.floorOnly) {
+      tinte(L.fi, IC.red, 0.08 * op)
+      const b = limitesPiso(piso(L.fi)), sp = rotuloInc([`${nombre} · floor ${L.fi + 1}${tag}`, `room unknown · ${age} · ${fuente(f)}`], IC.red, op)
+      sp.position.copy(m3((b.minX + b.maxX) / 2, b.minY - 0.4, 1.2)); pon(L.fi, sp); continue
+    }
+    if (f.kind === 'smoke') {
+      [1.4, 2.0].forEach((y, i) => pon(L.fi, new THREE.Mesh(formaSala(L.room, y), matInc(IC.smoke, (0.28 - i * 0.08) * op))))
+    } else {
+      const R = L.anchor ? 1.6 : Math.max(1.4, Math.sqrt((L.room.areaM2 || 9)) * 0.7)
+      const geo = formaSala(L.room, 0.05), uv = geo.attributes.uv
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) - L.p[0]) / (2 * R) + 0.5, (uv.getY(i) - L.p[1]) / (2 * R) + 0.5)
+      const tx = texRadial(IC.red, 0.9); tx.wrapS = tx.wrapT = THREE.ClampToEdgeWrapping
+      pon(L.fi, new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tx, transparent: true, opacity: op, depthWrite: false, side: THREE.DoubleSide, fog: false })))
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.7, 2.3, 20, 1, true), matInc(IC.red, 0.16 * op, { blending: THREE.AdditiveBlending }))
+      col.position.copy(m3(L.p[0], L.p[1], 1.15)); pon(L.fi, col)
+    }
+    const lbl = rotuloInc([`${f.kind === 'smoke' ? '≋' : '▲'} ${nombre}${tag}`, `${L.anchor ? f.location.anchor.position.replace('_', ' ') + ' · ' : ''}${age} · ${fuente(f)}`], f.kind === 'smoke' ? IC.smoke : IC.red, op)
+    lbl.position.copy(m3(L.p[0], L.p[1], 2.4)); pon(L.fi, lbl)
+    if (marcado(f)) pon(L.fi, contornoDiscontinuo(L.room, '#ffffff', 0.08, 1))
+  }
+  // peligros
+  for (const hz of ov.hazards || []) {
+    const L = lugar(hz); if (!L) continue
+    const op = caduco(ov, hz) ? 0.4 : 1, b = L.floorOnly ? limitesPiso(piso(L.fi)) : null
+    const sp = rotuloInc([`⚠ ${hz.kind.toUpperCase()} (${hz.status})${nuevo(ov, hz) ? ' · NEW' : ''}`, `${L.floorOnly ? `floor ${L.fi + 1}, room unknown · ` : ''}conf. ${Math.round(hz.confidence * 100)}% · ${minutos(ov, hz)} min ago${caduco(ov, hz) ? ' · stale' : ''} · ${fuente(hz)}`], IC.amber, op)
+    sp.position.copy(L.floorOnly ? m3(b.maxX, (b.minY + b.maxY) / 2, 1.2) : m3(L.p[0], L.p[1], 1.0)); pon(L.fi, sp)
+    if (!L.floorOnly) { const d = new THREE.Mesh(new THREE.CircleGeometry(0.5, 4), matInc(IC.amber, 0.5 * op)); d.rotation.x = -Math.PI / 2; d.position.copy(m3(L.p[0], L.p[1], 0.05)); pon(L.fi, d) }
+    if (marcado(hz) && L.room) pon(L.fi, contornoDiscontinuo(L.room, '#ffffff', 0.08, 1))
+  }
+  // bloqueos: puerta o escalera rayada
+  for (const bl of ov.blocked || []) {
+    const ref = bl.ref_id
+    S.plan.floors.forEach((f, fi) => {
+      const o = f.openings.find((x) => x.id === ref)
+      if (o) { const pl = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(0.6, o.width), 2.1), new THREE.MeshBasicMaterial({ map: texRayas(IC.amber), transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false, fog: false }))
+        pl.position.copy(m3(o.center[0], o.center[1], 1.05)); pl.rotation.y = (o.angleDeg * Math.PI) / 180; pon(fi, pl) }
+      const st = (S.plan.stairs || []).find((x) => x.id === ref)
+      const rooms = st ? [st.lower_room_id, st.upper_room_id] : [ref]
+      for (const r of f.rooms.filter((x) => rooms.includes(x.id) && poligonoValido(x))) {
+        const tx = texRayas(IC.amber); tx.repeat.set(1.5, 1.5)
+        pon(fi, new THREE.Mesh(formaSala(r, 0.07), new THREE.MeshBasicMaterial({ map: tx, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide, fog: false })))
+      }
+    })
+    const L = (() => { for (const [fi, f] of S.plan.floors.entries()) { const o = f.openings.find((x) => x.id === ref); if (o) return { fi, p: o.center }; const r = f.rooms.find((x) => x.id === ref || (S.plan.stairs || []).some((s) => s.id === ref && (s.lower_room_id === x.id))); if (r && poligonoValido(r)) return { fi, p: centroSala(r) } } return null })()
+    if (L) { const sp = rotuloInc([`⛔ BLOCKED (${bl.status})`, `${minutos(ov, bl)} min ago · ${fuente(bl)}`], IC.amber); sp.position.copy(m3(L.p[0], L.p[1], 2.2)); pon(L.fi, sp) }
+  }
+  // rutas del planificador: tramos por planta (grupo de la planta), conectores de escalera y cuentas animadas (escena)
+  const grupo = new THREE.Group(); escena.add(grupo)
+  incRutas = { grupo, rutas: [] }
+  if (INC.rutas) for (const [id, g] of INC.rutas.geometry) {
+    const r = INC.rutas.routes.find((x) => x.id === id), dash = g.dashed
+    const pts = g.pts, segs = [], cuentas = []
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i], color = b.near ? IC.nearFire : IC.route
+      if (a.fi === b.fi) {
+        const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([m3(a.p[0], a.p[1], 0.35), m3(b.p[0], b.p[1], 0.35)]),
+          new THREE.LineDashedMaterial({ color: C(color), dashSize: dash ? 0.18 : 0.35, gapSize: dash ? 0.28 : 0.14, transparent: true, opacity: dash ? 0.7 : 0.95, depthTest: false, fog: false }))
+        l.computeLineDistances(); l.renderOrder = 36; pon(a.fi, l)
+      } else {
+        const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: C(color), transparent: true, opacity: 0.8, depthTest: false, fog: false }))
+        l.renderOrder = 36; grupo.add(l); segs.push({ l, a, b })
+      }
+    }
+    pts.forEach((q, i) => { const sp = rotuloInc([String(i + 1)], b2(q.near), 1); sp.scale.multiplyScalar(0.6); legible(sp, sp.scale.x, sp.scale.y, 14); sp.position.copy(m3(q.p[0], q.p[1], 0.6)); pon(q.fi, sp) })
+    const fin = pts[pts.length - 1], lbl = rotuloInc([`${r.kind.toUpperCase()} ROUTE · ${r.objective_id}${dash ? ' (candidate)' : ''}`, `~${r.length_m_estimate} m estimate${r.passes_near_fire ? ' · passes near fire' : ''}`], r.passes_near_fire ? IC.nearFire : IC.route, dash ? 0.75 : 1)
+    lbl.position.copy(m3(fin.p[0], fin.p[1], 1.9)); pon(fin.fi, lbl)
+    for (let k = 0; k < 3; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshBasicMaterial({ color: C(IC.route), depthTest: false, transparent: true, fog: false })); m.renderOrder = 37; grupo.add(m); cuentas.push(m) }
+    incRutas.rutas.push({ pts, segs, cuentas })
+  }
+  function b2(near) { return near ? IC.nearFire : IC.route }
+  rotSucio = true
+}
+// cada fotograma: conectores entre plantas (siguen la vista explosionada) y cuentas que recorren la ruta
+function animarIncidente() {
+  if (!incRutas || !incRutas.rutas.length) return
+  const w = (q, h = 0.35) => { const v = m3(q.p[0], q.p[1], h); v.y += P[q.fi] ? P[q.fi].cur.y : plantaY(q.fi); return v }
+  const t = (performance.now() / 4000) % 1
+  for (const R of incRutas.rutas) {
+    R.segs.forEach(({ l, a, b }) => { l.geometry.setFromPoints([w(a), w(b)]) })
+    const P3 = R.pts.map((q) => w(q)), L = P3.slice(1).map((p, i) => p.distanceTo(P3[i])), tot = L.reduce((x, y) => x + y, 0) || 1
+    R.cuentas.forEach((m, k) => {
+      let d = (((t + k / R.cuentas.length) % 1) * tot), i = 0
+      while (i < L.length - 1 && d > L[i]) { d -= L[i]; i++ }
+      m.position.copy(P3[i]).lerp(P3[i + 1] || P3[i], L[i] ? d / L[i] : 0)
+    })
+  }
+}
+
+// ---------------------------------------------------------------- 2D (planta del plano 2D)
+function svgIncidente2D(fi, ns) {
+  const ov = ovVista()
+  if (!ov || !S.capas.incident) return ''
+  const fs = Math.max(0.16, 9 * Math.max(S.vb[2] / ($('vista2d').clientWidth || 400), S.vb[3] / ($('vista2d').clientHeight || 300)))
+  let h = `<defs><radialGradient id="incFuego"><stop offset="0" stop-color="${IC.red}" stop-opacity="0.85"/><stop offset="0.6" stop-color="${IC.red}" stop-opacity="0.35"/><stop offset="1" stop-color="${IC.red}" stop-opacity="0"/></radialGradient>` +
+    `<radialGradient id="incVerde"><stop offset="0" stop-color="${IC.green}" stop-opacity="0.7"/><stop offset="1" stop-color="${IC.green}" stop-opacity="0"/></radialGradient>` +
+    `<pattern id="incRayas" patternUnits="userSpaceOnUse" width="0.35" height="0.35" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="0.35" stroke="${IC.amber}" stroke-width="0.14"/></pattern></defs>`
+  const txt = (x, y, lines, color, op) => { const w = Math.max(...lines.map((l) => l.length)) * fs * 0.62 + fs * 0.8, hh = lines.length * fs * 1.25 + fs * 0.4
+    return `<g opacity="${op}" pointer-events="none"><rect x="${x - w / 2}" y="${y - hh}" width="${w}" height="${hh}" fill="#080a0e" fill-opacity="0.82"/><rect x="${x - w / 2}" y="${y - hh}" width="${fs * 0.22}" height="${hh}" fill="${color}"/>` +
+      lines.map((l, i) => `<text x="${x - w / 2 + fs * 0.5}" y="${y - hh + fs * 1.05 + i * fs * 1.25}" font-size="${fs}" font-family="${T.font}" font-weight="${i ? 500 : 700}" fill="${i ? '#e5e7eb' : color}">${esc(l)}</text>`).join('') + '</g>' }
+  const anillo2 = (r) => anillo(r.polygon)
+  const salas = salasDe(piso(fi)).filter(poligonoValido)
+  for (const o of ov.occupants || []) {
+    const L = lugar(o); if (!L || L.fi !== fi) continue
+    const op = caduco(ov, o) ? 0.4 : 1, contra = o.status === 'contradicted', age = `${minutos(ov, o)} min ago${caduco(ov, o) ? ' · stale' : ''}`
+    if (L.floorOnly) {
+      h += salas.map((r) => `<path d="${anillo2(r)}" fill="${contra ? 'none' : IC.green}" fill-opacity="0.12" stroke="${IC.green}" stroke-opacity="${contra ? 0.8 : 0.35}" stroke-width="1.2" ${contra ? 'stroke-dasharray="5 4"' : ''} ${ns} opacity="${op}"/>`).join('')
+      const b = limitesPiso(piso(fi)); h += txt((b.minX + b.maxX) / 2, -b.maxY - fs * 0.4, [`${contra ? '? ' : ''}${nOcc(o)} reported · room unknown`, `${age} · ${fuente(o)}`], IC.green, op); continue
+    }
+    if (contra) { h += `<path d="${anillo2(L.room)}" fill="none" stroke="${IC.green}" stroke-width="2" stroke-dasharray="6 4" ${ns} opacity="${op}"/>`; h += txt(L.p[0], -L.p[1] - fs * 0.3, [`? ${nOcc(o)} reported (contradicted)`, `${age} · ${fuente(o)}`], IC.green, op) }
+    else {
+      h += `<circle cx="${L.p[0]}" cy="${-L.p[1]}" r="1.1" fill="url(#incVerde)" opacity="${op}"/>`
+      const n = Math.min(5, maxOcc(o))
+      for (let i = 0; i < n; i++) { const a = (i / Math.max(1, n)) * Math.PI * 2, rr = n > 1 ? 0.35 : 0, x = L.p[0] + Math.cos(a) * rr, y = -L.p[1] - Math.sin(a) * rr
+        h += `<g opacity="${op}"><circle cx="${x}" cy="${y - 0.16}" r="0.1" fill="${IC.green}"/><path d="M${x - 0.13} ${y + 0.2} Q${x} ${y - 0.12} ${x + 0.13} ${y + 0.2} Z" fill="${IC.green}"/></g>` }
+      h += txt(L.p[0], -L.p[1] - 0.55, [`${nOcc(o)}${maxOcc(o) > 5 ? ` (x${maxOcc(o)})` : ''} reported`, `${age} · ${fuente(o)}`], IC.green, op)
+    }
+    if (marcado(o)) h += `<path d="${anillo2(L.room)}" fill="none" stroke="#fff" stroke-width="3" ${ns} filter="url(#brillo)"/>`
+  }
+  for (const f of ov.fire || []) {
+    const L = lugar(f); if (!L || L.fi !== fi) continue
+    const op = caduco(ov, f) ? 0.45 : 1, nombre = `${f.kind.toUpperCase()} (${f.status})`, age = `${minutos(ov, f)} min ago${caduco(ov, f) ? ' · stale' : ''}`
+    if (L.floorOnly) { h += salas.map((r) => `<path d="${anillo2(r)}" fill="${IC.red}" fill-opacity="0.1" stroke="${IC.red}" stroke-opacity="0.35" stroke-width="1" ${ns} opacity="${op}"/>`).join(''); const b = limitesPiso(piso(fi)); h += txt((b.minX + b.maxX) / 2, -b.minY + fs * 2.6, [`${nombre} · room unknown`, `${age} · ${fuente(f)}`], IC.red, op); continue }
+    const clip = `incClip-${f.id.replace(/[^a-z0-9-]/gi, '')}`
+    h += `<clipPath id="${clip}"><path d="${anillo2(L.room)}"/></clipPath>`
+    if (f.kind === 'smoke') h += `<path d="${anillo2(L.room)}" fill="${IC.smoke}" fill-opacity="${0.45 * op}"/>`
+    else { const R = L.anchor ? 1.6 : Math.max(1.4, Math.sqrt(L.room.areaM2 || 9) * 0.7); h += `<circle cx="${L.p[0]}" cy="${-L.p[1]}" r="${R}" fill="url(#incFuego)" clip-path="url(#${clip})" opacity="${op}"/>` }
+    h += txt(L.p[0], -L.p[1] + (f.kind === 'smoke' ? fs * 2.6 : -0.2), [`${f.kind === 'smoke' ? '≋' : '▲'} ${nombre}`, `${L.anchor ? f.location.anchor.position.replace('_', ' ') + ' · ' : ''}${age} · ${fuente(f)}`], f.kind === 'smoke' ? IC.smoke : IC.red, op)
+    if (marcado(f)) h += `<path d="${anillo2(L.room)}" fill="none" stroke="#fff" stroke-width="3" ${ns} filter="url(#brillo)"/>`
+  }
+  for (const hz of ov.hazards || []) {
+    const L = lugar(hz); if (!L || L.fi !== fi || L.floorOnly) continue
+    const op = caduco(ov, hz) ? 0.45 : 1
+    h += `<path d="M${L.p[0]} ${-L.p[1] - 0.32} L${L.p[0] + 0.3} ${-L.p[1] + 0.2} L${L.p[0] - 0.3} ${-L.p[1] + 0.2} Z" fill="${IC.amber}" opacity="${op}"/>` + txt(L.p[0], -L.p[1] - 0.45, [`⚠ ${hz.kind.toUpperCase()} (${hz.status})`, `conf. ${Math.round(hz.confidence * 100)}% · ${fuente(hz)}`], IC.amber, op)
+    if (marcado(hz)) h += `<path d="${anillo2(L.room)}" fill="none" stroke="#fff" stroke-width="3" ${ns} filter="url(#brillo)"/>`
+  }
+  for (const bl of ov.blocked || []) {
+    const o = piso(fi).openings.find((x) => x.id === bl.ref_id), st = (S.plan.stairs || []).find((x) => x.id === bl.ref_id)
+    if (o) { const a = (o.angleDeg * Math.PI) / 180, hw = Math.max(0.3, o.width / 2); h += `<rect x="${o.center[0] - hw}" y="${-o.center[1] - 0.25}" width="${hw * 2}" height="0.5" fill="url(#incRayas)" stroke="${IC.amber}" stroke-width="1" ${ns} transform="rotate(${-o.angleDeg} ${o.center[0]} ${-o.center[1]})"/>` }
+    for (const r of salas.filter((x) => x.id === bl.ref_id || (st && (x.id === st.lower_room_id || x.id === st.upper_room_id)))) h += `<path d="${anillo2(r)}" fill="url(#incRayas)" stroke="${IC.amber}" stroke-width="1.5" ${ns}/>`
+  }
+  if (INC.rutas) for (const [id, g] of INC.rutas.geometry) {
+    const r = INC.rutas.routes.find((x) => x.id === id), pts = g.pts
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i]
+      if (a.fi !== fi || b.fi !== fi) continue
+      h += `<line x1="${a.p[0]}" y1="${-a.p[1]}" x2="${b.p[0]}" y2="${-b.p[1]}" stroke="${b.near ? IC.nearFire : IC.route}" stroke-width="2.4" stroke-dasharray="${g.dashed ? '3 5' : '7 4'}" stroke-linecap="round" opacity="${g.dashed ? 0.75 : 1}" ${ns}><animate attributeName="stroke-dashoffset" from="22" to="0" dur="1s" repeatCount="indefinite"/></line>`
+    }
+    pts.forEach((q, i) => { if (q.fi === fi) h += `<circle cx="${q.p[0]}" cy="${-q.p[1]}" r="${fs * 0.75}" fill="#080a0e" stroke="${q.near ? IC.nearFire : IC.route}" stroke-width="1.2" ${ns}/><text x="${q.p[0]}" y="${-q.p[1] + fs * 0.35}" font-size="${fs}" font-family="${T.font}" fill="#fff" text-anchor="middle" pointer-events="none">${i + 1}</text>` })
+    const fin = pts[pts.length - 1]
+    if (fin.fi === fi) h += txt(fin.p[0], -fin.p[1] - fs * 1.1, [`${r.kind.toUpperCase()} · ${r.objective_id}${g.dashed ? ' (candidate)' : ''}`, `~${r.length_m_estimate} m estimate${r.passes_near_fire ? ' · near fire' : ''}`], r.passes_near_fire ? IC.nearFire : IC.route, g.dashed ? 0.8 : 1)
+  }
+  return `<g class="incidente">${h}</g>`
+}
+
+// ---------------------------------------------------------------- banner, versiones, consideraciones y escenarios (DEBUG)
+function asegurarDomIncidente() {
+  if ($('inc-banner')) return
+  const ban = document.createElement('div'); ban.id = 'inc-banner'; ban.className = 'hud'; $('centro').appendChild(ban)
+  const det = document.createElement('details'); det.id = 'inc-panel'; det.className = 'plegable'; det.open = true
+  det.innerHTML = '<summary>Considerations · incident</summary><div id="inc-panel-body"></div>'
+  const der = $('der'), ref = $('oblicuas'); der.insertBefore(det, ref || null)
+  if (DEBUG) { const d = document.createElement('div'); d.id = 'inc-debug'; document.body.appendChild(d) }
+  ban.addEventListener('click', (e) => { const b = e.target.closest('[data-incv]'); if (b) { INC.vista = Number(b.dataset.incv); reconstruirIncidente() } })
+  det.addEventListener('click', (e) => { const c = e.target.closest('[data-con]'); if (!c) return
+    const ov = ovVista(), con = (ov.considerations || []).find((x) => x.id === c.dataset.con); if (!con) return
+    const igual = con.refs.length && con.refs.every((r) => INC.resaltar.has(r)) && INC.resaltar.size === con.refs.length
+    INC.resaltar = igual ? new Set() : new Set(con.refs); reconstruirIncidente() })
+  if (DEBUG) $('inc-debug').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return
+    if (b.dataset.esc) { const sc = INC.escenarios.find((x) => x.key === b.dataset.esc); INC.escenario = { key: sc.key, i: 0 }; INC.versions = new Map(); INC.actual = null; aplicarIncidente(structuredClone(sc.versions[0])) }
+    if (b.dataset.next) { const sc = INC.escenarios.find((x) => x.key === INC.escenario.key); INC.escenario.i = Math.min(sc.versions.length - 1, INC.escenario.i + 1); aplicarIncidente(structuredClone(sc.versions[INC.escenario.i])) }
+    if (b.dataset.clear) { INC.actual = null; INC.versions = new Map(); INC.vista = null; INC.escenario = null; reconstruirIncidente() }
+    pintarPanelIncidente()
+  })
+}
+const AVISO = 'Estimate from caller reports and a partial scan. Advisory only.'
+function pintarPanelIncidente() {
+  asegurarDomIncidente()
+  const ov = ovVista(), ban = $('inc-banner'), body = $('inc-panel-body')
+  if (DEBUG) {
+    const sc = INC.escenario && INC.escenarios.find((x) => x.key === INC.escenario.key)
+    $('inc-debug').innerHTML = `<span class="inc-chip">DEBUG</span>` + INC.escenarios.map((x) => `<button data-esc="${x.key}" class="${INC.escenario?.key === x.key ? 'on' : ''}">${esc(x.label)}</button>`).join('') +
+      (sc && sc.versions.length > 1 ? `<button data-next="1" ${INC.escenario.i >= sc.versions.length - 1 ? 'disabled' : ''}>Next call → v${Math.min(sc.versions.length, INC.escenario.i + 2)}</button>` : '') +
+      (INC.actual ? '<button data-clear="1">Clear</button>' : '') + (INC.escenarios.length ? '' : '<span class="hint">no scenario fits this house</span>')
+  }
+  if (!ov) { ban.style.display = 'none'; body.innerHTML = '<div class="hint">No incident overlay received.</div>'; return }
+  ban.style.display = 'block'
+  const versiones = [...INC.versions.keys()].sort((a, b) => a - b)
+  const avisos = []
+  for (const o of ov.occupants || []) { const L = lugar(o); if (L && L.floorOnly) avisos.push([IC.green, `${o.status === 'contradicted' ? '? ' : ''}Occupants reported on floor ${L.fi + 1} (room unknown)`]); else if (!L) avisos.push([IC.green, `Occupants reported (${nOcc(o)}), ${o.location.kind === 'floor' ? `floor ${o.location.floor_reported ?? '?'} not in the scan` : 'location unknown'}`]) }
+  for (const f of ov.fire || []) { const L = lugar(f); if (L && L.floorOnly) avisos.push([IC.red, `${f.kind.toUpperCase()} reported on floor ${L.fi + 1} (room unknown)`]); else if (!L) avisos.push([IC.red, `${f.kind.toUpperCase()} reported, location unknown`]) }
+  for (const c of ov.contradictions || []) avisos.push([IC.amber, `Contradiction: ${c.key} (${c.group_id}) not resolved by the dispatcher`])
+  if (INC.rutas) for (const id of INC.rutas.noRoute) avisos.push(['#e5e7eb', `No route computable (${id})`])
+  else if ((ov.objectives || []).length) avisos.push(['#e5e7eb', 'No route computable (no interior scan)'])
+  ban.innerHTML = `<div class="inc-fila"><b>INCIDENT</b><span class="hint">${esc(ov.incident_id)} · v${ov.version} · as of ${esc(String(ov.as_of).slice(11, 16))}Z</span>` +
+    `<span class="inc-vers">${versiones.map((v) => `<button data-incv="${v}" class="${v === ov.version ? 'on' : ''}">v${v}</button>`).join('')}</span></div>` +
+    ((ov.changes_since_last || []).length ? `<div class="inc-cambios">${ov.changes_since_last.map((c) => `<div>● ${esc(c)}</div>`).join('')}</div>` : '') +
+    avisos.map(([col, t]) => `<div class="inc-aviso" style="border-color:${col};color:${col}">${esc(t)}</div>`).join('') +
+    (INC.rutas ? `<div class="hint">${INC.rutas.routes.length} route(s) · planner ${INC.rutas.ms} ms</div>` : '') +
+    `<div class="inc-advisory">${AVISO}</div>`
+  body.innerHTML = (ov.considerations || []).map((c) => `<button class="inc-card ${c.refs.length && c.refs.every((r) => INC.resaltar.has(r)) ? 'on' : ''}" data-con="${esc(c.id)}">` +
+    `<div class="inc-card-t">${esc(c.text)}</div><div class="hint">${esc(c.rationale)}</div>` +
+    `<div class="inc-card-m">confidence ${Math.round(c.confidence * 100)}% · evidence ${esc(c.evidence_ids.join(', '))}${c.refs.length ? ' · refs ' + esc(c.refs.join(', ')) : ''}</div></button>`).join('') || '<div class="hint">No considerations.</div>'
 }
 
 // ---------------------------------------------------------------- carga (catalogo samples/index.json + datos en vivo de la API)
@@ -1192,6 +1541,7 @@ async function cargar(id) {
     const j = await r.json().catch(() => null)
     if (!r.ok) throw new Error(j && j.error ? 'Floor plan unavailable: ' + j.error : r.status >= 500 ? 'House data server not reachable (npm run dev or npm run preview)' : 'Sample not found (HTTP ' + r.status + ')')
     doc = j
+    if (doc && doc.no_scan) return sinEscaneo(id, doc)
     if (!doc || !doc.plan || !Array.isArray(doc.plan.floors) || !doc.plan.floors.length) throw new Error('The API returned no floor plan')
   } catch (e) { return fallo(e.message === 'Failed to fetch' ? 'House data server not reachable' : e.message) }
   const plan = doc.plan, t1 = performance.now()
@@ -1199,8 +1549,8 @@ async function cargar(id) {
   const okCasa = S.fila && S.fila.estado === 'ok'
   $('calidad').className = 'chip ' + (okCasa ? 'ok' : 'mal'); $('calidad').textContent = S.fila ? (okCasa ? 'quality: ok' : 'quality: discarded') : 'quality: unknown'
   if (!okCasa) return fallo('This sample did not pass the house quality check')
-  $('vista3d').style.opacity = 1; $('der').style.opacity = 1
-  S.plan = plan
+  $('vista3d').style.opacity = 1; $('der').style.opacity = 1; $('vista3d').style.visibility = ''; quitarAvisoSinEscaneo()
+  S.plan = plan; S.modelId = doc.matterportModelId
   cargarOblicuas(id)
   S.f2d = primeraPlanta(plan); S.foco = 'all' // abre con todas las plantas; el 2D muestra la planta mas baja con habitaciones
   S.ev = evacuacion(plan); const t2 = performance.now()
@@ -1217,6 +1567,22 @@ async function cargar(id) {
   prepararIncidente(plan)
   window.__casa = { S, THREE, ms: S.ms, id, INC, setFoco, setDetalle, ponerHover, get refs() { return refs }, get P() { return P }, get escG() { return escG }, get explG() { return explG }, // solo para las pruebas automaticas
     medir(n, fx) { const gl = renderer.getContext(), px = new Uint8Array(4), t0 = performance.now(); for (let i = 0; i < n; i++) { if (fx) composer.render(); else renderer.render(escena, camara); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px) } return (performance.now() - t0) / n } }
+}
+
+// edificio sin escaneo interior: nunca se dibuja un plano; solo banners, consideraciones e imagenes aereas
+function quitarAvisoSinEscaneo() { const a = $('sin-escaneo'); if (a) a.remove() }
+function sinEscaneo(id, doc) {
+  S.plan = null; S.modelId = null; S.sel = null
+  if (escena) limpiarIncidente3D()
+  $('vista3d').style.visibility = 'hidden'; $('vista2d').innerHTML = ''
+  quitarAvisoSinEscaneo()
+  const a = document.createElement('div'); a.id = 'sin-escaneo'
+  a.innerHTML = `<b>No interior scan on file</b><span>${esc(doc.address || id)}</span><span class="hint">Interior sections are gaps, not guesses. Only floor-level reports and considerations are shown.</span>`
+  $('centro').appendChild(a)
+  $('calidad').className = 'chip'; $('calidad').textContent = 'no scan'; $('carga').textContent = ''
+  estadoEmbed(''); cargarOblicuas(id)
+  avisarPadre({ type: 'ready', sample: id, floors: 0, mode: EMBED ? (SPLIT ? 'split' : MODO) : null, no_scan: true })
+  prepararIncidente(null)
 }
 
 let LISTA = [] // samples/index.json

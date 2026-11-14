@@ -186,3 +186,25 @@ html.tema-app :focus-visible { outline: 1px solid var(--accent); outline-offset:
 .obl-vacio { padding: 14px 8px; text-align: center; color: var(--textDim); border: 1px dashed var(--border); font-size: 11px; }
 html.embed.modo-2d #oblicuas, html.embed.modo-3d #oblicuas { display: none; }
 html.tema-app .obl-img { border-color: var(--border); }
+
+/* Capa de incidente: banner, consideraciones, aviso sin escaneo y chip DEBUG (unico sitio con colores saturados) */
+#inc-banner { display: none; left: 10px; top: 48px; width: min(420px, 46%); max-height: 46%; overflow-y: auto; font-size: 10.5px; line-height: 1.35; z-index: 6; border-color: var(--borderHi); }
+html.embed.layout-split #inc-banner { top: 10px; }
+#inc-banner .inc-fila { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#inc-banner .inc-fila b { letter-spacing: .14em; color: #fff; }
+#inc-banner .inc-vers { display: inline-flex; gap: 3px; margin-left: auto; }
+#inc-banner .inc-vers button { padding: 0 6px; }
+#inc-banner .inc-cambios { margin-top: 5px; padding: 4px 6px; border-left: 3px solid #f59e0b; background: rgba(245, 158, 11, .12); color: #fcd34d; }
+#inc-banner .inc-aviso { margin-top: 4px; padding: 2px 6px; border-left: 3px solid; }
+#inc-banner .inc-advisory { margin-top: 5px; color: var(--textDim); font-style: italic; }
+#inc-panel-body { padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 6px; }
+.inc-card, html.tema-app button.inc-card { display: block; width: 100%; text-align: left; text-transform: none; letter-spacing: 0; font: 400 11.5px/1.4 var(--fontUi); white-space: normal; padding: 6px 8px; }
+.inc-card.on { border-color: #fff !important; box-shadow: 0 0 0 1px #fff inset; }
+.inc-card-t { color: var(--text); margin-bottom: 3px; }
+.inc-card-m { margin-top: 3px; font-size: 10px; color: var(--textDim); }
+#sin-escaneo { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 20px; }
+#sin-escaneo b { font-size: 15px; letter-spacing: .14em; text-transform: uppercase; color: var(--unverified, var(--textDim)); }
+#inc-debug { position: fixed; left: 8px; bottom: 8px; z-index: 50; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; max-width: 70vw;
+  padding: 5px 6px; background: rgba(8, 10, 14, .9); border: 1px solid #f59e0b; }
+#inc-debug .inc-chip { font: 700 10px/1 var(--font); letter-spacing: .16em; color: #111; background: #f59e0b; padding: 3px 6px; }
+#inc-debug button { padding: 1px 6px; }
