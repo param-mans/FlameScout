@@ -890,30 +890,42 @@ function zoomPan2D() {
 }
 
 // ---------------------------------------------------------------- vistas oblicuas (Vexcel) bajo el plano 2D
-// Solo las diagonales N/E/S/W (sin la vista cenital). Las imagenes son locales: local-imagery/<sample>/ esta fuera de git
-// (licencia y privacidad), asi que en un clon nuevo no hay imagenes y se muestra el aviso. Mismo origen, sin red externa.
-const OBL = { id: null, meta: null, dir: 'north', estado: '' }
+// Solo las diagonales N/E/S/W (sin la vista cenital). Origen, por orden:
+// 1) API: /api/house-viewer/vexcel/<sample> (mismo origen; Vite lo reenvia al servidor de imagenes en :8000, que guarda
+//    la clave de Vexcel y solo devuelve fecha de captura y copyright); 2) copia local en local-imagery/<sample>/ (fuera de git).
+const OBL = { id: null, meta: null, base: '', dir: 'north', estado: '', error: '' }
 const OBL_DIRS = [['north', 'N'], ['east', 'E'], ['south', 'S'], ['west', 'W']]
 const OBL_ARCHIVO = /^oblique-(north|east|south|west)\.jpg$/
+const OBL_API = '/api/house-viewer/vexcel/'
+async function leerOblicuas(url) {
+  const r = await fetch(url)
+  const j = await r.json().catch(() => null)
+  if (!r.ok || !j) return { error: (j && j.error) || (r.status >= 500 ? 'imagery server not reachable' : 'HTTP ' + r.status) }
+  const vistas = Object.fromEntries(OBL_DIRS.map(([d]) => [d, j.views && j.views[d]]).filter(([, v]) => v && OBL_ARCHIVO.test(v.file || '')))
+  return Object.keys(vistas).length ? { meta: { ...j, views: vistas } } : { error: 'no oblique views at this location' }
+}
 async function cargarOblicuas(id) {
-  OBL.id = id; OBL.meta = null; OBL.estado = 'cargando'; pintarOblicuas()
-  try {
-    const r = await fetch('local-imagery/' + id + '/meta.json')
-    if (!r.ok) throw new Error()
-    const m = await r.json()
-    if (OBL.id !== id) return
-    const vistas = Object.fromEntries(OBL_DIRS.map(([d]) => [d, m && m.views && m.views[d]]).filter(([, v]) => v && OBL_ARCHIVO.test(v.file || '')))
-    if (!Object.keys(vistas).length) throw new Error()
-    OBL.meta = { ...m, views: vistas }; OBL.estado = 'ok'
-    if (!vistas[OBL.dir]) OBL.dir = Object.keys(vistas)[0]
-  } catch (e) { if (OBL.id === id) OBL.estado = 'nada' }
+  OBL.id = id; OBL.meta = null; OBL.estado = 'cargando'; OBL.error = ''; pintarOblicuas()
+  let res = null
+  try { res = await leerOblicuas(OBL_API + encodeURIComponent(id)); if (res.meta) OBL.base = OBL_API + encodeURIComponent(id) + '/' } catch (e) { res = { error: 'imagery server not reachable' } }
+  if (!res.meta) {
+    const err = res.error
+    try { const loc = await leerOblicuas('local-imagery/' + encodeURIComponent(id) + '/meta.json'); if (loc.meta) { res = loc; OBL.base = 'local-imagery/' + encodeURIComponent(id) + '/' } } catch (e) { /* sin copia local */ }
+    if (!res.meta) res = { error: err }
+  }
+  if (OBL.id !== id) return
+  if (res.meta) { OBL.meta = res.meta; OBL.estado = 'ok'; if (!res.meta.views[OBL.dir]) OBL.dir = Object.keys(res.meta.views)[0] }
+  else { OBL.estado = 'nada'; OBL.error = res.error || '' }
   pintarOblicuas()
 }
 function pintarOblicuas() {
   const el = $('oblicuas-body'); if (!el) return
-  if (OBL.estado === 'cargando') { el.innerHTML = '<div class="obl-vacio">Loading oblique views…</div>'; return }
-  if (OBL.estado !== 'ok') { el.innerHTML = '<div class="obl-vacio">No oblique imagery for this sample.<br><span class="hint">Local only: Vexcel images are not stored in the repository.</span></div>'; return }
-  const m = OBL.meta, v = m.views[OBL.dir], url = 'local-imagery/' + encodeURIComponent(OBL.id) + '/' + v.file
+  if (OBL.estado === 'cargando') { el.innerHTML = '<div class="obl-vacio">Loading oblique views…<br><span class="hint">The first time for a house can take about 10 s.</span></div>'; return }
+  if (OBL.estado !== 'ok') {
+    const ayuda = /not reachable/.test(OBL.error) ? 'Start the imagery server: demo_costar tools/serve.py on port 8000 with VEXCEL_API_KEY set.' : OBL.error
+    el.innerHTML = `<div class="obl-vacio">No oblique imagery for this sample.<br><span class="hint">${esc(ayuda)}</span></div>`; return
+  }
+  const m = OBL.meta, v = m.views[OBL.dir], url = OBL.base + v.file
   el.innerHTML = '<div class="obl-tabs fila-btn">' + OBL_DIRS.map(([d, t]) => `<button data-obl="${d}" class="${d === OBL.dir ? 'on' : ''}" ${m.views[d] ? '' : 'disabled title="no image"'}>${t}</button>`).join('') +
     '<span class="hint">camera facing</span></div>' +
     `<a href="${esc(url)}" target="_blank" rel="noopener"><img class="obl-img" src="${esc(url)}" alt="Oblique aerial view, camera facing ${esc(OBL.dir)}"></a>` +

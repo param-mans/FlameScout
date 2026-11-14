@@ -63,15 +63,21 @@ The viewer recomputes stairs and evacuation at load time with the same modules. 
 identifying data was removed: model id, address, coordinates, listing and agent data. Matterport
 element ids were replaced with short opaque ids (`f1`, `r1`, `w1`, `o1`).
 
-## Oblique views (Vexcel, local only)
+## Oblique views (Vexcel)
 
 Under the 2D plan the viewer shows the Vexcel oblique aerial views (N / E / S / W = the direction the camera
-faces; the straight-down view is left out on purpose). The images are **never committed**: Vexcel's
-license and the anonymized samples (a photo of the real house reveals where it is) keep them out.
-They live in `local-imagery/<sample>/` (`oblique-<dir>.jpg` plus `meta.json` with capture date and
-copyright only), which its own `.gitignore` keeps out of git. On a fresh clone the section says
-"No oblique imagery for this sample". Note that `vite build` copies `public/` as-is, so a build made
-on a machine that has the images includes them.
+faces; the straight-down view is left out on purpose). Sources, in order:
+
+1. **API**: `GET /api/house-viewer/vexcel/<sample>` and `.../<sample>/oblique-<dir>.jpg`, same origin. In
+   `npm run dev`, Vite forwards `/api` to `localhost:8000`, where the imagery server runs (demo_costar
+   `tools/serve.py` with `VEXCEL_API_KEY` in its environment). The server maps the anonymous sample id to the
+   house, calls Vexcel with the key in the `X-API-KEY` header and caches the images. It returns only the
+   capture date and copyright: no key, coordinates, model id or request parameters reach the browser.
+2. **Local copy**: `local-imagery/<sample>/` (`oblique-<dir>.jpg` + `meta.json`), kept out of git by its own
+   `.gitignore`.
+
+Without either, the section explains what is missing (server not reachable, key not set...). The images are
+never committed: Vexcel's license, and a photo of the real house would reveal where the anonymized sample is.
 
 ## postMessage API
 
