@@ -42,6 +42,9 @@ the entity table.
 | `sample-c` | 1 | 17 | |
 | `sample-d` | 1 | 15 | |
 
+`samples/index.json` lists each sample with a **fictitious** address (`address`) for the house picker,
+plus its title, floors and rooms.
+
 \* Rooms other than Void.
 
 All four passed the house quality check and have at least 4 windows. Every room polygon the viewer
@@ -70,6 +73,7 @@ Into the viewer (the page posts to the iframe's `contentWindow`):
 { type: 'focusFloor', floor: 'all' }              // or 1..n
 { type: 'highlight', id: 'r3' }                   // room, door or window id; id: null clears
 { type: 'setLayer', layer: 'heatmap', on: true }  // walls | doors | windows | slabs | stairs | labels | route | heatmap
+{ type: 'loadSample', id: 'sample-c' }            // load another house without reloading the page
 ```
 
 Out of the viewer:

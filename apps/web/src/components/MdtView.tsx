@@ -6,10 +6,8 @@ import { Timeline } from "./Timeline";
 import { Btn, KV, Panel, StatusTag, fmt } from "./ui";
 import { BuildingViewer } from "./viewer/BuildingViewer";
 
-// Opt-in house viewer for the Floor 2D / 3D scan tabs: ?viewer=1[&sample=<id>] (default sample-a).
-const urlParams = new URLSearchParams(window.location.search);
-const VIEWER = urlParams.get("viewer") === "1";
-const VIEWER_SAMPLE = urlParams.get("sample") ?? "sample-a";
+// Opt-in house viewer for the Floor 2D / 3D scan tabs: ?viewer=1[&sample=<id>]; the house is picked inside the viewer.
+const VIEWER = new URLSearchParams(window.location.search).get("viewer") === "1";
 
 const LABELS: Record<string, string> = {
   "building.use": "Use",
@@ -145,8 +143,8 @@ export function MdtView({ brief, segments, contradictions }: { brief: Brief; seg
           <div className="relative min-h-0 flex-1">
             {tab === "map" ? (
               <SitePlan brief={brief} layers={layers} selectedKey={sel?.key ?? null} highlightIds={highlightIds} onSelect={onMapSelect} />
-            ) : VIEWER && !noScan ? (
-              <BuildingViewer key={tab} mode={tab} sampleId={VIEWER_SAMPLE} />
+            ) : VIEWER ? (
+              <BuildingViewer key={tab} mode={tab} />
             ) : (
               <div className="grid h-full place-items-center text-center">
                 {/* TODO: Matterport embed / normalized 2D plan with markers (PRD section 23) */}

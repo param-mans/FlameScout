@@ -996,9 +996,17 @@ function eventos() {
 // ---------------------------------------------------------------- mensajes de la pagina contenedora (mismo origen)
 // {type:'focusFloor', floor: 'all' | 1..n}  {type:'highlight', id: <id de habitacion, puerta o ventana> | null}
 // {type:'setLayer', layer: 'walls'|'doors'|'windows'|'slabs'|'stairs'|'labels'|'route'|'heatmap', on: true|false}
+// {type:'loadSample', id: <id de samples/index.json>}: carga otra casa sin recargar la pagina
 function mensaje(e) {
-  if (e.origin !== ORIGEN || e.source !== window.parent || !e.data || typeof e.data !== 'object' || !S.plan) return
-  const d = e.data, n = S.plan.floors.length
+  if (e.origin !== ORIGEN || e.source !== window.parent || !e.data || typeof e.data !== 'object') return
+  const d = e.data
+  if (d.type === 'loadSample') {
+    if (!LISTA.some((x) => x.id === d.id)) return fallo('Unknown sample: ' + String(d.id).slice(0, 40))
+    $('modelo').value = d.id
+    return cargar(d.id)
+  }
+  if (!S.plan) return
+  const n = S.plan.floors.length
   if (d.type === 'focusFloor') {
     if (d.floor === 'all') setFoco('all')
     else if (Number.isInteger(d.floor) && d.floor >= 1 && d.floor <= n) setFoco(d.floor - 1)
@@ -1055,18 +1063,18 @@ async function cargar(id) {
     medir(n, fx) { const gl = renderer.getContext(), px = new Uint8Array(4), t0 = performance.now(); for (let i = 0; i < n; i++) { if (fx) composer.render(); else renderer.render(escena, camara); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px) } return (performance.now() - t0) / n } }
 }
 
+let LISTA = [] // samples/index.json
 async function inicio() {
   if (SOLO_2D) $('der').appendChild($('inspector')) // en la vista embebida 2D el inspector va sobre el plano
   eventos(); zoomPan2D()
-  let lista = []
   try {
     const r = await fetch('samples/index.json')
     if (!r.ok) throw new Error()
-    lista = await r.json()
+    LISTA = await r.json()
   } catch (e) { return fallo('Sample list could not be loaded') }
-  const ids = lista.map((x) => x.id), pedido = Q.get('sample')
+  const ids = LISTA.map((x) => x.id), pedido = Q.get('sample')
   const id = pedido || ids[0]
-  $('modelo').innerHTML = lista.map((x) => `<option value="${esc(x.id)}" ${x.id === id ? 'selected' : ''}>${esc(x.title || x.id)}</option>`).join('')
+  $('modelo').innerHTML = LISTA.map((x) => `<option value="${esc(x.id)}" ${x.id === id ? 'selected' : ''}>${esc((x.address ? x.address + ' · ' : '') + (x.title || x.id))}</option>`).join('')
   if (!ids.includes(id)) return fallo('Unknown sample: ' + id)
   await cargar(id)
 }

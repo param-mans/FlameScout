@@ -1,25 +1,29 @@
 [
  {
   "id": "sample-a",
-  "title": "Sample A · 2 floors · 19 rooms",
+  "address": "14 Example Lane, Demo City",
+  "title": "Sample A \u00b7 2 floors \u00b7 19 rooms",
   "floors": 2,
   "rooms": 19
  },
  {
   "id": "sample-b",
-  "title": "Sample B · 2 floors · 27 rooms",
+  "address": "220 Placeholder Ave, Demo City",
+  "title": "Sample B \u00b7 2 floors \u00b7 27 rooms",
   "floors": 2,
   "rooms": 27
  },
  {
   "id": "sample-c",
-  "title": "Sample C · 1 floor · 17 rooms",
+  "address": "7 Mock Court, Demo City",
+  "title": "Sample C \u00b7 1 floor \u00b7 17 rooms",
   "floors": 1,
   "rooms": 17
  },
  {
   "id": "sample-d",
-  "title": "Sample D · 1 floor · 15 rooms",
+  "address": "93 Fixture Road, Demo City",
+  "title": "Sample D \u00b7 1 floor \u00b7 15 rooms",
   "floors": 1,
   "rooms": 15
  }
