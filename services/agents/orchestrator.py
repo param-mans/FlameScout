@@ -643,18 +643,16 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
 # ---------- agent ----------
 
 def _model(thinking: bool = True):
-    from langchain_google_genai import ChatGoogleGenerativeAI
+    from .llm import make_chat
 
     # "low" is the lowest thinking level this model accepts ("minimal" is a 400) and default
     # thinking roughly doubles every turn. thinking_budget=0 asks for none, but it is a hint, not a
     # switch: in an 8-call A/B on the layer-note turn the model still reasoned in 6 of 8 calls
     # (3 of 8 at "low"). There is no setting that reliably turns thinking off on this model.
-    effort = {"thinking_level": "low"} if thinking else {"thinking_budget": 0}
+    # (Gemini only; LLM_PROVIDER=openai uses OPENAI_REASONING_EFFORT, see llm.py.)
     # A call that has not answered in MODEL_TIMEOUT_S is cut off; max_retries=1 means one attempt in
     # the SDK, so the only retry is StallRetryMiddleware's, which logs it with the agent's name.
-    return ChatGoogleGenerativeAI(model=os.environ["GEMINI_FAST_MODEL"],
-                                  google_api_key=os.environ["GEMINI_API_KEY"],
-                                  timeout=MODEL_TIMEOUT_S, max_retries=1, **effort)
+    return make_chat("fast", timeout=MODEL_TIMEOUT_S, max_retries=1, thinking="low" if thinking else "none")
 
 
 def _layer_subagents(tools: dict[str, BaseTool], quick: Any, stalls: StallCounter) -> list[dict]:

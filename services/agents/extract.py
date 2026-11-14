@@ -150,14 +150,13 @@ class GeminiExtractor:
 
     def _get_chain(self):
         if self._chain is None:
-            from langchain_google_genai import ChatGoogleGenerativeAI
+            from .llm import make_chat
 
-            llm = ChatGoogleGenerativeAI(
-                model=os.environ["GEMINI_FAST_MODEL"],
-                google_api_key=os.environ["GEMINI_API_KEY"],
+            llm = make_chat(
+                "fast",
                 timeout=max(self.timeout_s, self.MIN_API_DEADLINE_S),
                 max_retries=1,  # = attempts; a network retry can't fit in the budget
-                thinking_level="low",  # default thinking takes ~4.5 s per utterance
+                thinking="low",  # Gemini: default thinking takes ~4.5 s per utterance
             )
             self._chain = llm.with_structured_output(ExtractionResult, include_raw=True)
         return self._chain
@@ -185,9 +184,10 @@ class GeminiExtractor:
 
 
 def get_extractor() -> Extractor:
-    """EXTRACTOR=keyword|gemini (default keyword)."""
+    """EXTRACTOR=keyword|gemini|llm (default keyword). gemini and llm both mean the LLM extractor on
+    LLM_PROVIDER's model (the class keeps its old name)."""
     name = os.environ.get("EXTRACTOR", "keyword").strip().lower()
-    if name == "gemini":
+    if name in ("gemini", "llm"):
         return GeminiExtractor()
     if name != "keyword":
         log.warning("Unknown EXTRACTOR=%r, using keyword", name)

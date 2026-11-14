@@ -8,6 +8,7 @@ dependencies = [
   "uvicorn[standard]",
   "deepagents",
   "langchain-google-genai",
+  "langchain-openai",
   "langsmith",
   "python-dotenv",
   "pyyaml",
