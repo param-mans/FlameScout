@@ -48,4 +48,5 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 ## Conventions
 - Python 3.11+, type hints, small functions, tests for every deterministic module.
 - Commit small and often. Repo is public.
+- Commit directly to `main` (no feature branches): `git pull` first, then commit and push.
 - Timebox: if a feature isn't working in its estimate, fall back to the fixture and move on.
