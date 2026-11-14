@@ -1,0 +1,378 @@
+{
+ "floors": [
+  "tsmq1wak12rhgn0mawksxcwcd",
+  "pd0i1c4yq9w0y2zsb07ed23sb"
+ ],
+ "rooms": {
+  "rewssvxhpxq": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "OFFICE",
+   "type": "office"
+  },
+  "yigbohksx91": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "ENTRANCE",
+   "type": "entrance"
+  },
+  "onl0dlcbkb9": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "HALLWAY",
+   "type": "hallway"
+  },
+  "tfsfsskzu72": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "GARAGE",
+   "type": "garage"
+  },
+  "0f4b7t6ejng": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "OTHER",
+   "type": "other"
+  },
+  "akdbyao21yx": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "LAUNDRY",
+   "type": "laundry"
+  },
+  "d3slsxy3zlg": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "BEDROOM",
+   "type": "bedroom"
+  },
+  "fpmc7xiy9zt": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "HALLWAY",
+   "type": "hallway"
+  },
+  "jdb4o90x2dm": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "STAIRCASE",
+   "type": "staircase"
+  },
+  "j7nhq2abkp0": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "KITCHEN",
+   "type": "kitchen"
+  },
+  "cdz3fkt38kae7tapstpt0eaeb": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "LIVING ROOM",
+   "type": "living room"
+  },
+  "tt6gm2a0463x9wmnx7rn6gugc": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "BEDROOM",
+   "type": "bedroom"
+  },
+  "h26t7ky77ew74yb0pg8qqf5rd": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "BATHROOM",
+   "type": "bathroom"
+  },
+  "3m54yff1z7crxaywd8if9rb0d": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "BONUS ROOM",
+   "type": "bonus room"
+  },
+  "2qdmc5i9byxi79ry1pxdkqzea": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "BEDROOM",
+   "type": "bedroom"
+  },
+  "a5f9age4zzxewres6iqux2emc": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "CLOSET",
+   "type": "closet"
+  },
+  "b4qtykzcazp4iumkamm7y7h2b": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "BATHROOM",
+   "type": "bathroom"
+  },
+  "ediidma5zg15dufx3n0qyq21a": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "CLOSET",
+   "type": "closet"
+  },
+  "wbpb7dkfuwnikd1kq2a9hz70a": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "CLOSET",
+   "type": "closet"
+  },
+  "kuc0fpmsgqxff63egrxrycfud": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "CLOSET",
+   "type": "closet"
+  },
+  "3ygfq6yfyyw3hi9x7u5rm2iqa": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "CLOSET",
+   "type": "closet"
+  },
+  "b2kez6wsw32fm2x3ui593u3hc": {
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+   "label": "CLOSET",
+   "type": "closet"
+  },
+  "v2v0x2aa8tj": {
+   "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+   "label": "STAIRCASE",
+   "type": "staircase"
+  },
+  "n2yqr30509t7i8whfdf2htwic": {
+   "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+   "label": "LOFT",
+   "type": "loft"
+  },
+  "q5n62dpd3mrc1exy2hr84132b": {
+   "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+   "label": "BATHROOM",
+   "type": "bathroom"
+  },
+  "pcez6b4tqeep953kmm04hme9c": {
+   "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+   "label": "CLOSET",
+   "type": "closet"
+  }
+ },
+ "openings": {
+  "iq075aiy3w7534z112hwxh3fb": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "ipqz9dbuse2zdzabti8uubx7a": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "13dybwcua0qmhdcmpgy7a4qia": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "urx4htfdgrq9ue6yy3d32y2yb": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "oflahj7cxq8": {
+   "type": "doorway",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "ak2cud3t0tte0qfb7fn8wqcyd": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "wzya67pmsgsfz5rigg873qt8b": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "1ruazc507muwq98iac9f3di9a": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "7k0m4icr6f3xg300u8eczts4a": {
+   "type": "doorway",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "11ec4prerxw": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "pkp93au524k8e6meiu4s6t64c": {
+   "type": "doorway",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "i22wyyn1dbds4enzeuzsn41nb": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "fuhnw7gt4q0mg6761q7kgwyfb": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "qzm715p7k4h31025q86uzf4bd": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "7503mawy979cx7hn9pwzsz7kb": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "u5cbc8g4bzt9r0gqd78i4tq1a": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "sxqra8exnbtyg45z7segm0w9c": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "2m4i9xrmnapsnac2ufxktgtia": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "r1029dznqy5tfbx8ngb951zad": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "a8xd62qbm270esyx5am216f3b": {
+   "type": "doorway",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "jfw5fkfevx9": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "095mh1p6d3t": {
+   "type": "doorway",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "a1xnb4mpk0z3nufnancykqu1d": {
+   "type": "doorway",
+   "exterior": true,
+   "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+  },
+  "bd7nf103y9a9mmpwu5iuy5h8d": {
+   "type": "doorway",
+   "exterior": true,
+   "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+  },
+  "6d9hu33fudsb0yt92ic3qn5ra": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+  },
+  "7wbusmhgqdfi8isa9tyub3bec": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+  },
+  "2ps8dxrw8pm2abgsxp4wyzm9a": {
+   "type": "doorway",
+   "exterior": false,
+   "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+  },
+  "y4qp6sggm2fex6ks0enwyw5ab": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "4ctd3psacg5a2nmq71nix86ec": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "iiyi64bztmwkm5izpaqt43xgd": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "bnpmwd28pggie6h14ahsayd0b": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "sf3rmwkhasswd2y359ny7wpyc": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "yzhfs10xrydg3pfpatf28nfza": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "exq6d4141ap33ftut157277ub": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "dr4pk77hmtbduguuwrckgtk0a": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "fze46kxp6s61igyg731uzrddc": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "uz26qgt4pkwcm5tyupq84gkpc": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "xrqbz8i4003930rh8f41rrnhc": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "nwatd3wt6we4gh56pzmepy6qb": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "zd8hi88bhumuueztyquu58bmc": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "c27y9kkfib02nqih56p3a3rec": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "x5t7cpa3h4cf2sk1r9e0bh73d": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "9uz33r9nrsaep11a1605qxmbd": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "2iu9c8grnx33reke5tzdxcxba": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+  },
+  "rnpdg1g99gq606ihfnra30mha": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+  },
+  "r1c96t5w7da4u1n82hy3yh6pa": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+  },
+  "edk1yaifedik4sp2d7ns4s55b": {
+   "type": "window",
+   "exterior": true,
+   "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+  }
+ },
+ "stairs": [
+  "stairs-jdb4o90x2dm"
+ ]
+}
