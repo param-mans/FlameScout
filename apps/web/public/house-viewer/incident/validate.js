@@ -14,9 +14,28 @@ const OBJ_TYPES = new Set(['rescue', 'recon'])
 const TARGET_KINDS = new Set(['occupant', 'occupant_group', 'room', 'floor'])
 const WAYPOINT_KINDS = new Set(['room', 'opening', 'stairs', 'exterior'])
 const FORBIDDEN_KEYS = new Set(['x', 'y', 'z', 'lat', 'lon', 'latitude', 'longitude', 'coordinates', 'polygon', 'points'])
-// Python: re.compile(r"\b(must|immediately|do it now|ordered|100\s*%|guaranteed)\b", re.I) on str (Unicode \b)
-const W = '[\\p{L}\\p{N}_]', B = `(?:(?<=${W})(?!${W})|(?<!${W})(?=${W}))`
-export const DIRECTIVE = new RegExp(`${B}(must|immediately|do it now|ordered|100\\s*%|guaranteed)${B}`, 'iu')
+// Python: re.compile(r"\b(must|immediately|do it now|ordered|100\s*%|guaranteed)\b", re.I) on str (Unicode \b).
+// No lookbehind (Safari < 16.4 cannot parse it): every start position (in code points) is tried with each anchored
+// alternative, and the word boundary is checked by hand on both sides, like Python's \b.
+const WORD = /[\p{L}\p{N}_]/u
+const ALTS = ['must', 'immediately', 'do it now', 'ordered', '100\\s*%', 'guaranteed'].map((a) => new RegExp('^(?:' + a + ')', 'iu'))
+const isWord = (c) => c !== undefined && WORD.test(c)
+export const DIRECTIVE = {
+  test(text) {
+    const cps = [...String(text)]
+    for (let i = 0; i < cps.length; i++) {
+      if (isWord(cps[i - 1]) === isWord(cps[i])) continue // no boundary before position i
+      const rest = cps.slice(i).join('')
+      for (const re of ALTS) {
+        const m = re.exec(rest)
+        if (!m) continue
+        const end = i + [...m[0]].length
+        if (isWord(cps[end - 1]) !== isWord(cps[end])) return true
+      }
+    }
+    return false
+  },
+}
 
 // ---------------------------------------------------------------- Python semantics
 const isDict = (o) => o !== null && typeof o === 'object' && !Array.isArray(o)

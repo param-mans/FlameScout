@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { validate, isoOk } from "../../public/house-viewer/incident/validate.js";
+import { validate, isoOk, DIRECTIVE } from "../../public/house-viewer/incident/validate.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const OV_DIR = path.join(ROOT, "packages", "schemas", "overlay");
@@ -130,6 +130,21 @@ print(json.dumps(out))`], { input: JSON.stringify(strs), maxBuffer: 1 << 26 });
   const pyOk = JSON.parse(r.stdout.toString());
   const bad = strs.filter((x, i) => isoOk(x) !== pyOk[i]);
   console.log(`timestamps: ${strs.length} strings, ${bad.length} disagreements` + (bad.length ? " e.g. " + JSON.stringify(bad.slice(0, 8)) : ""));
+  if (bad.length) fail++;
+}
+// 5) directive wording: DIRECTIVE.test must agree with Python's re.search(r"\b(...)\b", re.I) on every string
+if (py.status === 0) {
+  const words = ["must", "MUST", "Must", "immediately", "do it now", "do  it now", "ordered", "100%", "100 %", "100\t%", "100%x", "guaranteed", "ſuſt"];
+  const around = ["", " ", "x", "_", "1", "é", "ñ", "-", ".", "%", "日", "𝒜", "\n"];
+  const strs = [];
+  for (const w of words) for (const a of around) for (const b of around) strs.push(a + w + b);
+  strs.push("Consider this but you must go now", "mustmust", "a must-have", "musty", "admust", "100%%", "1100%", "x100% y", "Consider 100% sure", "ordered.", "disordered", "guaranteed!");
+  const r = spawnSync("python3", ["-B", "-c", `
+import json, re, sys
+D = re.compile(r"\\b(must|immediately|do it now|ordered|100\\s*%|guaranteed)\\b", re.I)
+print(json.dumps([bool(D.search(s)) for s in json.loads(sys.stdin.read())]))`], { input: JSON.stringify(strs), maxBuffer: 1 << 24 });
+  const pyD = JSON.parse(r.stdout.toString()), bad = strs.filter((x, i) => DIRECTIVE.test(x) !== pyD[i]);
+  console.log(`directive wording: ${strs.length} strings, ${bad.length} disagreements` + (bad.length ? " e.g. " + JSON.stringify(bad.slice(0, 8)) : ""));
   if (bad.length) fail++;
 }
 console.log(fail ? `${fail} FAILED` : "OK all validator tests");
