@@ -137,6 +137,11 @@ class FusionEngine:
         f.updated_at = now()
         return f"! {ef.key}: {old} vs {ef.value} (contradiction, {seg.call_id})"
 
+    def confirm(self, building_id: str) -> None:
+        """Dispatcher confirmed the building. Keeps the record in step with the orchestrator's gate."""
+        self.record.confirmed_building_id = building_id
+        self.record.status = "confirmed"
+
     def resolve(self, key: str, value) -> None:
         """Dispatcher picks the correct value for a contradiction."""
         for c in self.record.contradictions:

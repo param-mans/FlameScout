@@ -86,6 +86,11 @@
           "title": "Gaps",
           "type": "array"
         },
+        "verifier_rejections": {
+          "default": 0,
+          "title": "Verifier Rejections",
+          "type": "integer"
+        },
         "evidence": {
           "additionalProperties": {
             "$ref": "#/$defs/Evidence"
@@ -107,6 +112,37 @@
         "location_confirmed"
       ],
       "title": "Brief",
+      "type": "object"
+    },
+    "BuildingCandidate": {
+      "description": "A building the dispatcher can confirm (PRD FR-3). Produced by the locator, never by an LLM.",
+      "properties": {
+        "building_id": {
+          "title": "Building Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "address": {
+          "title": "Address",
+          "type": "string"
+        },
+        "score": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "building_id",
+        "name",
+        "address",
+        "score"
+      ],
+      "title": "BuildingCandidate",
       "type": "object"
     },
     "BuildingDossier": {
@@ -640,6 +676,30 @@
         "incident_id": {
           "title": "Incident Id",
           "type": "string"
+        },
+        "status": {
+          "default": "running",
+          "enum": [
+            "running",
+            "awaiting_confirmation",
+            "done",
+            "rejected"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "version": {
+          "default": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "candidates": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BuildingCandidate"
+          },
+          "title": "Candidates",
+          "type": "array"
         },
         "todos": {
           "default": [],

@@ -130,8 +130,9 @@ class Brief(BaseModel):
     hazards: list[Fact] = []
     exposures: list[dict] = []
     considerations: list[Consideration] = Field(default_factory=list, max_length=5)
-    changes_since_last: list[str] = []
+    changes_since_last: list[str] = []   # deterministic diff against the previous version
     gaps: list[str] = []
+    verifier_rejections: int = 0         # draft considerations rejected (code checks + critic) for this version
     evidence: dict[str, Evidence] = {}   # so the UI evidence drawer can resolve every id
     disclaimer: str = "Advisory only. Verify on arrival."
 
@@ -143,9 +144,20 @@ class TodoItem(BaseModel):
     status: Literal["pending", "in_progress", "completed"]
 
 
+class BuildingCandidate(BaseModel):
+    """A building the dispatcher can confirm (PRD FR-3). Produced by the locator, never by an LLM."""
+    building_id: str
+    name: str
+    address: str
+    score: float = Field(ge=0, le=1)
+
+
 class Progress(BaseModel):
     """The orchestrator's write_todos plan, rewritten on every change. UI progress strip."""
     incident_id: str
+    status: Literal["running", "awaiting_confirmation", "done", "rejected"] = "running"
+    version: int = 1                      # brief version being produced
+    candidates: list[BuildingCandidate] = []   # what the dispatcher is choosing between
     todos: list[TodoItem] = []
     updated_at: datetime = Field(default_factory=now)
     trace_run_id: Optional[str] = None   # LangSmith run id of the orchestrator run

@@ -4,7 +4,8 @@ from pathlib import Path
 import pytest
 
 from flamescout_schemas import Brief, CallSegment
-from services.agents.brief import ConsiderationDraft, build_brief, check_considerations, merge_evidence
+from services.agents.brief import (ConsiderationDraft, build_brief, check_considerations, merge_evidence,
+                                   rejected_count)
 from services.agents.dossier import load_dossier
 from services.agents.fusion import FusionEngine
 
@@ -80,3 +81,32 @@ def test_evidence_id_collision_is_an_error(incident, dossier):
     dossier.evidence["ev_call_1"] = dossier.evidence["ev_costar_1"]
     with pytest.raises(ValueError, match="both incident and dossier"):
         build_brief(incident, dossier, [])
+
+
+def test_changes_since_last_is_a_deterministic_diff(dossier):
+    segments = [CallSegment(**s) for s in json.loads((CALLS / "s2.json").read_text())["segments"]]
+    eng = FusionEngine("inc_s2")
+    eng.ingest_all(s for s in segments if s.call_id == "c1")
+    eng.confirm("fake_wilshire_tower")
+    v1 = build_brief(eng.record.model_copy(deep=True), dossier, [draft()])
+    assert v1.changes_since_last == [] and v1.verifier_rejections == 0
+
+    eng.ingest_all(s for s in segments if s.call_id == "c2")
+    v2 = build_brief(eng.record, dossier, [draft()], version=2, previous=v1, verifier_rejections=3)
+    assert v2.changes_since_last == [
+        "Floor contradicted: 3 vs 4 (Call 2)",
+        "Visible added: flames (Call 2)",
+        "New: Building name Wilshire Tower (Call 2)",
+        "New: Access notes back stairs (Call 2)",
+    ]
+    assert (v2.version, v2.brief_id, v2.verifier_rejections) == (2, "inc_s2_v2", 3)
+
+    v3 = build_brief(eng.record, dossier, [draft(title="Consider Stair A instead")], version=3, previous=v2)
+    assert v3.changes_since_last == ["Considerations redrafted: 1 (was 1)"]
+
+
+def test_rejected_count(incident, dossier):
+    evidence = merge_evidence(incident, dossier)
+    assert rejected_count([draft(), draft(title="Go"), draft(evidence_ids=["ev_made_up"])], evidence) == 2
+    assert rejected_count([draft()] * 7, evidence) == 2  # two beyond the maximum
+    assert rejected_count([draft()], evidence) == 0

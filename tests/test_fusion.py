@@ -80,3 +80,10 @@ def test_call_taker_speech_is_ignored():
     eng.ingest(CallSegment(call_id="c1", speaker="call_taker",
                            text="Is it the third floor?", t_start=0, t_end=1))
     assert eng.record.facts == {}
+
+
+def test_confirm_sets_building_and_status():
+    eng = FusionEngine("inc_c")
+    eng.ingest_all(load("S1"))
+    eng.confirm("fake_wilshire_tower")
+    assert (eng.record.confirmed_building_id, eng.record.status) == ("fake_wilshire_tower", "confirmed")

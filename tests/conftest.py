@@ -3,7 +3,7 @@ import os
 import pytest
 from dotenv import load_dotenv
 
-load_dotenv()  # GEMINI_* from .env, for the live tests
+load_dotenv()  # GEMINI_* / LANGSMITH_* from .env, for the live tests
 
 
 def pytest_collection_modifyitems(config, items):
@@ -17,6 +17,13 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(autouse=True)
-def _keyword_extractor(monkeypatch):
-    """Fusion tests stay offline and deterministic whatever EXTRACTOR says in .env."""
-    monkeypatch.setenv("EXTRACTOR", "keyword")
+def _offline_by_default(request, monkeypatch):
+    """Unless a test is marked live: keyword extractor and no LangSmith uploads, whatever .env says."""
+    from langsmith import utils
+
+    if "live" not in request.keywords:
+        monkeypatch.setenv("EXTRACTOR", "keyword")
+        monkeypatch.setenv("LANGSMITH_TRACING", "false")
+    utils.get_env_var.cache_clear()  # langsmith caches env lookups
+    yield
+    utils.get_env_var.cache_clear()

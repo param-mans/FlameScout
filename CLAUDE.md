@@ -8,7 +8,7 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - Install: `python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"`
 - Tests: `pytest -q` (offline). Live API tests: `RUN_LIVE=1 pytest -q -m live`
 - Replay a call script through fusion: `python scripts/run_fusion.py S2`
-- Run an incident end to end (fusion -> confirm building -> orchestrator -> brief): `python scripts/run_incident.py S2`
+- Run an incident end to end (call 1 -> dispatcher confirms -> brief v1, call 2 -> brief v2): `python scripts/run_incident.py S2`
 - Export JSON Schema for the frontend: `python scripts/export_schemas.py`
 
 ## Layout
@@ -17,13 +17,18 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - `services/agents/extract.py` - per-utterance fact extraction (KeywordExtractor stub, GeminiExtractor;
   `EXTRACTOR=keyword|gemini`, default keyword; `EXTRACT_TIMEOUT_S`, default 4.0).
 - `services/agents/fusion.py` - deterministic merge, contradictions, open questions. No LLM.
-- `services/agents/orchestrator.py` - one deep agent per confirmed incident; subagents dossier, strategy,
-  critic. JSON artifacts are written only by its tools; the model may write only `notes/*.md`.
-- `services/agents/brief.py` - deterministic Brief assembly and consideration checks. No LLM.
+- `services/agents/orchestrator.py` - one persistent deep agent per incident (checkpointer, thread =
+  incident id); subagents dossier, strategy, critic. `start_incident` pauses at the `confirm_building`
+  interrupt, `resume_incident` takes the dispatcher's choice, `update_incident` writes the next brief
+  version. JSON artifacts are written only by its tools; the model may write only `notes/*.md`.
+  API guide: `docs/agents-api.md`.
+- `services/agents/locator.py` - candidate buildings for an incident from fixture dossiers. No LLM.
+- `services/agents/brief.py` - deterministic Brief assembly, consideration checks, `changes_since_last`
+  diff. No LLM.
 - `services/agents/dossier.py` - loads `data/fixtures/<building_id>/dossier.json` (live adapters not built).
 - `data/fixtures/calls/` - scripted calls S1-S4. `data/fixtures/<building_id>/` - dossier fixtures.
-- `workspace/<incident_id>/` - incident files (incident.json, dossier.json, brief_vN.json, critique_vN.json,
-  todos.json = the orchestrator's plan for the UI progress strip, notes/*.md).
+- `workspace/<incident_id>/` - incident files (incident.json, candidates.json, dossier.json, brief_vN.json,
+  critique_vN.json, todos.json = the orchestrator's plan + status for the UI progress strip, notes/*.md).
   This is the deepagent filesystem AND what the UI renders. Not committed.
 
 ## Non-negotiable rules
