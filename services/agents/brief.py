@@ -94,20 +94,34 @@ def _draft_errors(d: ConsiderationDraft, evidence: dict[str, Evidence],
     return errors
 
 
-def is_cross_layer(evidence_ids: list[str], evidence: dict[str, Evidence]) -> bool:
-    """True when the cited evidence comes from two or more building-data layers."""
-    return len({evidence[e].source for e in evidence_ids if e in evidence} & DATA_LAYERS) >= 2
+def observed_evidence(dossier: BuildingDossier) -> set[str]:
+    """Evidence behind an actual observation in the dossier (a fact, tenant, marker, exposure or data
+    contradiction). Evidence that backs nothing, such as Vexcel coverage metadata with no analysed
+    image, cannot make a consideration cross-layer."""
+    ids = {e for f in [*dossier.facts.values(), *dossier.tenants, *dossier.markers] for e in f.evidence_ids}
+    ids |= {e for x in dossier.exposures for e in x.get("evidence_ids", [])}
+    return ids | {e for c in dossier.contradictions for v in c.values for e in v.evidence_ids}
 
 
-def _lacks_cross_layer(drafts: list[ConsiderationDraft], evidence: dict[str, Evidence]) -> bool:
+def is_cross_layer(evidence_ids: list[str], evidence: dict[str, Evidence],
+                   observed: Optional[set[str]] = None) -> bool:
+    """True when the cited evidence comes from two or more building-data layers.
+    `observed`: only these evidence ids count (observed_evidence); None counts all."""
+    return len({evidence[e].source for e in evidence_ids
+                if e in evidence and (observed is None or e in observed)} & DATA_LAYERS) >= 2
+
+
+def _lacks_cross_layer(drafts: list[ConsiderationDraft], evidence: dict[str, Evidence],
+                       observed: Optional[set[str]] = None) -> bool:
     """The brief must combine layers at least once, when the dossier has two or more to combine."""
-    available = {e.source for e in evidence.values()} & DATA_LAYERS
+    available = {e.source for i, e in evidence.items() if observed is None or i in observed} & DATA_LAYERS
     return bool(drafts) and len(available) >= 2 and not any(
-        is_cross_layer(d.evidence_ids, evidence) for d in drafts)
+        is_cross_layer(d.evidence_ids, evidence, observed) for d in drafts)
 
 
 def check_considerations(drafts: list[ConsiderationDraft], evidence: dict[str, Evidence],
-                         wrong: Sequence[CrewRecord] = (), overlay_ids: Optional[set[str]] = None) -> list[str]:
+                         wrong: Sequence[CrewRecord] = (), overlay_ids: Optional[set[str]] = None,
+                         observed: Optional[set[str]] = None) -> list[str]:
     """Why these drafts cannot go in a Brief. Empty list = acceptable.
     `wrong`: markers a crew marked wrong (wrong_markers(memory)); no draft may name them.
     `overlay_ids`: ids of this version's incident overlay; refs must be among them (None: not checked)."""
@@ -116,18 +130,20 @@ def check_considerations(drafts: list[ConsiderationDraft], evidence: dict[str, E
         errors.append(f"{len(drafts)} considerations; the maximum is {MAX_CONSIDERATIONS}")
     for i, d in enumerate(drafts, 1):
         errors += [f"#{i}: {e}" for e in _draft_errors(d, evidence, wrong, overlay_ids)]
-    if _lacks_cross_layer(drafts, evidence):
+    if _lacks_cross_layer(drafts, evidence, observed):
         errors.append("no consideration combines data layers: at least one must cite evidence from two "
                       'different sources among costar, matterport and vexcel (the "source" of each evidence '
-                      "item), for example an aerial access point plus an interior stair that both support it")
+                      "item) that back facts or markers in the dossier, for example an aerial access point "
+                      "plus an interior stair that both support it")
     return errors
 
 
 def rejected_count(drafts: list[ConsiderationDraft], evidence: dict[str, Evidence],
-                   wrong: Sequence[CrewRecord] = (), overlay_ids: Optional[set[str]] = None) -> int:
+                   wrong: Sequence[CrewRecord] = (), overlay_ids: Optional[set[str]] = None,
+                   observed: Optional[set[str]] = None) -> int:
     """How many drafts the checks refuse: each faulty one, any beyond the maximum, or 1 for a set-level miss."""
     faulty = sum(1 for d in drafts if _draft_errors(d, evidence, wrong, overlay_ids))
-    return max(faulty, len(drafts) - MAX_CONSIDERATIONS, int(_lacks_cross_layer(drafts, evidence)))
+    return max(faulty, len(drafts) - MAX_CONSIDERATIONS, int(_lacks_cross_layer(drafts, evidence, observed)))
 
 
 def _evidence_confidence(incident: IncidentRecord, dossier: BuildingDossier,
@@ -146,6 +162,7 @@ def _evidence_confidence(incident: IncidentRecord, dossier: BuildingDossier,
 def _gaps(incident: IncidentRecord, dossier: BuildingDossier) -> list[str]:
     gaps = [f"Callers disagree on {c.key}: {' vs '.join(str(v.value) for v in c.values)} (unresolved)"
             for c in incident.contradictions if not c.resolved_by_dispatcher]
+    gaps += [c.message for c in dossier.contradictions]  # listing vs scan
     gaps += [f"Unverified: {f.key}" for f in [*dossier.facts.values(), *dossier.tenants]
              if f.status == "unverified"]
     if not dossier.scan_available:
@@ -233,14 +250,15 @@ def build_brief(incident: IncidentRecord, dossier: BuildingDossier,
     `overlay_ids`: that overlay's ids, which considerations may name in refs."""
     dossier = apply_memory(dossier, memory)
     evidence = {**(extra_evidence or {}), **merge_evidence(incident, dossier, memory)}
-    if errors := check_considerations(drafts, evidence, wrong_markers(memory), overlay_ids):
+    observed = observed_evidence(dossier)
+    if errors := check_considerations(drafts, evidence, wrong_markers(memory), overlay_ids, observed):
         raise ValueError("; ".join(errors))
 
     conf = {**{e: SPAN_CONFIDENCE for e in (extra_evidence or {})}, **_evidence_confidence(incident, dossier, memory)}
     considerations = [
         Consideration(id=f"c{i}", rank=i, category=d.category, title=d.title.strip(),
                       rationale=d.rationale.strip(), evidence_ids=list(dict.fromkeys(d.evidence_ids)),
-                      cross_layer=is_cross_layer(d.evidence_ids, evidence), refs=list(dict.fromkeys(d.refs)),
+                      cross_layer=is_cross_layer(d.evidence_ids, evidence, observed), refs=list(dict.fromkeys(d.refs)),
                       confidence=min((conf[e] for e in d.evidence_ids if e in conf),
                                      default=UNSCORED_CONFIDENCE))
         for i, d in enumerate(drafts, 1)
@@ -248,6 +266,11 @@ def build_brief(incident: IncidentRecord, dossier: BuildingDossier,
 
     is_hazard = lambda k: k.startswith("hazard.") or k == "hazards.reported"  # noqa: E731
     facts: dict[str, Fact] = {**incident.facts, **dossier.facts, **{t.key: t for t in dossier.tenants}}
+    for c in dossier.contradictions:  # the listing fact shows it is disputed, with both layers' evidence
+        if c.key in facts:
+            cited = [e for v in c.values for e in v.evidence_ids]
+            facts[c.key] = facts[c.key].model_copy(update={
+                "status": "contradicted", "evidence_ids": list(dict.fromkeys([*facts[c.key].evidence_ids, *cited]))})
     for r in memory:
         if r.kind == "fact" and r.feedback.verdict == "wrong" and r.item_id in facts:  # still shown, flagged
             old = facts[r.item_id]
@@ -272,6 +295,7 @@ def build_brief(incident: IncidentRecord, dossier: BuildingDossier,
         evidence=evidence,
         verifier_rejections=verifier_rejections,
         crew_notes=[r.feedback for r in memory],
+        data_contradictions=dossier.contradictions,
     )
     if previous is not None:
         brief.changes_since_last = diff_briefs(previous, brief, incident)

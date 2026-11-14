@@ -137,8 +137,8 @@ def test_cross_layer_rule_needs_two_layers_and_a_draft(incident, dossier):
 
 
 def depot_incident():
-    data = json.loads((CALLS / "s4b.json").read_text())
-    rec = FusionEngine("inc_s4b").ingest_all(CallSegment(**s) for s in data["segments"])
+    data = json.loads((CALLS / "s4q.json").read_text())
+    rec = FusionEngine("inc_s4q").ingest_all(CallSegment(**s) for s in data["segments"])
     rec.confirmed_building_id = "fake_quarry_depot"
     return rec
 
@@ -168,7 +168,7 @@ def test_low_confidence_and_publish():
     dropped = publish(brief, ["c1"])
     assert [(c.id, c.rank) for c in dropped.considerations] == [("c2", 1)]
     assert dropped.gaps[-1] == "Dispatcher dropped 1 low-confidence consideration(s): c1"
-    with pytest.raises(ValueError, match="Not in inc_s4b_v1"):
+    with pytest.raises(ValueError, match="Not in inc_s4q_v1"):
         publish(brief, ["c7"])
 
 

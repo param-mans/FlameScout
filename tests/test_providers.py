@@ -44,16 +44,18 @@ def test_vexcel_fixture_respects_the_radius():
     assert 1000 < distance_m(34.05, -118.26, 34.06, -118.26) < 1200
 
 
-def test_live_mode_logs_not_configured_and_serves_fixtures(monkeypatch, caplog):
+def test_live_mode_logs_not_configured_and_serves_stored_data_and_fixtures(monkeypatch, caplog):
+    from services.agents import providers as module
+
+    monkeypatch.setattr(module, "_LIVE_WARNED", False)
     monkeypatch.setenv("DATA_MODE", "live")
-    providers = get_providers()
     with caplog.at_level(logging.WARNING):
-        assert providers.costar.get_property(BUILDING)["name"] == "Wilshire Tower"
-        providers.costar.search_property("Wilshire")
+        providers = get_providers()
+        get_providers()
+        assert providers.costar.get_property(BUILDING)["name"] == "Wilshire Tower"  # no data/raw: fixtures
         assert providers.matterport.find_model({"property_id": BUILDING})
         assert providers.vexcel.get_aerial(34.05, -118.26, 150)
-    messages = [r.getMessage() for r in caplog.records]
-    assert messages == [f"{v} live adapter not configured; using fixtures" for v in ("CoStar", "Matterport", "Vexcel")]
-
+    assert [r.getMessage() for r in caplog.records] == [
+        "Live API calls are not configured; using stored API responses (data/raw) and fixtures"]
     monkeypatch.setenv("DATA_MODE", "fixture")
-    assert isinstance(get_providers().costar, FixtureCoStarProvider)
+    assert isinstance(get_providers().costar, module.LiveCoStarProvider)  # same chain in both modes

@@ -13,7 +13,7 @@ from typing import Iterable, Literal, Optional
 
 from pydantic import BaseModel
 
-from flamescout_schemas import BuildingDossier, Evidence, Fact, Marker
+from flamescout_schemas import BuildingDossier, DataContradiction, Evidence, Fact, Marker
 
 from .providers import Providers, get_providers
 
@@ -67,7 +67,9 @@ def _merge_markers(markers: Iterable[Marker]) -> list[Marker]:
 
 
 def _checked(layer: LayerData) -> LayerData:
-    if wrong := sorted(e.id for e in layer.evidence.values() if e.source != layer.layer):
+    # A layer carries its own evidence, plus rule outputs computed on its own data (e.g. the plan's
+    # exterior-exit rule). Rule outputs never count as a data layer (brief.DATA_LAYERS).
+    if wrong := sorted(e.id for e in layer.evidence.values() if e.source not in (layer.layer, "rules")):
         raise ValueError(f"{layer.layer} layer for {layer.building_id} has evidence from another source: {wrong}")
     if missing := unresolved_evidence(layer):
         raise ValueError(f"{layer.layer} layer for {layer.building_id} cites evidence it does not carry: {missing}")
@@ -76,14 +78,17 @@ def _checked(layer: LayerData) -> LayerData:
 
 def _from_records(layer: Layer, building_id: str, records: list[dict],
                   marker_keys: tuple[str, ...] = ("markers",), **extra) -> LayerData:
-    """Records are {evidence, markers?, exposures?}: everything in a record cites that record's evidence."""
+    """Records are {evidence, extra_evidence?, markers?, exposures?}: everything in a record cites that
+    record's evidence; a marker may cite more of the record's extra_evidence by itself."""
     evidence: dict[str, Evidence] = {}
     markers: list[Marker] = []
     exposures: list[dict] = []
     for r in records:
         ev = Evidence.model_validate(r["evidence"])
         evidence[ev.id] = ev
-        markers += [Marker.model_validate({**m, "evidence_ids": [ev.id]})
+        for more in r.get("extra_evidence", []):
+            evidence.setdefault(more["id"], Evidence.model_validate(more))
+        markers += [Marker.model_validate({**m, "evidence_ids": list(dict.fromkeys([ev.id, *m.get("evidence_ids", [])]))})
                     for key in marker_keys for m in r.get(key, [])]
         exposures += [{**x, "evidence_ids": [ev.id]} for x in r.get("exposures", [])]
     return _checked(LayerData(layer=layer, building_id=building_id, markers=_merge_markers(markers),
@@ -104,7 +109,9 @@ def pull_matterport(building_id: str, providers: Optional[Providers] = None) -> 
         return LayerData(layer="matterport", building_id=building_id)
     model_id = model["model_id"]
     records = [*matterport.get_floorplans(model_id), *matterport.get_frames(model_id, None)]
-    return _from_records("matterport", building_id, records, scan_available=True,
+    # Plan-level facts (rooms, bedrooms, exits...) come with the model, when the adapter has them.
+    records += [{"evidence": e, "markers": []} for e in model.get("evidence", {}).values()]
+    return _from_records("matterport", building_id, records, facts=model.get("facts", {}), scan_available=True,
                          scan_captured_at=model.get("captured_at"),
                          # fixture model ids are not real Matterport models: nothing for the UI to embed
                          matterport_model_id=None if model_id.startswith("fixture-") else model_id)
@@ -129,6 +136,37 @@ def pull_layer(layer: Layer, building_id: str, providers: Optional[Providers] = 
     return _PULL[layer](building_id, providers, **options)
 
 
+# Listing fact, scan fact, what it counts, what to do about a difference.
+LISTING_VS_SCAN = [
+    ("building.bedrooms", "building.bedrooms_plan", "bedroom", "Verify occupant count"),
+    ("building.bathrooms", "building.bathrooms_plan", "bathroom", "Verify the layout on arrival"),
+    ("building.stories", "building.floors_scanned", "floor", "Verify the number of floors"),
+]
+
+
+def _count(n) -> str:
+    return f"{n:g}" if isinstance(n, float) else str(n)
+
+
+def layer_contradictions(facts: dict[str, Fact]) -> list[DataContradiction]:
+    """The listing (CoStar) and the scan (Matterport) disagree. Only when both sides state a number."""
+    out = []
+    for listing_key, scan_key, noun, action in LISTING_VS_SCAN:
+        listed, scanned = facts.get(listing_key), facts.get(scan_key)
+        if not (listed and scanned) or not all(isinstance(f.value, (int, float)) and not isinstance(f.value, bool)
+                                               for f in (listed, scanned)):
+            continue
+        if listed.value == scanned.value:
+            continue
+        plural = lambda n: noun if n == 1 else f"{noun}s"  # noqa: E731
+        out.append(DataContradiction(
+            key=listing_key,
+            message=f"Listing: {_count(listed.value)} {plural(listed.value)}; scan: {_count(scanned.value)}. {action}.",
+            values=[{"layer": "costar", "value": listed.value, "evidence_ids": listed.evidence_ids},
+                    {"layer": "matterport", "value": scanned.value, "evidence_ids": scanned.evidence_ids}]))
+    return out
+
+
 def merge_layers(building_id: str, layers: Iterable[LayerData]) -> BuildingDossier:
     by_layer = {layer.layer: layer for layer in layers}
     if "costar" not in by_layer:
@@ -149,6 +187,7 @@ def merge_layers(building_id: str, layers: Iterable[LayerData]) -> BuildingDossi
         markers=_merge_markers(m for layer in by_layer.values() for m in layer.markers),
         exposures=[x for layer in by_layer.values() for x in layer.exposures],
         evidence=evidence,
+        contradictions=layer_contradictions(facts),
         scan_available=bool(scan and scan.scan_available),
         scan_captured_at=scan.scan_captured_at if scan else None,
         matterport_model_id=scan.matterport_model_id if scan else None,

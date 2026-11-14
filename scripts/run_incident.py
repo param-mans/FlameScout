@@ -1,7 +1,8 @@
 """Run one scripted incident end to end, the way the API will drive it.
 
     python scripts/run_incident.py S2 [--cold] [--drop-low]
-    python scripts/run_incident.py S4B           (building with no interior scan)
+    python scripts/run_incident.py S4B           (9700 Tanner Rd, hero 23296 in data/raw: no interior scan)
+    python scripts/run_incident.py S4Q           (synthetic building with no interior scan)
 
   call 1 -> fusion -> start_incident   (agent plans, pauses for the dispatcher)
             simulated dispatcher picks the first candidate -> resume_incident -> brief_v1.json
@@ -114,6 +115,8 @@ def report(r: RunResult) -> bool:
     if brief.changes_since_last:
         print("changes since last:", *brief.changes_since_last, sep="\n  - ")
     print("gaps:", *brief.gaps, sep="\n  - ")
+    for c in brief.data_contradictions:
+        print(f"data contradiction: {c.message}  {[e for v in c.values for e in v.evidence_ids]}")
     for flag in (r.critique or {}).get("note_flags", []):
         print(f"critic flagged a {flag['layer']} note claim: {flag['claim']}")
     ov = r.overlay
@@ -157,6 +160,8 @@ held = f" + {review_seconds[1]:.1f} s after the dispatcher's review" if 1 in rev
 total = started.seconds + resumed.seconds + review_seconds.get(1, 0.0)
 timings = [f"v1 ({'warm, prefetched' if warm else 'cold'}): {started.seconds:.1f} s to the confirmation pause + "
            f"{resumed.seconds:.1f} s from resume to brief{held} = {total:.1f} s"]
+if resumed.overlay_seconds is not None:
+    timings.append(f"v1 overlay: {resumed.overlay_seconds:.1f} s after resume (brief at {resumed.seconds:.1f} s)")
 
 # Each later call -> same agent thread, next brief version.
 for call_id in call_ids[1:]:
@@ -170,6 +175,9 @@ for call_id in call_ids[1:]:
     held = (f" + {review_seconds[update.version]:.1f} s after the dispatcher's review"
             if update.version in review_seconds else "")
     timings.append(f"v{update.version}: {updated.seconds:.1f} s{held} (data layers reused)")
+    if updated.overlay_seconds is not None:
+        timings.append(f"v{update.version} overlay: {updated.overlay_seconds:.1f} s after the update started "
+                       f"(brief at {updated.seconds:.1f} s)")
 
 flush_traces()
 print(f"\nworkspace {ws.location}:", *ws.list(), sep="\n  ")

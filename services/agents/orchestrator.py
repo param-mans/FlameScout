@@ -87,7 +87,7 @@ from . import overlay as overlay_mod
 from . import memory as memory_mod
 from . import dossier as dossier_mod
 from .brief import (ConsiderationDraft, apply_memory, build_brief, check_considerations, low_confidence,
-                    merge_evidence, publish, rejected_count, wrong_markers)
+                    merge_evidence, observed_evidence, publish, rejected_count, wrong_markers)
 from .dossier import LAYERS, Layer, LayerData
 from .locator import find_candidates
 from .overlay import OverlayDraft
@@ -274,7 +274,8 @@ Rules for every consideration:
 - At least one consideration must combine two data layers: its evidence_ids include evidence from two
   different sources among costar, matterport and vexcel (the "source" field of each evidence item),
   for example an aerial access point together with the interior stair it leads to. Only combine
-  layers where both pieces of evidence really support the consideration.
+  layers where both pieces of evidence really support the consideration, and only evidence that backs
+  a fact or marker in the dossier counts (imagery coverage with no analysed image does not).
 - If the dossier has "scan_available": false there is no interior scan: say nothing about the
   interior. Markers of kind "entry" then come from aerial imagery and are the only entries known:
   use them where they matter, say they are seen from the air and not verified, and cite their
@@ -287,7 +288,10 @@ Rules for every consideration:
   about one of its entries, put that id in refs (occupant, fire, hazard or blocked ids, contradiction
   group ids, objective ids): ids from that file only. Its evidence ids (like "c1:12.0-20.5") are
   transcript spans and may be cited too.
-- Say nothing about windows the plan does or does not show."""
+- Say nothing about windows the plan does or does not show.
+- If the dossier has "contradictions" (the listing and the scan disagree, e.g. on bedrooms), make one
+  consideration about the one that matters most for the crew, citing the evidence of both sides,
+  and do not pick a side."""
 
 CRITIC_PROMPT = """You are the critic for a fire-crew advisory brief. Use exactly three turns:
 1. read_file(<the brief path given in your task>, limit=3000). If your task also asks you to check the
@@ -347,6 +351,7 @@ class RunResult:
     needs_review: list[str] = field(default_factory=list)  # low-confidence consideration ids (awaiting_approval)
     overlay: Optional[IncidentOverlay] = None  # overlay_vN.json of this version (None before a brief)
     overlay_rejections: int = 0          # mapper submissions refused for this version
+    overlay_seconds: Optional[float] = None  # seconds into this call when the overlay was written (on_overlay)
     model_stalls: int = 0                # model calls in this call that hit the 12 s timeout
     model_retries: int = 0               # retries made in this call (each stall is retried once)
 
@@ -368,6 +373,9 @@ class Session:
     error: Optional[str] = None
     todos: list[TodoItem] = field(default_factory=list)
     on_todos: Optional[Callable[[Progress], None]] = None
+    on_overlay: Optional[Callable[[IncidentOverlay], None]] = None  # fired as soon as an overlay is written
+    leg_t0: float = 0.0                        # perf_counter() at the start of the current public call
+    overlay_seconds: Optional[float] = None    # seconds into the current call when its overlay was written
     trace_run_id: Optional[str] = None
     lock: Any = field(default_factory=threading.RLock)  # the three layer tools run concurrently
     use_cache: bool = True                     # reuse prefetched layers (data/cache) when fresh
@@ -548,7 +556,14 @@ def _model_id(s: Session) -> str:
 
 
 def _write_overlay(s: Session, ov: IncidentOverlay) -> None:
+    """Write overlay_vN.json and hand it on at once (on_overlay): the viewer gets it before the brief."""
     s.ws.write(overlay_mod.overlay_rel(s.version), overlay_mod.dump(ov))
+    s.overlay_seconds = time.perf_counter() - s.leg_t0 if s.leg_t0 else None
+    if s.on_overlay and s.publish:
+        try:
+            s.on_overlay(ov)
+        except Exception:  # noqa: BLE001 - a failing listener must not stop the brief
+            log.exception("on_overlay failed for %s v%d", s.incident_id, s.version)
 
 
 def _ensure_overlay(s: Session) -> None:
@@ -711,8 +726,9 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
         spans, ids = _overlay_context(s)
         evidence = {**spans, **merge_evidence(_incident(ws), _dossier(ws), remembered)}
         wrong = wrong_markers(remembered)
-        if errors := check_considerations(considerations, evidence, wrong, ids):
-            s.rejections += rejected_count(considerations, evidence, wrong, ids)
+        observed = observed_evidence(apply_memory(_dossier(ws), remembered))
+        if errors := check_considerations(considerations, evidence, wrong, ids, observed):
+            s.rejections += rejected_count(considerations, evidence, wrong, ids, observed)
             return "Rejected, nothing written. Fix these and resubmit:\n- " + "\n- ".join(errors)
         _write_brief(s, considerations)
         ws.delete(s.critique_rel)  # any earlier critique is about an older draft
@@ -1064,6 +1080,7 @@ def _run(s: Session, agent_input: Any, phase: str, t0: float) -> None:
     run_id = uuid.uuid4()
     s.trace_run_id = str(run_id) if _enable_tracing() else None
     s.error = None
+    s.leg_t0 = t0
     stalls_before, retries_before = s.stalls.snapshot()
     _publish(s, "running")
     try:
@@ -1115,12 +1132,13 @@ def _result(s: Session, t0: float, phase: str, brief: Optional[Brief] = None, cr
         db.log_event(s.incident_id, phase, seconds, **detail)
     needs_review = [c.id for c in low_confidence(brief)] if brief and s.status == "awaiting_approval" else []
     (stalls, retries), s.leg_stalls = s.leg_stalls, (0, 0)  # a later call that runs no agent reports none
+    overlay_seconds, s.overlay_seconds = s.overlay_seconds, None
     return RunResult(incident_id=s.incident_id, status=s.status, version=s.version, brief=brief,
                      candidates=s.candidates, todos=s.todos, critique=critique,
                      fallback_reason=fallback_reason, seconds=seconds, trace_run_id=s.trace_run_id,
                      needs_review=needs_review, model_stalls=stalls, model_retries=retries,
                      overlay=overlay_mod.read(s.ws, s.version) if brief is not None else None,
-                     overlay_rejections=s.overlay_rejections)
+                     overlay_rejections=s.overlay_rejections, overlay_seconds=overlay_seconds)
 
 
 def _finish_brief(s: Session, t0: float, phase: str) -> RunResult:
@@ -1201,6 +1219,7 @@ def save_incident(record: IncidentRecord, new_segments: Iterable[CallSegment] = 
 
 def start_incident(incident_id: str, workspace_root: Optional[Path] = None,
                    on_todos: Optional[Callable[[Progress], None]] = None,
+                   on_overlay: Optional[Callable[[IncidentOverlay], None]] = None,
                    model: Any = None, checkpointer: Any = None, use_cache: bool = True) -> RunResult:
     """Start the incident's agent. It plans, then pauses until the dispatcher confirms a building.
 
@@ -1221,7 +1240,7 @@ def start_incident(incident_id: str, workspace_root: Optional[Path] = None,
     saver.delete_thread(incident_id)  # one thread per incident; starting again starts it clean
     db.forget_briefs(incident_id)
     s = _SESSIONS[incident_id] = Session(incident_id=incident_id, ws=ws, candidates=candidates,
-                                         on_todos=on_todos, use_cache=use_cache)
+                                         on_todos=on_todos, on_overlay=on_overlay, use_cache=use_cache)
     try:
         s.agent = build_orchestrator(s, model, saver)
     except Exception:
@@ -1242,6 +1261,7 @@ def resume_incident(incident_id: str, building_id: Optional[str]) -> RunResult:
     """The dispatcher's answer: a candidate's building_id, or None for "none of these"."""
     t0 = time.perf_counter()
     s = _session(incident_id)
+    s.leg_t0 = t0
     if s.status != "awaiting_confirmation":
         raise ValueError(f"Incident {incident_id} is not awaiting confirmation (status: {s.status})")
     if building_id is not None and building_id not in [c.building_id for c in s.candidates]:
@@ -1274,6 +1294,7 @@ def review_brief(incident_id: str, drop: Sequence[str] = ()) -> RunResult:
     (drop empty), or without the considerations whose ids are in `drop`."""
     t0 = time.perf_counter()
     s = _session(incident_id)
+    s.leg_t0 = t0
     if s.status != "awaiting_approval":
         raise ValueError(f"Incident {incident_id} has no brief awaiting approval (status: {s.status})")
     drop = list(drop)
@@ -1297,6 +1318,7 @@ def update_incident(incident_id: str, notes: list[str]) -> RunResult:
     """New information after a brief (fusion change notes). Same thread; writes the next brief version."""
     t0 = time.perf_counter()
     s = _session(incident_id)
+    s.leg_t0 = t0
     if s.status == "awaiting_approval":
         raise ValueError(f"Incident {incident_id} has brief v{s.version} awaiting the dispatcher: "
                          "call review_brief first")

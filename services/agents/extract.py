@@ -55,7 +55,7 @@ _ORDINALS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
 class KeywordExtractor:
     ADDRESS = re.compile(
         r"\b(\d{2,6}\s+(?:[NSEW]\.?\s+)?[A-Z][\w']*(?:\s+[A-Z][\w']*)*\s+"
-        r"(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Drive|Dr|Way|Place|Pl))\b")
+        r"(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Drive|Dr|Way|Place|Pl|Lane|Ln|Court|Ct))\b")
     NAME = re.compile(r"\b(?:from|at|of|near)\s+(?:the\s+)?([A-Z][\w']*(?:\s+[A-Z][\w']*)*\s+"
                       r"(?:Tower|Building|Plaza|Center|Centre|Lofts|Apartments))\b")
     FLOOR = re.compile(r"\b(" + "|".join(_ORDINALS) + r"|\d{1,2}(?:st|nd|rd|th))\s+floor\b", re.I)

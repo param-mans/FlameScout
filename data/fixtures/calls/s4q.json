@@ -1,0 +1,10 @@
+{
+  "script_id": "S4Q",
+  "description": "Standard single call to a building with no interior scan (fake_quarry_depot). Expect the no-scan re-plan, exterior entries from aerial imagery, a gaps list, and low-confidence considerations held for dispatcher approval.",
+  "segments": [
+    {"call_id": "c1", "speaker": "call_taker", "text": "911, what's the address of your emergency?", "t_start": 0.0, "t_end": 2.0},
+    {"call_id": "c1", "speaker": "caller", "text": "There's a fire at the warehouse at 48 Quarry Road, I can see flames through the side door.", "t_start": 2.3, "t_end": 7.6},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Is anyone inside?", "t_start": 7.9, "t_end": 8.8},
+    {"call_id": "c1", "speaker": "caller", "text": "I don't know, I can't see anybody. The alarm is going off.", "t_start": 9.0, "t_end": 12.4}
+  ]
+}

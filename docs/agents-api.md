@@ -64,7 +64,7 @@ It writes `incident.json` to the workspace and records the segment and the facts
 write `incident.json` yourself. Use a new `incident_id` for each new incident: `start_incident`
 clears the earlier output and brief rows of an id it has seen before.
 
-## `start_incident(incident_id, workspace_root=None, on_todos=None, use_cache=True) -> RunResult`
+## `start_incident(incident_id, workspace_root=None, on_todos=None, on_overlay=None, use_cache=True) -> RunResult`
 
 Starts the agent. It writes its plan, then pauses at the `confirm_building` gate.
 `use_cache=False` makes this incident ignore prefetched building data (see Prefetch below).
@@ -248,12 +248,17 @@ The contract is Bruno's `docs/INCIDENT_OVERLAY_SPEC.md`; the model is `IncidentO
 `packages/schemas` (in `schema.json`). One overlay per brief version, **`overlay.version` equals the
 brief version**, written to the workspace as `overlay_vN.json` and returned as `RunResult.overlay`.
 
-**For the WebSocket:** after `brief.updated`, emit
-`overlay.updated` with `{incident_id, ts, trace_id, version, overlay}`, where `overlay` is
-`json.loads(open_workspace(incident_id).read(f"overlay_v{version}.json"))` (or
-`RunResult.overlay.model_dump(mode="json", exclude_none=True)`, the same thing). `"overlay.updated"` is
-in `EventType`. Send it for every brief version, including facts-only briefs. The web app forwards it
-to the viewer iframe with `postMessage({type: 'setIncident', overlay}, viewerOrigin)`.
+**For the WebSocket: send it early, from `on_overlay`.** Pass `on_overlay=callback` to
+`start_incident` (it stays attached for the incident's later calls, like `on_todos`). It is called
+with the `IncidentOverlay` the moment `overlay_vN.json` is written: as soon as the mapper's submission
+is accepted, before the strategy and the critic run, so the viewer has it 15-30 s before the brief.
+`N` is the brief version still being produced. In it, emit `overlay.updated` with
+`{incident_id, ts, trace_id, version, overlay}`, where `overlay` is
+`ov.model_dump(mode="json", exclude_none=True)` (the same JSON as `overlay_vN.json`).
+`"overlay.updated"` is in `EventType`. It also fires for the empty fallback overlay, so every brief
+version gets one. Like `on_todos`, it runs on the orchestrator's thread: keep it fast, hand the
+payload to the event loop. `RunResult.overlay` and `overlay_vN.json` still have it afterwards.
+The web app forwards it to the viewer iframe with `postMessage({type: 'setIncident', overlay}, viewerOrigin)`.
 
 - **What is in it:** occupants, fire, hazards and blocked elements the callers reported, placed on plan
   ids at the precision the words support (room / anchor / floor / unknown), contradiction groups
@@ -300,6 +305,7 @@ to the viewer iframe with `postMessage({type: 'setIncident', overlay}, viewerOri
 | `model_retries` | retries made in this call (each stall or transient API error is retried once) |
 | `overlay` | the `IncidentOverlay` of this version (`overlay_vN.json`); `None` while there is no brief |
 | `overlay_rejections` | incident-mapper submissions refused by the checks for this version |
+| `overlay_seconds` | seconds into this call when the overlay was written and `on_overlay` fired |
 
 In the `Brief`: `considerations` (0-5, each "Consider ...", with `evidence_ids` that resolve in
 `evidence`), `changes_since_last`, `gaps`, and `verifier_rejections` (how many draft considerations
@@ -327,9 +333,22 @@ least one; highlight these in the UI.
 `scan_age_days` and `costar_as_of`: true when the data layers came from the prefetch cache rather than
 being pulled for this incident.
 
-Building data comes through the adapters in `services/agents/providers.py`. `DATA_MODE=fixture`
-(default) reads `data/fixtures/<building_id>/{costar,matterport,vexcel}.json`; `DATA_MODE=live` is
-not implemented yet and logs "live adapter not configured; using fixtures".
+Building data comes through the adapters in `services/agents/providers.py`. For the hero buildings
+it is the stored real API responses in `data/raw/<id>/` (gitignored sponsor data; `deploy.sh` copies
+it to the server): `209217448` 9660 Fairdale Lane, `214905148` 18107 Fairhope Oak Street,
+`199958956` 13722 Playa Lucia Court, `23296` Northwest Trade Center, 9700 Tanner Rd (no interior
+scan). Every other id comes from `data/fixtures/`. No vendor API is called; `DATA_MODE=live` logs that
+this is not configured.
+
+`brief.data_contradictions` (and `dossier.contradictions`): the data layers disagree, today the
+listing (CoStar) and the scan (Matterport) on bedrooms, bathrooms (full + half) or floors. Each has
+`key`, `message` (e.g. `"Listing: 4 bedrooms; scan: 5. Verify occupant count."`), `values` (one per
+layer, with `evidence_ids`) and `status: "contradicted"`. The listing fact in `size_up` is marked
+`contradicted` and the message is also in `gaps`. Code never picks a side.
+
+`building.sprinklered` is `true` only from a fire-protection field (a commercial record's
+`hasSprinklers`, or "Fire Sprinkler..." under a listing's Home Security). A "Sprinkler System" under
+a listing's Lot Details is lawn irrigation: the fact stays `unverified`, and its value says why.
 
 Every orchestrator and subagent model call has a 12 s client timeout and one automatic retry
 (`services/agents/stalls.py`). Each stall and retry is logged at WARNING on the logger

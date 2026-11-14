@@ -1,10 +1,11 @@
 {
   "script_id": "S4B",
-  "description": "Standard single call to a building with no interior scan (fake_quarry_depot). Expect the no-scan re-plan, exterior entries from aerial imagery, a gaps list, and low-confidence considerations held for dispatcher approval.",
+  "description": "A call to Northwest Trade Center, 9700 Tanner Rd, Houston (CoStar property 23296, real hero data in data/raw/23296, gitignored). Office/warehouse with no interior scan: expect the no-scan re-plan, floor/unknown overlay locations, and the record's sprinklers. The caller's words are synthetic.",
   "segments": [
     {"call_id": "c1", "speaker": "call_taker", "text": "911, what's the address of your emergency?", "t_start": 0.0, "t_end": 2.0},
-    {"call_id": "c1", "speaker": "caller", "text": "There's a fire at the warehouse at 48 Quarry Road, I can see flames through the side door.", "t_start": 2.3, "t_end": 7.6},
-    {"call_id": "c1", "speaker": "call_taker", "text": "Is anyone inside?", "t_start": 7.9, "t_end": 8.8},
-    {"call_id": "c1", "speaker": "caller", "text": "I don't know, I can't see anybody. The alarm is going off.", "t_start": 9.0, "t_end": 12.4}
+    {"call_id": "c1", "speaker": "caller", "text": "There's black smoke coming from the roof of the Northwest Trade Center at 9700 Tanner Road.", "t_start": 2.3, "t_end": 8.1},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Is anyone inside?", "t_start": 8.4, "t_end": 9.3},
+    {"call_id": "c1", "speaker": "caller", "text": "I think a few workers are still inside the machine shop, I can't see anybody at the bay doors.", "t_start": 9.6, "t_end": 15.2},
+    {"call_id": "c1", "speaker": "caller", "text": "The fire alarm is going off.", "t_start": 15.5, "t_end": 17.0}
   ]
 }

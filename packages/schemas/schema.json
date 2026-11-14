@@ -165,6 +165,14 @@
           "title": "Published",
           "type": "boolean"
         },
+        "data_contradictions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DataContradiction"
+          },
+          "title": "Data Contradictions",
+          "type": "array"
+        },
         "disclaimer": {
           "default": "Advisory only. Verify on arrival.",
           "title": "Disclaimer",
@@ -299,6 +307,14 @@
           "default": {},
           "title": "Evidence",
           "type": "object"
+        },
+        "contradictions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DataContradiction"
+          },
+          "title": "Contradictions",
+          "type": "array"
         },
         "scan_available": {
           "default": false,
@@ -577,6 +593,69 @@
         "verdict"
       ],
       "title": "CrewFeedback",
+      "type": "object"
+    },
+    "DataContradiction": {
+      "description": "Two data layers disagree (e.g. the listing's bedrooms vs the scan's). Never resolved by code.",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "$ref": "#/$defs/DataContradictionValue"
+          },
+          "title": "Values",
+          "type": "array"
+        },
+        "status": {
+          "const": "contradicted",
+          "default": "contradicted",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "message",
+        "values"
+      ],
+      "title": "DataContradiction",
+      "type": "object"
+    },
+    "DataContradictionValue": {
+      "properties": {
+        "layer": {
+          "enum": [
+            "costar",
+            "matterport",
+            "vexcel"
+          ],
+          "title": "Layer",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "layer",
+        "value"
+      ],
+      "title": "DataContradictionValue",
       "type": "object"
     },
     "Event": {

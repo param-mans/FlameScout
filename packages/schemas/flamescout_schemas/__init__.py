@@ -140,6 +140,20 @@ class Marker(BaseModel):
     evidence_ids: list[str] = []
 
 
+class DataContradictionValue(BaseModel):
+    layer: Literal["costar", "matterport", "vexcel"]
+    value: Any
+    evidence_ids: list[str] = []
+
+
+class DataContradiction(BaseModel):
+    """Two data layers disagree (e.g. the listing's bedrooms vs the scan's). Never resolved by code."""
+    key: str                             # the listing fact, e.g. "building.bedrooms"
+    message: str                         # "Listing: 4 bedrooms; scan: 5. Verify occupant count."
+    values: list[DataContradictionValue]
+    status: Literal["contradicted"] = "contradicted"
+
+
 class BuildingDossier(BaseModel):
     building_id: str
     address: str
@@ -149,6 +163,7 @@ class BuildingDossier(BaseModel):
     markers: list[Marker] = []
     exposures: list[dict] = []           # adjacent structures with distance + evidence_ids
     evidence: dict[str, Evidence] = {}
+    contradictions: list[DataContradiction] = []   # between data layers, computed in code
     scan_available: bool = False
     scan_captured_at: Optional[datetime] = None
     matterport_model_id: Optional[str] = None
@@ -187,6 +202,7 @@ class Brief(BaseModel):
     evidence: dict[str, Evidence] = {}   # so the UI evidence drawer can resolve every id
     crew_notes: list[CrewFeedback] = []  # earlier crew feedback on this building
     published: bool = False              # false while low-confidence considerations await the dispatcher
+    data_contradictions: list[DataContradiction] = []  # data layers that disagree (listing vs scan)
     disclaimer: str = "Advisory only. Verify on arrival."
 
 

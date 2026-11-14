@@ -9,7 +9,8 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - Tests: `pytest -q` (offline). Live API tests: `RUN_LIVE=1 pytest -q -m live`
 - Replay a call script through fusion: `python scripts/run_fusion.py S2`
 - Run an incident end to end (call 1 -> dispatcher confirms -> brief v1, call 2 -> brief v2): `python scripts/run_incident.py S2`
-  (`--cold` ignores prefetched building data). `S4B` is a building with no interior scan: re-plan, and a
+  (`--cold` ignores prefetched building data). `S4B` is hero 23296 (9700 Tanner Rd, no interior scan, needs
+  `data/raw/23296`); `S4Q` is the synthetic no-scan building: re-plan, and a
   low-confidence review that `--drop-low` answers by dropping instead of approving.
   `S5` is Bruno's overlay story; copy `packages/schemas/overlay/plan_index.example.json` to
   `data/raw/fake_cedar_house/derived/plan_index.json` first (gitignored) or its overlay is floor-level only.
@@ -34,8 +35,9 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
   The plan in write_todos changes with the situation (no interior scan, life-safety contradiction).
   JSON artifacts are written only by its tools; the model may write only `notes/*.md`.
   API guide: `docs/agents-api.md`.
-- `services/agents/providers.py` - PRD 7.4 adapter Protocols, fixture implementations, live stubs
-  (`DATA_MODE=live` logs "not configured" and serves fixtures).
+- `services/agents/providers.py` - PRD 7.4 adapter Protocols. `Live*` adapters read the heroes' stored real API
+  responses in `data/raw/<id>/` (gitignored, never commit) whenever that folder exists, else the fixtures.
+  No network calls (`DATA_MODE=live` logs "not configured"). Read `data/raw/*/README.md` and `FIELD_NOTES.md` first.
 - `services/agents/locator.py` - candidate buildings for an incident via the CoStar adapter. No LLM.
 - `services/agents/brief.py` - deterministic Brief assembly, consideration checks (incl. at least one
   cross-layer consideration), `changes_since_last` diff. No LLM.
@@ -66,7 +68,7 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - `services/agents/db.py` - Postgres on Tiger Data (`TIGER_DATABASE_URL`): incidents, facts, call_segments
   and pipeline_events (hypertables), briefs, `time_to_brief` view, and the LangGraph `PostgresSaver`
   (incidents survive a restart). Best-effort writes; every function is a no-op when the URL is unset.
-- `data/fixtures/calls/` - scripted calls S1-S4, plus S4B (no-scan building in the orchestrator's layer
+- `data/fixtures/calls/` - scripted calls S1-S5, S4B (hero 23296) and S4Q (no-scan building in the orchestrator's layer
   format, `fake_quarry_depot`; S4's `maple_lofts` exists only in the services/api fixture format).
   `data/fixtures/<building_id>/{costar,matterport,vexcel}.json`
   - per-layer fixtures, our own normalized fields only.

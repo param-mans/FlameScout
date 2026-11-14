@@ -72,8 +72,8 @@ def incident(storage):
 
 @pytest.fixture
 def depot(storage):
-    """S4B: one call to the building with no interior scan."""
-    inc = Incident(storage, "s4b")
+    """S4Q: one call to the building with no interior scan."""
+    inc = Incident(storage, "s4q")
     inc.replay("c1")
     return inc
 
@@ -222,7 +222,7 @@ def test_critic_note_flags_are_recorded_and_written_into_the_note(session, incid
 
 
 def test_exterior_entries_are_pulled_only_on_request_or_as_a_safety_net(depot):
-    s = Session(incident_id="inc_s4b", ws=depot.ws, candidates=orchestrator.find_candidates(depot.eng.record))
+    s = Session(incident_id="inc_s4q", ws=depot.ws, candidates=orchestrator.find_candidates(depot.eng.record))
     tools = make_tools(s)
     tools["confirm_building"].invoke({"candidates": [DEPOT], "chosen_building_id": DEPOT})
     for name in LAYERS:
@@ -295,6 +295,7 @@ class RuleModel(BaseChatModel):
                             else calls(("pull_vexcel_entries", {})))
                 return AIMessage(content=f"{layer} summary line [ev_x]") if called else calls((f"pull_{layer}", {}))
         if "submit_considerations" in self.tool_names:
+            self.seen.setdefault("order", []).append("strategy")
             return self._strategy(messages, asked, called)
         if "submit_overlay" in self.tool_names:
             return self._mapper(messages, asked, called)
@@ -453,11 +454,11 @@ def depot_drafts():
 
 
 def start_depot(depot, *publish_turns):
-    start_incident("inc_s4b", workspace_root=depot.root,
+    start_incident("inc_s4q", workspace_root=depot.root,
                    model=fake_model(*DEPOT_START, *DEPOT_RESUME, *publish_turns, drafts=depot_drafts()))
     depot.eng.confirm(DEPOT)
     save_incident(depot.eng.record, workspace_root=depot.root)
-    return resume_incident("inc_s4b", DEPOT)
+    return resume_incident("inc_s4q", DEPOT)
 
 
 def test_no_scan_replans_then_pauses_on_a_low_confidence_consideration(depot):
@@ -483,23 +484,23 @@ def test_no_scan_replans_then_pauses_on_a_low_confidence_consideration(depot):
     assert held.todos[-1].status != "completed"  # "Brief ready" waits for the dispatcher too
 
     with pytest.raises(ValueError, match="review_brief first"):
-        update_incident("inc_s4b", ["x"])
+        update_incident("inc_s4q", ["x"])
     with pytest.raises(ValueError, match="not considerations of brief v1"):
-        review_brief("inc_s4b", drop=["c9"])
+        review_brief("inc_s4q", drop=["c9"])
 
-    done = review_brief("inc_s4b", drop=["c1"])
+    done = review_brief("inc_s4q", drop=["c1"])
     published = Brief.model_validate_json(depot.ws.read("brief_v1.json"))
     assert (done.status, done.needs_review) == ("briefed", []) and published.published
     assert [(c.title, c.rank) for c in published.considerations] == [(POOL_CHEMICALS["title"], 1)]
     assert published.gaps[-1] == "Dispatcher dropped 1 low-confidence consideration(s): c1"
     assert all(t.status == "completed" for t in done.todos)
     with pytest.raises(ValueError, match="no brief awaiting approval"):
-        review_brief("inc_s4b")
+        review_brief("inc_s4q")
 
 
 def test_dispatcher_can_approve_low_confidence_considerations(depot):
     assert start_depot(depot, *DEPOT_PUBLISH).status == "awaiting_approval"
-    done = review_brief("inc_s4b")
+    done = review_brief("inc_s4q")
     assert done.status == "briefed" and done.brief.published
     assert [c.id for c in done.brief.considerations] == ["c1", "c2"] and done.brief.considerations[0].cross_layer
 
@@ -508,7 +509,7 @@ def test_low_confidence_is_held_even_if_the_agent_never_asks_to_publish(depot):
     held = start_depot(depot, calls(todos(*["completed"] * 8, names=DEPOT_TODOS)), AIMessage(content="pass"))
     assert (held.status, held.needs_review) == ("awaiting_approval", ["c1"])
     assert not Brief.model_validate_json(depot.ws.read("brief_v1.json")).published
-    done = review_brief("inc_s4b", drop=["c1"])  # nothing is paused: code publishes
+    done = review_brief("inc_s4q", drop=["c1"])  # nothing is paused: code publishes
     assert done.status == "briefed" and [c.id for c in done.brief.considerations] == ["c2"]
 
 
@@ -593,16 +594,16 @@ def test_a_brief_awaiting_approval_survives_a_restart_with_tiger(depot, monkeypa
     if depot.root:
         monkeypatch.setattr(workspace_mod, "WORKSPACE_ROOT", depot.root)
 
-    start_incident("inc_s4b")
+    start_incident("inc_s4q")
     depot.eng.confirm(DEPOT)
     save_incident(depot.eng.record, workspace_root=depot.root)
-    assert resume_incident("inc_s4b", DEPOT).status == "awaiting_approval"
-    assert rows["inc_s4b"]["status"] == "awaiting_approval" and saved_briefs == []  # Tiger: published briefs only
+    assert resume_incident("inc_s4q", DEPOT).status == "awaiting_approval"
+    assert rows["inc_s4q"]["status"] == "awaiting_approval" and saved_briefs == []  # Tiger: published briefs only
     orchestrator._SESSIONS.clear()  # the restart
 
-    done = review_brief("inc_s4b", drop=["c1"])
+    done = review_brief("inc_s4q", drop=["c1"])
     assert done.status == "briefed" and [c.id for c in done.brief.considerations] == ["c2"]
-    assert rows["inc_s4b"]["status"] == "briefed" and [b.published for b in saved_briefs] == [True]
+    assert rows["inc_s4q"]["status"] == "briefed" and [b.published for b in saved_briefs] == [True]
     assert all(t.status == "completed" for t in done.todos)  # the paused agent turn ran after the restart
 
 
@@ -829,9 +830,21 @@ def test_mapper_places_both_calls_on_the_plan_one_overlay_per_brief_version(hous
                        overlays=[invented_room, OVERLAY_V1, OVERLAY_V2],
                        drafts=[[{**CHILDREN, "refs": ["occ-9"]}], [FRONT_DOOR, CHILDREN],
                                [{**FRONT_DOOR, "refs": ["occ-loc-1"]}, {**CHILDREN, "refs": ["occ-loc-1"]}]])
-    start_incident("inc_s5", workspace_root=house.root, model=model)
+    published = []  # what on_overlay hands on, e.g. to the overlay.updated WebSocket event
+
+    def on_overlay(ov):
+        model.seen.setdefault("order", []).append(f"overlay v{ov.version}")
+        published.append(ov)
+
+    start_incident("inc_s5", workspace_root=house.root, model=model, on_overlay=on_overlay)
     house.eng.confirm(HOUSE)
     v1 = resume_incident("inc_s5", HOUSE)
+
+    # The overlay went out as soon as it was accepted, before the strategy drafted anything.
+    order = model.seen["order"]
+    assert order.index("overlay v1") < order.index("strategy")
+    assert [o.version for o in published] == [1] and published[0] == v1.overlay
+    assert 0 < v1.overlay_seconds < v1.seconds
 
     # v1: the invented room was refused, the second submission went through.
     assert not barrier.broken
@@ -854,8 +867,11 @@ def test_mapper_places_both_calls_on_the_plan_one_overlay_per_brief_version(hous
             for e in x["evidence_ids"]} <= set(v1.brief.evidence)
 
     # Call 2: the mapper runs again, first, and the overlay follows the brief to version 2.
+    strategy_runs = order.count("strategy")
     v2 = update_incident("inc_s5", house.replay("c2"))
     assert "version 2" in model.seen["mapper_tasks"][-1]
+    assert order[order.index("overlay v2") + 1:].count("strategy") == order.count("strategy") - strategy_runs
+    assert [o.version for o in published] == [1, 2] and 0 < v2.overlay_seconds < v2.seconds
     second = overlay_file(house, 2)
     assert validate_overlay.validate(second, cedar_plan_index) == []
     assert (second["version"], v2.brief.version, v2.overlay.version) == (2, 2, 2)
@@ -882,7 +898,8 @@ def test_mapper_out_of_tries_gives_an_empty_overlay_that_says_why(house):
     broken = mutated_overlay(OVERLAY_V1, lambda d: d["fire"][0].update(evidence_ids=["ev_call_1"]))
     model = fake_model(*HOUSE_START, *HOUSE_RESUME, overlays=[broken] * 4,
                        drafts=[[FRONT_DOOR], [{**FRONT_DOOR, "refs": []}]])
-    start_incident("inc_s5", workspace_root=house.root, model=model)
+    published = []
+    start_incident("inc_s5", workspace_root=house.root, model=model, on_overlay=published.append)
     house.eng.confirm(HOUSE)
     v1 = resume_incident("inc_s5", HOUSE)
     assert len(model.seen["overlay_rejections"]) == 3 and "budget used up" not in model.seen["overlay_rejections"][-1]
@@ -890,12 +907,13 @@ def test_mapper_out_of_tries_gives_an_empty_overlay_that_says_why(house):
     ov = overlay_file(house, 1)
     assert ov["changes_since_last"] == ["Overlay not available: the incident mapper's 3 submission(s) were all rejected"]
     assert ov["occupants"] == ov["fire"] == [] and ov["version"] == v1.brief.version
+    assert [o.changes_since_last for o in published] == [ov["changes_since_last"]]  # the fallback goes out too
     # The strategy may not point at ids of an overlay that does not exist: its refs were refused once.
     assert [c.refs for c in v1.brief.considerations] == [[]] and v1.brief.verifier_rejections == 1
 
 
 def test_mapper_on_a_building_without_a_scan_uses_floors_only(depot):
-    s = Session(incident_id="inc_s4b", ws=depot.ws, candidates=orchestrator.find_candidates(depot.eng.record))
+    s = Session(incident_id="inc_s4q", ws=depot.ws, candidates=orchestrator.find_candidates(depot.eng.record))
     tools = make_tools(s)
     tools["confirm_building"].invoke({"candidates": [DEPOT], "chosen_building_id": DEPOT})
     assert tools["get_plan_index"].invoke({}).startswith("NO INTERIOR SCAN")
