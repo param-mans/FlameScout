@@ -1,0 +1,206 @@
+{
+  "incident_id": "inc-s4",
+  "model_id": "tvaSot6bAt8",
+  "version": 2,
+  "as_of": "2026-11-15T03:12:00Z",
+  "changes_since_last": [
+    "Call 2 (mother) places the two children in a bedroom downstairs, contradicting Call 1 (upstairs)",
+    "Call 2 reports her husband in the office",
+    "Call 2 reports a possible gas smell near the garage",
+    "Call 2 reports flames at a kitchen window"
+  ],
+  "occupants": [
+    {
+      "id": "occ-1a",
+      "count": 2,
+      "location": {
+        "kind": "floor",
+        "floor_reported": 2
+      },
+      "status": "contradicted",
+      "confidence": 0.5,
+      "reported_at": "2026-11-15T03:01:00Z",
+      "evidence_ids": [
+        "call-1:18.0-26.0"
+      ],
+      "note": "Neighbour: two children upstairs",
+      "group_id": "occ-kids"
+    },
+    {
+      "id": "occ-1b",
+      "count": 2,
+      "location": {
+        "kind": "floor",
+        "floor_reported": 1
+      },
+      "status": "contradicted",
+      "confidence": 0.5,
+      "group_id": "occ-kids",
+      "reported_at": "2026-11-15T03:11:00Z",
+      "evidence_ids": [
+        "call-2:14.0-22.0"
+      ],
+      "note": "Mother: the two children are in a bedroom downstairs"
+    },
+    {
+      "id": "occ-2",
+      "count": 1,
+      "location": {
+        "kind": "room",
+        "room_id": "rewssvxhpxq"
+      },
+      "status": "reported",
+      "confidence": 0.6,
+      "reported_at": "2026-11-15T03:11:00Z",
+      "evidence_ids": [
+        "call-2:25.0-31.0"
+      ],
+      "note": "Mother: her husband is in the office"
+    }
+  ],
+  "fire": [
+    {
+      "id": "fire-1",
+      "kind": "smoke",
+      "location": {
+        "kind": "room",
+        "room_id": "j7nhq2abkp0"
+      },
+      "status": "reported",
+      "confidence": 0.8,
+      "reported_at": "2026-11-15T03:01:00Z",
+      "evidence_ids": [
+        "call-1:4.0-11.0"
+      ],
+      "note": "Neighbour: smoke coming from the kitchen"
+    },
+    {
+      "id": "fire-2",
+      "kind": "fire",
+      "location": {
+        "kind": "anchor",
+        "anchor": {
+          "room_id": "j7nhq2abkp0",
+          "position": "near_window",
+          "ref_id": "uz26qgt4pkwcm5tyupq84gkpc"
+        }
+      },
+      "status": "reported",
+      "confidence": 0.7,
+      "reported_at": "2026-11-15T03:11:00Z",
+      "evidence_ids": [
+        "call-2:3.0-9.0"
+      ],
+      "note": "Mother: flames at the kitchen window"
+    }
+  ],
+  "hazards": [
+    {
+      "id": "haz-1",
+      "kind": "gas",
+      "location": {
+        "kind": "room",
+        "room_id": "tfsfsskzu72"
+      },
+      "status": "reported",
+      "confidence": 0.3,
+      "reported_at": "2026-11-15T03:11:00Z",
+      "evidence_ids": [
+        "call-2:40.0-44.0"
+      ],
+      "note": "Mother: possible gas smell near the garage"
+    }
+  ],
+  "blocked": [],
+  "contradictions": [
+    {
+      "group_id": "occ-kids",
+      "key": "occupants.location",
+      "resolved_by_dispatcher": false
+    }
+  ],
+  "objectives": [
+    {
+      "id": "obj-1",
+      "type": "rescue",
+      "priority": 1,
+      "target": {
+        "kind": "room",
+        "ref_id": "rewssvxhpxq"
+      },
+      "rationale": "Husband reported in the office by the mother",
+      "evidence_ids": [
+        "call-2:25.0-31.0"
+      ]
+    },
+    {
+      "id": "obj-2",
+      "type": "rescue",
+      "priority": 2,
+      "target": {
+        "kind": "occupant_group",
+        "ref_id": "occ-kids"
+      },
+      "rationale": "Two children reported; the callers place them on different floors",
+      "evidence_ids": [
+        "call-1:18.0-26.0",
+        "call-2:14.0-22.0"
+      ]
+    },
+    {
+      "id": "obj-3",
+      "type": "recon",
+      "priority": 3,
+      "target": {
+        "kind": "room",
+        "ref_id": "tfsfsskzu72"
+      },
+      "rationale": "Possible gas smell reported near the garage",
+      "evidence_ids": [
+        "call-2:40.0-44.0"
+      ]
+    }
+  ],
+  "considerations": [
+    {
+      "id": "con-1",
+      "text": "Consider asking the mother which bedroom downstairs the children are in",
+      "rationale": "The neighbour said upstairs, the mother said downstairs; she is more likely to know, but nobody has confirmed either",
+      "confidence": 0.8,
+      "evidence_ids": [
+        "call-1:18.0-26.0",
+        "call-2:14.0-22.0"
+      ],
+      "refs": [
+        "occ-kids"
+      ]
+    },
+    {
+      "id": "con-2",
+      "text": "Consider treating the kitchen and the routes next to it as exposed to fire",
+      "rationale": "Smoke was reported in the kitchen and flames at one of its windows",
+      "confidence": 0.7,
+      "evidence_ids": [
+        "call-1:4.0-11.0",
+        "call-2:3.0-9.0"
+      ],
+      "refs": [
+        "fire-1",
+        "fire-2"
+      ]
+    },
+    {
+      "id": "con-3",
+      "text": "Consider checking for gas near the garage before using the garage door",
+      "rationale": "A possible gas smell was reported with low confidence by one caller",
+      "confidence": 0.4,
+      "evidence_ids": [
+        "call-2:40.0-44.0"
+      ],
+      "refs": [
+        "haz-1"
+      ]
+    }
+  ],
+  "routes": []
+}
