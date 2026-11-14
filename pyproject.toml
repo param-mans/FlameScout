@@ -1,0 +1,21 @@
+[project]
+name = "flamescout"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.7",
+  "fastapi",
+  "uvicorn[standard]",
+  "deepagents",
+  "langchain-google-genai",
+  "langsmith",
+  "python-dotenv",
+  "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+pythonpath = [".", "packages/schemas"]
+testpaths = ["tests"]

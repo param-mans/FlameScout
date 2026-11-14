@@ -1,0 +1,13 @@
+{
+  "script_id": "S2",
+  "description": "Two callers. Call 1 says third floor, Call 2 says fourth floor and mentions the back stairs. Expect a contradiction on incident.floor. REPLACE address/name with HERO_A.",
+  "segments": [
+    {"call_id": "c1", "speaker": "call_taker", "text": "911, what's the address of your emergency?", "t_start": 0.0, "t_end": 2.1},
+    {"call_id": "c1", "speaker": "caller", "text": "There's smoke coming out of the building at 1200 Wilshire Boulevard, I think the third floor.", "t_start": 2.4, "t_end": 7.9},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Is anyone inside?", "t_start": 8.1, "t_end": 9.0},
+    {"call_id": "c1", "speaker": "caller", "text": "I saw people at the windows.", "t_start": 9.2, "t_end": 10.8},
+    {"call_id": "c2", "speaker": "call_taker", "text": "911, what's the address of your emergency?", "t_start": 14.0, "t_end": 16.0},
+    {"call_id": "c2", "speaker": "caller", "text": "I'm across the street from the Wilshire Tower. Fire's on the fourth floor, flames at the corner window.", "t_start": 16.3, "t_end": 22.0},
+    {"call_id": "c2", "speaker": "caller", "text": "Someone's shouting from the back stairs.", "t_start": 22.2, "t_end": 24.5}
+  ]
+}

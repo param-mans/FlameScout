@@ -1,0 +1,10 @@
+{
+  "script_id": "S1",
+  "description": "Clean single caller, smoke from an upper floor at a scanned building. REPLACE the address with HERO_A once B picks it.",
+  "segments": [
+    {"call_id": "c1", "speaker": "call_taker", "text": "911, what's the address of your emergency?", "t_start": 0.0, "t_end": 2.1},
+    {"call_id": "c1", "speaker": "caller", "text": "There's smoke coming out of the building at 1200 Wilshire Boulevard, it's on the fifth floor.", "t_start": 2.4, "t_end": 7.8},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Is anyone inside?", "t_start": 8.0, "t_end": 9.0},
+    {"call_id": "c1", "speaker": "caller", "text": "I saw people at the windows. The alarm is going off.", "t_start": 9.3, "t_end": 12.6}
+  ]
+}

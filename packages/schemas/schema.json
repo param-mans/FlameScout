@@ -1,0 +1,639 @@
+{
+  "$defs": {
+    "Brief": {
+      "properties": {
+        "brief_id": {
+          "title": "Brief Id",
+          "type": "string"
+        },
+        "incident_id": {
+          "title": "Incident Id",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "integer"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        },
+        "location_confirmed": {
+          "title": "Location Confirmed",
+          "type": "boolean"
+        },
+        "freshness": {
+          "additionalProperties": true,
+          "default": {},
+          "title": "Freshness",
+          "type": "object"
+        },
+        "size_up": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Fact"
+          },
+          "default": {},
+          "title": "Size Up",
+          "type": "object"
+        },
+        "markers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Marker"
+          },
+          "title": "Markers",
+          "type": "array"
+        },
+        "hazards": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Fact"
+          },
+          "title": "Hazards",
+          "type": "array"
+        },
+        "exposures": {
+          "default": [],
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Exposures",
+          "type": "array"
+        },
+        "considerations": {
+          "items": {
+            "$ref": "#/$defs/Consideration"
+          },
+          "maxItems": 5,
+          "title": "Considerations",
+          "type": "array"
+        },
+        "changes_since_last": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Changes Since Last",
+          "type": "array"
+        },
+        "gaps": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Gaps",
+          "type": "array"
+        },
+        "evidence": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "default": {},
+          "title": "Evidence",
+          "type": "object"
+        },
+        "disclaimer": {
+          "default": "Advisory only. Verify on arrival.",
+          "title": "Disclaimer",
+          "type": "string"
+        }
+      },
+      "required": [
+        "brief_id",
+        "incident_id",
+        "version",
+        "location_confirmed"
+      ],
+      "title": "Brief",
+      "type": "object"
+    },
+    "BuildingDossier": {
+      "properties": {
+        "building_id": {
+          "title": "Building Id",
+          "type": "string"
+        },
+        "address": {
+          "title": "Address",
+          "type": "string"
+        },
+        "coordinates": {
+          "additionalProperties": true,
+          "title": "Coordinates",
+          "type": "object"
+        },
+        "facts": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Fact"
+          },
+          "default": {},
+          "title": "Facts",
+          "type": "object"
+        },
+        "tenants": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Fact"
+          },
+          "title": "Tenants",
+          "type": "array"
+        },
+        "markers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Marker"
+          },
+          "title": "Markers",
+          "type": "array"
+        },
+        "exposures": {
+          "default": [],
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Exposures",
+          "type": "array"
+        },
+        "evidence": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "default": {},
+          "title": "Evidence",
+          "type": "object"
+        },
+        "scan_available": {
+          "default": false,
+          "title": "Scan Available",
+          "type": "boolean"
+        },
+        "scan_captured_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scan Captured At"
+        },
+        "matterport_model_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Matterport Model Id"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "building_id",
+        "address",
+        "coordinates"
+      ],
+      "title": "BuildingDossier",
+      "type": "object"
+    },
+    "Consideration": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "rank": {
+          "title": "Rank",
+          "type": "integer"
+        },
+        "category": {
+          "enum": [
+            "access",
+            "life_safety",
+            "exposure",
+            "hazard",
+            "roof",
+            "staging",
+            "water_supply"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "rank",
+        "category",
+        "title",
+        "rationale",
+        "confidence"
+      ],
+      "title": "Consideration",
+      "type": "object"
+    },
+    "Contradiction": {
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "$ref": "#/$defs/ContradictionValue"
+          },
+          "title": "Values",
+          "type": "array"
+        },
+        "resolved_by_dispatcher": {
+          "default": false,
+          "title": "Resolved By Dispatcher",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "values"
+      ],
+      "title": "Contradiction",
+      "type": "object"
+    },
+    "ContradictionValue": {
+      "properties": {
+        "call_id": {
+          "title": "Call Id",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value"
+        },
+        "span": {
+          "additionalProperties": true,
+          "title": "Span",
+          "type": "object"
+        }
+      },
+      "required": [
+        "call_id",
+        "value",
+        "span"
+      ],
+      "title": "ContradictionValue",
+      "type": "object"
+    },
+    "Evidence": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "scan_frame",
+            "scan_floorplan",
+            "aerial_crop",
+            "costar_record",
+            "transcript_span",
+            "rule_output"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "matterport",
+            "vexcel",
+            "costar",
+            "call",
+            "rules"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "uri": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Uri"
+        },
+        "captured_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Captured At"
+        },
+        "locator": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locator"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "source"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "Fact": {
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value"
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "inferred",
+            "reported",
+            "unverified",
+            "contradicted"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "as_of": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "As Of"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "value",
+        "status",
+        "confidence"
+      ],
+      "title": "Fact",
+      "type": "object"
+    },
+    "IncidentRecord": {
+      "properties": {
+        "incident_id": {
+          "title": "Incident Id",
+          "type": "string"
+        },
+        "status": {
+          "default": "listening",
+          "enum": [
+            "listening",
+            "locating",
+            "confirmed",
+            "briefing",
+            "updated"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "call_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Call Ids",
+          "type": "array"
+        },
+        "facts": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Fact"
+          },
+          "default": {},
+          "title": "Facts",
+          "type": "object"
+        },
+        "evidence": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "default": {},
+          "title": "Evidence",
+          "type": "object"
+        },
+        "contradictions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Contradiction"
+          },
+          "title": "Contradictions",
+          "type": "array"
+        },
+        "open_questions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Open Questions",
+          "type": "array"
+        },
+        "confirmed_building_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confirmed Building Id"
+        },
+        "ready_to_brief": {
+          "default": false,
+          "title": "Ready To Brief",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "incident_id"
+      ],
+      "title": "IncidentRecord",
+      "type": "object"
+    },
+    "Marker": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "entry",
+            "stair",
+            "exit",
+            "elevator",
+            "key_box",
+            "roof_access",
+            "fdc",
+            "standpipe",
+            "other"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "floor": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Floor"
+        },
+        "scan_position": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scan Position"
+        },
+        "map_position": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Map Position"
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "inferred",
+            "reported",
+            "unverified",
+            "contradicted"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "status",
+        "confidence"
+      ],
+      "title": "Marker",
+      "type": "object"
+    }
+  },
+  "title": "FlameScout"
+}
