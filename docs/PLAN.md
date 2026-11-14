@@ -664,7 +664,7 @@ Assumes four people (A Agents, B Data, C Frontend, D Voice/Infra/Demo). Merge ro
 ## **21\. Submission checklist**
 
 * \[ \] Public GitHub repo **created between Nov 13 and Nov 15**, with README (use case, target user, architecture, run steps)  
-* \[ \] Devpost: **one** HackPrinceton track (Business & Enterprise) \+ special tracks selected (CoStar, Amazon, LangChain, \+ MLH categories as confirmed)  
+* \[ \] Devpost: **one** HackPrinceton track (Healthcare) \+ special tracks selected (CoStar, Amazon, LangChain, \+ MLH categories as confirmed)  
 * \[ \] Discord usernames of all teammates on the submission  
 * \[ \] Optional ≤ 2-minute demo video uploaded and linked  
 * \[ \] Peri evidence (business name, person name/role, screenshot or quote) if entering  
