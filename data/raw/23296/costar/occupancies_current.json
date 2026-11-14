@@ -1,0 +1,119 @@
+[
+ {
+  "addressId": 759877,
+  "expirationReason": 0,
+  "fromDate": "2009-05-01T12:00:00-04:00",
+  "id": 259435441,
+  "industryType": 0,
+  "leaseDeal": {
+   "breakDatesState": 0,
+   "commencementDate": "2009-05-01T12:00:00-04:00",
+   "effectiveRateBasis": 0,
+   "effectiveRateCalculatedBasis": 0,
+   "expansionOptionState": 0,
+   "id": 165914941,
+   "isLeaseTermMonthToMonth": false,
+   "leaseDealSourceType": 12,
+   "leaseDealType": 1,
+   "leaseTerminationOptionState": 0,
+   "leaseTermType": 0,
+   "monetaryUnit": 1,
+   "noLandlordRepresentative": false,
+   "noRateEscalation": false,
+   "noTenantRepresentative": false,
+   "purchaseOptionState": 0,
+   "rateActualIncreaseMethodType": 0,
+   "rateAmountType": 0,
+   "rateBasis": 0,
+   "renewalOptionState": 0,
+   "reviewDatesState": 0,
+   "rightOfFirstOfferState": 0,
+   "rightOfFirstRefusalState": 0,
+   "serviceChargeState": 0,
+   "serviceType": 13,
+   "signagePayerType": 0,
+   "signageState": 0,
+   "signDate": "2009-05-01T12:00:00-04:00",
+   "spaceType": 1,
+   "spaceUse": 7,
+   "spreadOverTermType": 0
+  },
+  "leaseType": 1,
+  "moveInDate": "2009-05-01T12:00:00-04:00",
+  "propertyId": 23296,
+  "spaces": [
+   {
+    "buildOut": 0,
+    "buildOutConditionType": 0,
+    "buildOutStatus": 0,
+    "id": 152422451,
+    "loadBay": {
+     "driveInBayState": 0,
+     "loadingDockState": 0
+    },
+    "propertyFloorId": 683795,
+    "spaceLayout": 0,
+    "spacePosition": 0,
+    "squareFeetOccupied": 25000
+   }
+  ],
+  "tenantLocationId": 155289321
+ },
+ {
+  "addressId": 759877,
+  "expirationReason": 0,
+  "fromDate": "2026-06-22T12:00:00-04:00",
+  "id": 362666841,
+  "industryType": 0,
+  "leaseDeal": {
+   "breakDatesState": 0,
+   "effectiveRateBasis": 0,
+   "effectiveRateCalculatedBasis": 0,
+   "expansionOptionState": 0,
+   "id": 297847661,
+   "isLeaseTermMonthToMonth": false,
+   "leaseDealSourceType": 20,
+   "leaseDealType": 1,
+   "leaseTerminationOptionState": 0,
+   "leaseTermType": 0,
+   "monetaryUnit": 1,
+   "noLandlordRepresentative": false,
+   "noRateEscalation": false,
+   "noTenantRepresentative": false,
+   "purchaseOptionState": 0,
+   "rateActualIncreaseMethodType": 0,
+   "rateAmountType": 0,
+   "rateBasis": 0,
+   "renewalOptionState": 0,
+   "reviewDatesState": 0,
+   "rightOfFirstOfferState": 0,
+   "rightOfFirstRefusalState": 0,
+   "serviceChargeState": 0,
+   "serviceType": 0,
+   "signagePayerType": 0,
+   "signageState": 0,
+   "spaceType": 1,
+   "spaceUse": 6,
+   "spreadOverTermType": 0
+  },
+  "leaseType": 1,
+  "propertyId": 23296,
+  "spaces": [
+   {
+    "buildOut": 0,
+    "buildOutConditionType": 0,
+    "buildOutStatus": 0,
+    "id": 267553901,
+    "loadBay": {
+     "driveInBayState": 0,
+     "loadingDockState": 0
+    },
+    "propertyFloorId": 683795,
+    "spaceLayout": 0,
+    "spacePosition": 0,
+    "squareFeetOccupied": 34500
+   }
+  ],
+  "tenantLocationId": 343788521
+ }
+]

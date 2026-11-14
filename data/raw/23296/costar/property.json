@@ -1,0 +1,391 @@
+{
+ "id": 23296,
+ "addresses": [
+  {
+   "id": 759877,
+   "city": "Houston",
+   "cityId": 5316,
+   "countyId": 2520,
+   "countryCode": "USA",
+   "latitude": 29.850575,
+   "longitude": -95.533213,
+   "postcode": "770417621",
+   "researchMarketId": 14,
+   "state": "TX",
+   "stateId": 44,
+   "streetName": "Tanner",
+   "streetNumber": "9700",
+   "streetType": "Rd",
+   "submarketIds": [
+    1373,
+    1379,
+    4333,
+    8079,
+    31361,
+    37878
+   ]
+  },
+  {
+   "id": 1437209,
+   "city": "Houston",
+   "cityId": 5316,
+   "countyId": 2520,
+   "countryCode": "USA",
+   "latitude": 29.850575,
+   "longitude": -95.533213,
+   "postcode": "770417621",
+   "researchMarketId": 14,
+   "state": "TX",
+   "stateId": 44,
+   "streetName": "Tanner",
+   "streetNumber": "9700",
+   "streetNumberEndRange": "9750",
+   "streetType": "Rd",
+   "submarketIds": [
+    1373,
+    1379,
+    4333,
+    8079,
+    31361,
+    37878
+   ]
+  }
+ ],
+ "primaryAddress": {
+  "id": 759877,
+  "city": "Houston",
+  "cityId": 5316,
+  "countyId": 2520,
+  "countryCode": "USA",
+  "latitude": 29.850575,
+  "longitude": -95.533213,
+  "postcode": "770417621",
+  "researchMarketId": 14,
+  "state": "TX",
+  "stateId": 44,
+  "streetName": "Tanner",
+  "streetNumber": "9700",
+  "streetType": "Rd",
+  "submarketIds": [
+   1373,
+   1379,
+   4333,
+   8079,
+   31361,
+   37878
+  ]
+ },
+ "propertyType": 7,
+ "propertySubtype": 1,
+ "isCondo": false,
+ "buildingClass": 3,
+ "buildingRating": 3,
+ "buildingRatingType": 1,
+ "constructionStatus": 1,
+ "coStarBuildingType": 1,
+ "buildingName": "Northwest Trade Center",
+ "grossBuildingAreaSquareFeet": 69500,
+ "grossTypicalFloorSquareFeet": 69500,
+ "rentableBuildingAreaSquareFeet": 69500,
+ "numStoriesAboveGrade": 1,
+ "constructionEvents": [
+  {
+   "eventType": 2,
+   "year": 1979
+  },
+  {
+   "eventType": 4,
+   "year": 2007
+  }
+ ],
+ "buildingConstructionMaterial": 1,
+ "sprinklerType": 1,
+ "hasSprinklers": true,
+ "lotSize": 4.06,
+ "lotSizeMeasurementType": 2,
+ "zoningDescription": "None",
+ "parcelNumbers": [
+  "0131810000073"
+ ],
+ "parcelReferences": [
+  {
+   "countyId": 2520,
+   "parcelNumber": "0131810000073"
+  }
+ ],
+ "parking": [
+  {
+   "parkingType": 1,
+   "totalSpaces": 173
+  },
+  {
+   "parkingType": 3
+  }
+ ],
+ "parkingRatio": 2.49,
+ "primarySubmarketId": 1379,
+ "primaryPhoto": {
+  "attachmentMasterId": 738792662,
+  "attachmentType": 3,
+  "attachmentTypeExtension": 6,
+  "caption": "Northwest Trade Center - Suite A",
+  "dimensions": {
+   "width": 5184,
+   "height": 3456
+  },
+  "originationDate": "2026-10-29T09:22:27-04:00",
+  "videoExternalReferenceType": 0,
+  "attachmentUri": "https://ahprd1cdn.csgpimgs.com/i2/w_CXTZfaEH103Dq4iz9eA4TYH3yYY7vVV-MqxGBziF4/112/image.jpg"
+ },
+ "attachments": [
+  {
+   "attachmentMasterId": 738792662,
+   "attachmentType": 3,
+   "attachmentTypeExtension": 6,
+   "caption": "Northwest Trade Center - Suite A",
+   "dimensions": {
+    "width": 5184,
+    "height": 3456
+   },
+   "originationDate": "2026-10-29T09:22:27-04:00",
+   "videoExternalReferenceType": 0,
+   "attachmentUri": "https://ahprd1cdn.csgpimgs.com/i2/w_CXTZfaEH103Dq4iz9eA4TYH3yYY7vVV-MqxGBziF4/112/image.jpg"
+  },
+  {
+   "attachmentMasterId": 738792664,
+   "attachmentType": 4,
+   "attachmentTypeExtension": 6,
+   "caption": "Northwest Trade Center - Suite A ",
+   "dimensions": {
+    "width": 5184,
+    "height": 3456
+   },
+   "originationDate": "2026-10-29T09:23:01-04:00",
+   "videoExternalReferenceType": 0,
+   "attachmentUri": "https://ahprd1cdn.csgpimgs.com/i2/1-9Mi4ePUlXvizDE6HgAtWIOhhOwy8bsI4fGFQ_z9kY/112/image.jpg"
+  },
+  {
+   "attachmentMasterId": 738792661,
+   "attachmentType": 4,
+   "attachmentTypeExtension": 6,
+   "caption": "Suite A - Bay Doors",
+   "dimensions": {
+    "width": 5184,
+    "height": 3456
+   },
+   "originationDate": "2026-10-29T09:26:58-04:00",
+   "videoExternalReferenceType": 0,
+   "attachmentUri": "https://ahprd1cdn.csgpimgs.com/i2/xyDHNUrwcc3i7b3N0MZDduSnC_ClUI2X0HDabunzfNE/112/image.jpg"
+  },
+  {
+   "attachmentMasterId": 738792663,
+   "attachmentType": 4,
+   "attachmentTypeExtension": 6,
+   "caption": "Suite A - Rear Entrance and Bay Doors",
+   "dimensions": {
+    "width": 5184,
+    "height": 3456
+   },
+   "originationDate": "2026-10-29T09:27:24-04:00",
+   "videoExternalReferenceType": 0,
+   "attachmentUri": "https://ahprd1cdn.csgpimgs.com/i2/hzxjbjymjMwLlrXHMGp0hFbyJbjcWtVZQI9R4Z4W42c/112/image.jpg"
+  },
+  {
+   "attachmentMasterId": 737949387,
+   "attachmentType": 1,
+   "attachmentTypeExtension": 6,
+   "caption": "Northwest Trade Center",
+   "dimensions": {
+    "width": 5184,
+    "height": 3456
+   },
+   "originationDate": "2026-10-27T05:32:17-04:00",
+   "videoExternalReferenceType": 0,
+   "attachmentUri": "https://ahprd1cdn.csgpimgs.com/i2/FbUB5_qQCXQt9S1fes6K1dHyxFWCyzFcQpf8rfj-kRc/112/image.jpg"
+  },
+  {
+   "attachmentMasterId": 738616386,
+   "attachmentType": 1,
+   "attachmentTypeExtension": 6,
+   "caption": "Northwest Trade Center",
+   "dimensions": {
+    "width": 4341,
+    "height": 3252
+   },
+   "originationDate": "2026-10-30T00:05:45.57-04:00",
+   "videoExternalReferenceType": 0,
+   "attachmentUri": "https://ahprd1cdn.csgpimgs.com/i2/cBNR5rT3_3OcpzRgxyhsBBEzNKdjGVoP_Nf7haUpfP8/112/image.jpg"
+  },
+  {
+   "attachmentMasterId": 738267932,
+   "attachmentType": 10,
+   "attachmentTypeExtension": 52,
+   "caption": "Northwest Trade Center - 9750 Tanner Rd",
+   "dimensions": {
+    "width": 0,
+    "height": 0
+   },
+   "originationDate": "2026-10-28T01:02:13-04:00",
+   "videoExternalReferenceType": 36,
+   "videoKey": "oNAvrNiXZS7",
+   "attachmentUri": "https://ahprd1cdn.csgpimgs.com/i2/J4rZx0dqYmmsXGZ4ML-br4GSfbkE5E1_tVq2PTKV-A8/112/image.svg"
+  },
+  {
+   "attachmentMasterId": 737900427,
+   "attachmentType": 43,
+   "attachmentTypeExtension": 6,
+   "caption": "Northwest Trade Center - 9750 Tanner Rd",
+   "dimensions": {
+    "width": 3034,
+    "height": 1707
+   },
+   "originationDate": "2026-10-27T11:28:03-04:00",
+   "videoExternalReferenceType": 36,
+   "videoKey": "oNAvrNiXZS7",
+   "attachmentUri": "https://ahprd1cdn.csgpimgs.com/i2/35N1xtZjgj7yFH9DnSmnDAll9bMhkO5L0oymMRprzrM/112/image.jpg"
+  }
+ ],
+ "amenities": [
+  34,
+  68,
+  70,
+  133,
+  192,
+  207,
+  374,
+  381
+ ],
+ "renovations": [],
+ "aliases": [],
+ "propertyFlex": {
+  "rentableBuildingAreaSquareFeet": 69500,
+  "isOwnerOccupied": false,
+  "tenancyType": 2,
+  "driveInBays": {
+   "numDriveInBays": 5,
+   "numFeetWide": 10,
+   "numFeetHigh": 10
+  },
+  "railAccess": [],
+  "electric": {
+   "hasHeavyPower": false,
+   "ampsLow": 200,
+   "ampsHigh": 200,
+   "voltsLow": 240,
+   "voltsHigh": 480,
+   "numElectricCurrentPhases": 3
+  },
+  "utilities": [
+   {
+    "utilityType": 4,
+    "utilitySubType": 1
+   },
+   {
+    "utilityType": 5,
+    "utilitySubType": 18
+   },
+   {
+    "utilityType": 6,
+    "utilitySubType": 0
+   }
+  ],
+  "numExternalLoadingDocks": 3,
+  "hasLoadingDocks": true,
+  "hasDriveInBays": true,
+  "structural": {
+   "columnWidthFeet": 30,
+   "maxColumnWidthFeet": 30,
+   "minColumnWidthFeet": 30,
+   "ceilingHeightFeet": 18,
+   "hasBuildingColumns": true,
+   "elevators": [
+    {
+     "elevatorType": 1,
+     "elevatorState": 2
+    },
+    {
+     "elevatorType": 2,
+     "elevatorState": 2
+    },
+    {
+     "elevatorType": 3,
+     "elevatorState": 2
+    }
+   ]
+  }
+ },
+ "propertyGroupSubtype": 0,
+ "notes": [
+  {
+   "noteType": 2,
+   "value": "9700 Tanner Road is a multi-tenant office/warehouse property in Houston’s Northwest Inner Loop Submarket. The facility features an 18-foot clear height, two dock doors, 480-volt, 3-phase power, parking, and fenced outdoor storage. The property is approximately 1 mile from US 290 and within 2 miles of Beltway 8, with Port Houston approximately 16 miles away, George Bush Intercontinental Airport 22 miles away, and William P. Hobby Airport 25 miles away."
+  }
+ ],
+ "contacts": [
+  {
+   "compOwners": [],
+   "contactRole": 4,
+   "id": 31677,
+   "locationId": 106278,
+   "preferredPhoneType": 0
+  },
+  {
+   "compOwners": [
+    {
+     "compId": 6847443
+    }
+   ],
+   "contactPhoneNumberCountryCode": "USA",
+   "contactRole": 3,
+   "id": 37367808,
+   "locationId": 282909731,
+   "preferredPhoneType": 0,
+   "startDate": "2024-09-05T12:00:00-04:00"
+  },
+  {
+   "compOwners": [
+    {
+     "compId": 6847443
+    }
+   ],
+   "contactId": 86770641,
+   "contactPhoneNumberCountryCode": "USA",
+   "contactRole": 7,
+   "id": 37372242,
+   "locationId": 215644481,
+   "preferredPhoneType": 0,
+   "startDate": "2024-09-05T12:00:00-04:00"
+  },
+  {
+   "compOwners": [],
+   "contactId": 252425701,
+   "contactPhoneNumber": "5552551235",
+   "contactRole": 6,
+   "id": 40954540,
+   "locationId": 159914901,
+   "preferredPhoneType": 1,
+   "startDate": "2026-09-11T12:00:00-04:00"
+  }
+ ],
+ "environmental": {
+  "leedCertifications": []
+ },
+ "floors": [
+  {
+   "propertyFloorId": 683795,
+   "floorName": 24,
+   "floorSize": {
+    "squareFeet": 69500,
+    "source": 0
+   }
+  },
+  {
+   "propertyFloorId": 1703008,
+   "floorName": 1,
+   "floorSize": {
+    "squareFeet": 69500,
+    "source": 0
+   }
+  }
+ ]
+}

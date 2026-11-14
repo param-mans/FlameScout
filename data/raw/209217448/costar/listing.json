@@ -1,0 +1,970 @@
+{
+ "id": 209217448,
+ "residentialListingId": 205029064,
+ "propertyId": 500020138473,
+ "transactionType": 2,
+ "listingStatus": 4,
+ "forRentStatus": 5,
+ "listDate": "2025-11-20T00:00:00+00:00",
+ "offMarketDate": "2025-12-13T00:00:00+00:00",
+ "contractDate": "2025-12-13T00:00:00+00:00",
+ "closeDate": "2026-01-01T00:00:00+00:00",
+ "availabilityDate": "2025-11-24T00:00:00+00:00",
+ "closePrice": 3500,
+ "currentPrice": 3500,
+ "rentMax": 3500,
+ "rentMin": 3500,
+ "listingType": 0,
+ "dom": 0,
+ "domDate": "2025-11-20T00:00:00+00:00",
+ "virtualDateOnMarket": "2025-11-20T00:00:00+00:00",
+ "monetaryUnit": 1,
+ "originalPrice": 3500,
+ "remarks": "This beautifully updated home is located in the desirable Tanglewilde neighborhood. The unique 1.5-story layout includes a renovated kitchen, flooring, and bathrooms. It features a classic elevation with brick and stone exterior, abundant natural light, high ceilings, and exquisite millwork with recessed lighting throughout. The spacious family room boasts custom cabinetry, ideal for entertainment systems. The chef's kitchen is equipped with ample cabinetry featuring glass inserts, a large island with illuminated quartzite, generous counter space, a double oven, a pot filler faucet, an undermount sink, and stainless steel appliances, including a refrigerator. The primary bedroom serves as a peaceful retreat with dual walk-in closets and an impressive en-suite bathroom. Upstairs, there's a vast space that could serve as a fourth bedroom, media room, or game room.With a low tax rate & no HOA fees, this property is an excellent choice for a personal residence or an investment opportunity.",
+ "sourceNumber": "13570328",
+ "specialFeatures": 0,
+ "resoValues": {
+  "architecturalStyleType": 32768,
+  "coolingType": 17,
+  "hasBasement": false,
+  "hasGarage": true,
+  "hasFireplace": true,
+  "hasHardwoodFloors": false,
+  "hasInLawSuite": false,
+  "hasSpa": false,
+  "hasDishwasher": true,
+  "hasElevator": false,
+  "hasGym": false,
+  "hasGolfCourse": false,
+  "hasAccessibilityFeatures": false,
+  "hasStorage": false,
+  "hasWasherDryer": true,
+  "heatingType": 129,
+  "hoa": {},
+  "isWaterfront": false,
+  "isNearPublicTransportation": false,
+  "isPetFriendly": false,
+  "lotType": 1,
+  "listingStandardStatus": 32,
+  "listPrice": 3500,
+  "originalListPrice": 3500,
+  "outdoorSpaceType": 0,
+  "poolType": 0,
+  "propertyConditionType": 0,
+  "roomType": 12,
+  "securityFeatureType": 16,
+  "structure": {
+   "hasNewConstruction": false,
+   "hasFireplace": true,
+   "fireplacesTotal": 1,
+   "yearBuilt": 1999,
+   "parkingTotal": 2,
+   "garageSpaces": 2,
+   "hasCarport": false,
+   "hasBasement": false,
+   "hasCooling": true,
+   "hasHeating": true,
+   "architecturalStyle": "Detached,Traditional"
+  },
+  "viewType": 0,
+  "washerDryerType": 3
+ },
+ "property": {
+  "address": {
+   "id": 18809903,
+   "city": "Houston",
+   "countryCode": "USA",
+   "streetNumber": "9660",
+   "streetName": "Fairdale",
+   "streetDirPrefix": "",
+   "streetDirSuffix": "",
+   "streetSuffix": "Ln",
+   "fullStreetAddress": "9660 Fairdale Lane",
+   "latitude": 29.730995,
+   "longitude": -95.538914,
+   "state": "TX",
+   "zip": "77063",
+   "areas": [
+    {
+     "enterpriseEntityId": 5316,
+     "isPreferred": false
+    },
+    {
+     "enterpriseEntityId": 26420,
+     "isPreferred": false
+    },
+    {
+     "enterpriseEntityType": 1,
+     "enterpriseEntityId": 44,
+     "name": "Texas",
+     "isPreferred": false
+    },
+    {
+     "enterpriseEntityType": 2,
+     "enterpriseEntityId": 2520,
+     "name": "Harris County",
+     "isPreferred": false
+    },
+    {
+     "enterpriseEntityType": 5,
+     "enterpriseEntitySubType": 16,
+     "enterpriseEntityId": 37906,
+     "name": "Mid West",
+     "isPreferred": true,
+     "associatedCityId": 5316,
+     "neighborhoodId": 502276
+    },
+    {
+     "enterpriseEntityType": 7,
+     "enterpriseEntityId": 1,
+     "name": "USA"
+    },
+    {
+     "enterpriseEntityType": 9,
+     "enterpriseEntityId": 5316,
+     "name": "Houston",
+     "isPreferred": false
+    },
+    {
+     "enterpriseEntityType": 15,
+     "enterpriseEntityId": 44,
+     "isPreferred": false
+    },
+    {
+     "enterpriseEntityType": 16,
+     "enterpriseEntityId": 33604,
+     "name": "77063",
+     "isPreferred": true
+    },
+    {
+     "enterpriseEntityType": 16,
+     "enterpriseEntityId": 33604,
+     "name": "77063",
+     "isPreferred": false
+    },
+    {
+     "enterpriseEntityType": 19,
+     "enterpriseEntityId": 401,
+     "name": "Houston Metro Area",
+     "isPreferred": false
+    },
+    {
+     "enterpriseEntityType": 28,
+     "enterpriseEntityId": 115574,
+     "isPreferred": false
+    },
+    {
+     "enterpriseEntityType": 28,
+     "enterpriseEntityId": 115623,
+     "isPreferred": false
+    },
+    {
+     "enterpriseEntityType": 28,
+     "enterpriseEntityId": 115710,
+     "isPreferred": false
+    },
+    {
+     "enterpriseEntityType": 29,
+     "enterpriseEntityId": 83,
+     "isPreferred": false,
+     "naturalFeatureType": 0
+    },
+    {
+     "enterpriseEntityType": 29,
+     "enterpriseEntityId": 136,
+     "isPreferred": false,
+     "naturalFeatureType": 11
+    },
+    {
+     "enterpriseEntityType": 31,
+     "enterpriseEntityId": 16087,
+     "isPreferred": false
+    }
+   ],
+   "cityMetadata": {
+    "cityDisplayName": "Houston"
+   }
+  },
+  "propertyType": 1,
+  "listingPropertyType": 1,
+  "propertyTypeSource": 1,
+  "mlsPropertyType": "Residential Lease, Detached",
+  "bathsMin": 3,
+  "bathsMax": 3,
+  "bathsFull": 3,
+  "bedsMin": 3,
+  "bedsMax": 3,
+  "lotSizeAcresMin": 0.198,
+  "lotSizeAcresMax": 0.198,
+  "lotSizeSource": 4,
+  "sqftMin": 3480,
+  "sqftMax": 3480,
+  "sqftSource": 1,
+  "subdivision": "Tanglewilde Sec 04",
+  "totalParkingSpaces": 2,
+  "url": "TX/Houston/9660-Fairdale-Lane",
+  "yearBuilt": 1999,
+  "yearBuiltSource": 4
+ },
+ "media": [
+  {
+   "id": 644163052,
+   "caption": "Unknown",
+   "type": 131,
+   "uri": "https://www.homes.com/matterport-community/d97e7ec7-ebbd-435a-ba9a-3fc0a1e7bcda/meta.json",
+   "videoKey": "d97e7ec7-ebbd-435a-ba9a-3fc0a1e7bcda",
+   "height": 3956,
+   "width": 5280,
+   "source": 0,
+   "thumbnailUri": "https://imagescdn.homes.com/i2/vCzFiCSmGmnufX5gZ5pvqiNaHU1-y2KeCbTjhJDfwgU/112/image.jpg?p=1",
+   "externalReferenceType": 187
+  },
+  {
+   "id": 644305594,
+   "caption": "Unknown",
+   "type": 133,
+   "uri": "https://imagescdn.homes.com/i2/a2nuJHshGOq5nfIn7MyEgbPUu2y9RhEaW9tpxz6QXfs/112/image.jpg?p=1",
+   "videoKey": "BfFnyaFC4eI",
+   "height": 1080,
+   "width": 1920,
+   "source": 2,
+   "externalReferenceType": 180
+  },
+  {
+   "id": 644618365,
+   "caption": "Unknown",
+   "type": 43,
+   "uri": "https://my.matterport.com/show/?m=tvaSot6bAt8",
+   "videoKey": "tvaSot6bAt8",
+   "height": 1707,
+   "width": 3034,
+   "threeDimensionalScanType": 36,
+   "source": 2,
+   "thumbnailUri": "https://imagescdn.homes.com/i2/HVgpk3RWYzQvULBikmAHFlffyR7c03yZEbuA8wxo1hg/112/image.jpg?p=1",
+   "externalReferenceType": 36
+  },
+  {
+   "id": 4617050450,
+   "caption": "Discover a distinctive 1.5-story home nestled in Tanglewilde, boasting convenient access to Beltway 8 and Westpark Tollway. Situated merely 4 miles from the Memorial area, 6 miles from the Galleria, and a short 23-minute drive from the globally acclaimed Downtown Medical Center.",
+   "description": "Discover a distinctive 1.5-story home nestled in Tanglewilde, boasting convenient access to Beltway 8 and Westpark Tollway. Situated merely 4 miles from the Memorial area, 6 miles from the Galleria, and a short 23-minute drive from the globally acclaimed Downtown Medical Center.",
+   "displayOrder": 0,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/0540507164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1
+  },
+  {
+   "id": 4617050484,
+   "caption": "The front elevation is stunning, featuring a stone facade and lush landscaping.",
+   "description": "The front elevation is stunning, featuring a stone facade and lush landscaping.",
+   "displayOrder": 1,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/4840507164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617050484,
+     "type": 65
+    }
+   ]
+  },
+  {
+   "id": 4617050502,
+   "caption": "An elegant and welcoming front door with the mailbox conveniently located right outside.",
+   "description": "An elegant and welcoming front door with the mailbox conveniently located right outside.",
+   "displayOrder": 2,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/2050507164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1
+  },
+  {
+   "id": 4617073615,
+   "caption": "Welcome to this stunning residence! Upon entry, the high ceiling of the foyer, the exquisite light fixture, and the elegant wrought iron spindles will capture your attention.",
+   "description": "Welcome to this stunning residence! Upon entry, the high ceiling of the foyer, the exquisite light fixture, and the elegant wrought iron spindles will capture your attention.",
+   "displayOrder": 3,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/5163707164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1
+  },
+  {
+   "id": 4617074043,
+   "caption": "The dining room boasts a beautiful tray ceiling, recessed lighting, and stunning columns.",
+   "description": "The dining room boasts a beautiful tray ceiling, recessed lighting, and stunning columns.",
+   "displayOrder": 4,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/3404707164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1
+  },
+  {
+   "id": 4617074088,
+   "caption": "Upon entering the home, the formal dining room, presently serving as an office, is situated to your left.",
+   "description": "Upon entering the home, the formal dining room, presently serving as an office, is situated to your left.",
+   "displayOrder": 5,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/8804707164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1
+  },
+  {
+   "id": 4617074122,
+   "caption": "This spacious family room, measuring 20x26, can be divided into two distinct areas and boasts wood-like tile flooring, high ceilings, recessed lighting, and a built-in entertainment center that remains with the house. The photo is staged.",
+   "description": "This spacious family room, measuring 20x26, can be divided into two distinct areas and boasts wood-like tile flooring, high ceilings, recessed lighting, and a built-in entertainment center that remains with the house. The photo is staged.",
+   "displayOrder": 6,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/2214707164-844712902-original.jpg",
+   "height": 1080,
+   "width": 1620,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617074122,
+     "type": 64
+    }
+   ]
+  },
+  {
+   "id": 4617074156,
+   "caption": "The family room's open layout leading into the kitchen makes it an ideal space for entertaining, socializing, and hosting family gatherings.",
+   "description": "The family room's open layout leading into the kitchen makes it an ideal space for entertaining, socializing, and hosting family gatherings.",
+   "displayOrder": 7,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/6514707164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1
+  },
+  {
+   "id": 4617053575,
+   "caption": "You'll be enamored with this expansive kitchen, boasting abundant cabinetry, a HUGE island that lights up, generous counter space, and stainless steel appliances.",
+   "description": "You'll be enamored with this expansive kitchen, boasting abundant cabinetry, a HUGE island that lights up, generous counter space, and stainless steel appliances.",
+   "displayOrder": 8,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/5753507164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617053575,
+     "type": 58
+    }
+   ]
+  },
+  {
+   "id": 4617053946,
+   "caption": "Stainless steel kitchen refrigerator is included!",
+   "description": "Stainless steel kitchen refrigerator is included!",
+   "displayOrder": 9,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/6493507164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617053946,
+     "type": 58
+    }
+   ]
+  },
+  {
+   "id": 4617054279,
+   "caption": "An undermounted sink with windows above it to provide plenty of natural light.",
+   "description": "An undermounted sink with windows above it to provide plenty of natural light.",
+   "displayOrder": 10,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/9724507164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617054279,
+     "type": 58
+    }
+   ]
+  },
+  {
+   "id": 4617054608,
+   "caption": "Double oven PLUS a pot filler kitchen faucet over the cooktop.",
+   "description": "Double oven PLUS a pot filler kitchen faucet over the cooktop.",
+   "displayOrder": 11,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/8064507164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617054608,
+     "type": 58
+    }
+   ]
+  },
+  {
+   "id": 4617055465,
+   "caption": "Elegant glass insert cabinets",
+   "description": "Elegant glass insert cabinets",
+   "displayOrder": 12,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/5645507164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617055465,
+     "type": 58
+    }
+   ]
+  },
+  {
+   "id": 4617055672,
+   "caption": "The kitchen features a spacious walk-in pantry.",
+   "description": "The kitchen features a spacious walk-in pantry.",
+   "displayOrder": 13,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/2765507164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617055672,
+     "type": 58
+    }
+   ]
+  },
+  {
+   "id": 4617056127,
+   "caption": "You are going to love cooking in this kitchen!",
+   "description": "You are going to love cooking in this kitchen!",
+   "displayOrder": 14,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/7216507164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617056127,
+     "type": 58
+    }
+   ]
+  },
+  {
+   "id": 4617056661,
+   "caption": "The pantry is located to the left, and the laundry room is to the right.",
+   "description": "The pantry is located to the left, and the laundry room is to the right.",
+   "displayOrder": 15,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/1666507164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617056661,
+     "type": 14
+    }
+   ]
+  },
+  {
+   "id": 4617057068,
+   "caption": "Spacious laundry room.",
+   "description": "Spacious laundry room.",
+   "displayOrder": 16,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/8607507164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617057068,
+     "type": 14
+    }
+   ]
+  },
+  {
+   "id": 4617057848,
+   "caption": "The primary bedroom boasts gorgeous floors, an elegant tray ceiling, and abundant natural light.",
+   "description": "The primary bedroom boasts gorgeous floors, an elegant tray ceiling, and abundant natural light.",
+   "displayOrder": 17,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/8487507164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617057848,
+     "type": 64
+    }
+   ]
+  },
+  {
+   "id": 4617057860,
+   "caption": "The primary bedroom includes a mounted TV and built-in shelves that convey with the sale.",
+   "description": "The primary bedroom includes a mounted TV and built-in shelves that convey with the sale.",
+   "displayOrder": 18,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/0687507164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1
+  },
+  {
+   "id": 4617057902,
+   "caption": "The expansive primary bathroom, beautifully remodeled, will take your breath away.",
+   "description": "The expansive primary bathroom, beautifully remodeled, will take your breath away.",
+   "displayOrder": 19,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/2097507164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617057902,
+     "type": 59
+    }
+   ]
+  },
+  {
+   "id": 4617057999,
+   "caption": "Consider a rain shower head alongside the standard one, complemented by spacious shower seating.",
+   "description": "Consider a rain shower head alongside the standard one, complemented by spacious shower seating.",
+   "displayOrder": 20,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/9997507164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617057999,
+     "type": 59
+    }
+   ]
+  },
+  {
+   "id": 4617075768,
+   "caption": "The expansive walk-in shower and the jetted tub will be among the highlights you'll enjoy.",
+   "description": "The expansive walk-in shower and the jetted tub will be among the highlights you'll enjoy.",
+   "displayOrder": 21,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/8675707164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617075768,
+     "type": 59
+    }
+   ]
+  },
+  {
+   "id": 4617075804,
+   "caption": "Primary bathroom has his and her sink and lot os built-ins for storage",
+   "description": "Primary bathroom has his and her sink and lot os built-ins for storage",
+   "displayOrder": 22,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/4085707164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617075804,
+     "type": 59
+    }
+   ]
+  },
+  {
+   "id": 4617076629,
+   "caption": "This is one of two primary closets, featuring a concealed entry to a secret space ideal for storing a safe and other valuables.",
+   "description": "This is one of two primary closets, featuring a concealed entry to a secret space ideal for storing a safe and other valuables.",
+   "displayOrder": 23,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/9266707164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617076629,
+     "type": 61
+    }
+   ]
+  },
+  {
+   "id": 4617076672,
+   "caption": "The additional room adjacent to the primary bathroom would be ideal for a home office, nursery, man cave, or game room. It also comes equipped with its own AC wall unit.",
+   "description": "The additional room adjacent to the primary bathroom would be ideal for a home office, nursery, man cave, or game room. It also comes equipped with its own AC wall unit.",
+   "displayOrder": 24,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/2766707164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1
+  },
+  {
+   "id": 4617076715,
+   "caption": "The additional room offers direct access to the backyard.",
+   "description": "The additional room offers direct access to the backyard.",
+   "displayOrder": 25,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/5176707164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1
+  },
+  {
+   "id": 4617076761,
+   "caption": "Second bedroom.",
+   "description": "Second bedroom.",
+   "displayOrder": 26,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/1676707164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617076761,
+     "type": 62
+    }
+   ]
+  },
+  {
+   "id": 4617076802,
+   "caption": "The second bedroom has a walk-in closet.",
+   "description": "The second bedroom has a walk-in closet.",
+   "displayOrder": 27,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/2086707164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617076802,
+     "type": 62
+    }
+   ]
+  },
+  {
+   "id": 4617076826,
+   "caption": "Secondary full bathroom that was tastefully remodeled",
+   "description": "Secondary full bathroom that was tastefully remodeled",
+   "displayOrder": 28,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/6286707164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617076826,
+     "type": 59
+    }
+   ]
+  },
+  {
+   "id": 4617077373,
+   "caption": "3rd bedroom.",
+   "description": "3rd bedroom.",
+   "displayOrder": 29,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/3737707164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617077373,
+     "type": 62
+    }
+   ]
+  },
+  {
+   "id": 4617063357,
+   "caption": "Both secondary bedrooms have a ceiling fan and walk-in closet.",
+   "description": "Both secondary bedrooms have a ceiling fan and walk-in closet.",
+   "displayOrder": 30,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/7533607164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1
+  },
+  {
+   "id": 4617063862,
+   "caption": "The upstairs game room is versatile and can serve as a bedroom, man cave, media room, among other uses. Note: The photo shown is staged.",
+   "description": "The upstairs game room is versatile and can serve as a bedroom, man cave, media room, among other uses. Note: The photo shown is staged.",
+   "displayOrder": 31,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/2683607164-844712902-original.jpg",
+   "height": 1080,
+   "width": 1620,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617063862,
+     "type": 64
+    }
+   ]
+  },
+  {
+   "id": 4617064218,
+   "caption": "Upstairs full bathroom.",
+   "description": "Upstairs full bathroom.",
+   "displayOrder": 32,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/8124607164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1,
+   "scenes": [
+    {
+     "imageId": 4617064218,
+     "type": 59
+    }
+   ]
+  },
+  {
+   "id": 4617064630,
+   "caption": "Worry free backyard with no grass.",
+   "description": "Worry free backyard with no grass.",
+   "displayOrder": 33,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/0364607164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1
+  },
+  {
+   "id": 4617064912,
+   "caption": "Another view of backyard.",
+   "description": "Another view of backyard.",
+   "displayOrder": 34,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/2194607164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1
+  },
+  {
+   "id": 4617065100,
+   "caption": "Another view of the backyard.",
+   "description": "Another view of the backyard.",
+   "displayOrder": 35,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/0015607164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1
+  },
+  {
+   "id": 4617065155,
+   "caption": "Beautiful wrought iron gate.",
+   "description": "Beautiful wrought iron gate.",
+   "displayOrder": 36,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/5515607164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1
+  },
+  {
+   "id": 4617066004,
+   "caption": "Oversized garage with 2 garage door openers and epoxy floors.",
+   "description": "Oversized garage with 2 garage door openers and epoxy floors.",
+   "displayOrder": 37,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/4006607164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1
+  },
+  {
+   "id": 4617066444,
+   "caption": "Plenty of extra parking on the driveway.",
+   "description": "Plenty of extra parking on the driveway.",
+   "displayOrder": 38,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/4446607164-844712902-original.jpg",
+   "height": 1448,
+   "width": 2172,
+   "source": 1
+  },
+  {
+   "id": 4617078323,
+   "caption": "1rst floor floorplan",
+   "description": "1rst floor floorplan",
+   "displayOrder": 39,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/3238707164-844712902-original.jpg",
+   "height": 1536,
+   "width": 2048,
+   "source": 1
+  },
+  {
+   "id": 4617067481,
+   "caption": "2nd floor floorplan",
+   "description": "2nd floor floorplan",
+   "displayOrder": 40,
+   "type": 4,
+   "uri": "https://images.homes.com/listings/112/1847607164-844712902-original.jpg",
+   "height": 1536,
+   "width": 2048,
+   "source": 1
+  },
+  {
+   "caption": "Static Map",
+   "type": 100002,
+   "uri": "https://imagescdn.homes.com/m2/NsHetxjgpaXnRjVUrOl66yfUE6AYPM0v6ebH-nIS56g/H1200W1800/map.png"
+  }
+ ],
+ "agents": [
+  {
+   "id": 976440,
+   "userId": 346438136,
+   "companyName": "HomeSmart",
+   "email": "contact-27f864fb87@example.com",
+   "firstName": "Grace",
+   "lastName": "Felefli",
+   "role": 1,
+   "mlsId": 13000,
+   "mlsOfficeId": 905118,
+   "isActive": true,
+   "profileImage": "https://imagescdn.homes.com/i2/tEanTMrlbPq-FIrs_GyIoVgUPme13lQG8OZnKbGB87Y/112/image.jpg?p=1",
+   "phoneNumber": "5550892970",
+   "phoneType": 2,
+   "licenseState": "TX",
+   "officePhoneNumber": "(555) 415-6824",
+   "officeEmailAddress": "contact-5ed7340c9c@example.com"
+  },
+  {
+   "id": 15112407,
+   "userId": 1140997497,
+   "companyName": "Lugary, LLC",
+   "email": "contact-ba63d5de36@example.com",
+   "firstName": "Irisnexy",
+   "lastName": "Regueira",
+   "role": 2,
+   "mlsId": 13000,
+   "mlsOfficeId": 2925584,
+   "isActive": true,
+   "phoneNumber": "5554261039",
+   "phoneType": 4,
+   "licenseState": "TX",
+   "officePhoneNumber": "(555) 056-8667",
+   "officeEmailAddress": "contact-f98fa0fb4b@example.com"
+  }
+ ],
+ "openHouses": [],
+ "permissionLevels": {
+  "homes": 10
+ },
+ "offices": [
+  {
+   "id": 905118,
+   "city": "77380",
+   "countryCode": "USA",
+   "email": "contact-5ed7340c9c@example.com",
+   "fullStreetAddress": "25244 Grogans Park Drive",
+   "isActive": true,
+   "name": "HomeSmart",
+   "phoneNumber": "(555) 415-6824",
+   "role": 1,
+   "status": 0,
+   "state": "TX",
+   "zip": "77380"
+  },
+  {
+   "id": 2925584,
+   "city": "Dallas",
+   "countryCode": "USA",
+   "email": "contact-f98fa0fb4b@example.com",
+   "fullStreetAddress": "4100 Spring Valley Rd Ste 1001",
+   "isActive": true,
+   "name": "Lugary, LLC",
+   "phoneNumber": "(555) 056-8667",
+   "role": 2,
+   "status": 0,
+   "state": "TX",
+   "zip": "75244"
+  }
+ ],
+ "source": {
+  "sourceType": 1
+ },
+ "history": [
+  {
+   "id": 657127581,
+   "date": "2026-01-01T00:00:00+00:00",
+   "currentPrice": 3500,
+   "modificationTimestamp": "2026-01-02T13:03:12.373+00:00",
+   "newValue": 4,
+   "newValueString": "4",
+   "oldValue": 2,
+   "oldValueString": "2",
+   "status": 0,
+   "updateType": 8
+  },
+  {
+   "id": 654472790,
+   "date": "2025-12-13T00:00:00+00:00",
+   "currentPrice": 3500,
+   "modificationTimestamp": "2025-12-13T11:56:20.757+00:00",
+   "newValue": 2,
+   "newValueString": "2",
+   "oldValue": 1,
+   "oldValueString": "1",
+   "status": 0,
+   "updateType": 4
+  },
+  {
+   "id": 642930362,
+   "date": "2025-11-20T00:00:00+00:00",
+   "currentPrice": 3500,
+   "modificationTimestamp": "2025-11-20T07:45:24.613+00:00",
+   "newValue": 1,
+   "newValueString": "1",
+   "status": 2,
+   "updateType": 1
+  }
+ ],
+ "isPrimaryForThisListingInstance": true,
+ "has3DTour": true,
+ "hasOtherRecentlySoldOrOffMarketListings": false,
+ "hasVideo": false,
+ "costarFeatureValues": {
+  "coolingType": 1,
+  "hasBasement": false,
+  "hasFireplace": true,
+  "hasGarage": true,
+  "hasHardwoodFloors": true,
+  "hasInLawSuite": false,
+  "heatingType": 1,
+  "poolType": 0,
+  "viewType": 0
+ },
+ "isInCondoBuilding": false,
+ "mls": {
+  "id": 13000
+ }
+}

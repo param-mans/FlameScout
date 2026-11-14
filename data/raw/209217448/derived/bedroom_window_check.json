@@ -1,0 +1,553 @@
+{
+ "model_id": "tvaSot6bAt8",
+ "bedrooms": [
+  {
+   "id": "d3slsxy3zlg",
+   "floor": 1,
+   "areaM2": 15.59,
+   "polygonQuality": "ok",
+   "centroid": [
+    -5.01,
+    -6.76
+   ],
+   "doors_0_5": 4,
+   "windows_0_5": 0,
+   "doors_1_5": 5,
+   "windows_1_5": 0,
+   "exterior_walls": 2,
+   "exterior_wall_length_m": 8.32,
+   "walls": [
+    {
+     "wall": "wy5opbhi",
+     "length_m": 4.75,
+     "sides": [
+      "Bedroom (d3slsx)",
+      "outside every room"
+     ],
+     "exterior": true
+    },
+    {
+     "wall": "ec2mx0b6",
+     "length_m": 1.12,
+     "sides": [
+      "Bedroom (d3slsx)",
+      "Hallway (fpmc7x)"
+     ],
+     "exterior": false
+    },
+    {
+     "wall": "8fjeij4g",
+     "length_m": 3.57,
+     "sides": [
+      "Bedroom (d3slsx)",
+      "outside every room"
+     ],
+     "exterior": true
+    },
+    {
+     "wall": "bzwgmn3y",
+     "length_m": 1.65,
+     "sides": [
+      "Bathroom (b4qtyk)",
+      "Bedroom (d3slsx)"
+     ],
+     "exterior": false
+    },
+    {
+     "wall": "zgpbeq5a",
+     "length_m": 1.93,
+     "sides": [
+      "Closet (ediidm)",
+      "Bedroom (d3slsx)"
+     ],
+     "exterior": false
+    },
+    {
+     "wall": "57ib82ny",
+     "length_m": 3.63,
+     "sides": [
+      "Bedroom (2qdmc5)",
+      "Bedroom (d3slsx)"
+     ],
+     "exterior": false
+    }
+   ],
+   "openings_within_1_5m": [
+    {
+     "id": "ak2cud3t",
+     "type": "doorway",
+     "distance_m": 0,
+     "width_m": 0.79,
+     "sides": [
+      "Bedroom (d3slsx)",
+      "Hallway (fpmc7x)"
+     ]
+    },
+    {
+     "id": "i22wyyn1",
+     "type": "doorway",
+     "distance_m": 0.81,
+     "width_m": 0.77,
+     "sides": [
+      "Bedroom (2qdmc5)",
+      "Hallway (fpmc7x)"
+     ]
+    },
+    {
+     "id": "7503mawy",
+     "type": "doorway",
+     "distance_m": 0.41,
+     "width_m": 0.57,
+     "sides": [
+      "Hallway (fpmc7x)",
+      "Bathroom (b4qtyk)"
+     ]
+    },
+    {
+     "id": "sxqra8ex",
+     "type": "doorway",
+     "distance_m": 0,
+     "width_m": 0.58,
+     "sides": [
+      "Bathroom (b4qtyk)",
+      "Bedroom (d3slsx)"
+     ]
+    },
+    {
+     "id": "r1029dzn",
+     "type": "doorway",
+     "distance_m": 0,
+     "width_m": 0.58,
+     "sides": [
+      "Closet (ediidm)",
+      "Bedroom (d3slsx)"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "tt6gm2a0463x9wmnx7rn6gugc",
+   "floor": 1,
+   "areaM2": 20.92,
+   "polygonQuality": "ok",
+   "centroid": [
+    7.39,
+    -6.77
+   ],
+   "doors_0_5": 3,
+   "windows_0_5": 2,
+   "doors_1_5": 4,
+   "windows_1_5": 2,
+   "exterior_walls": 2,
+   "exterior_wall_length_m": 6.49,
+   "walls": [
+    {
+     "wall": "kqw0lz06",
+     "length_m": 1.79,
+     "sides": [
+      "Bedroom (tt6gm2)",
+      "Closet (a5f9ag)"
+     ],
+     "exterior": false
+    },
+    {
+     "wall": "bb4i6nz2",
+     "length_m": 2.71,
+     "sides": [
+      "Bedroom (tt6gm2)",
+      "Living Room (cdz3fk)"
+     ],
+     "exterior": false
+    },
+    {
+     "wall": "xmc9ewzg",
+     "length_m": 4.76,
+     "sides": [
+      "Bathroom (h26t7k)",
+      "Bedroom (tt6gm2)"
+     ],
+     "exterior": false
+    },
+    {
+     "wall": "0xkiscut",
+     "length_m": 4.6,
+     "sides": [
+      "Bedroom (tt6gm2)",
+      "outside every room"
+     ],
+     "exterior": true
+    },
+    {
+     "wall": "bypb5zwd",
+     "length_m": 1.85,
+     "sides": [
+      "Closet (wbpb7d)",
+      "Bedroom (tt6gm2)"
+     ],
+     "exterior": false
+    },
+    {
+     "wall": "2f96atst",
+     "length_m": 1.89,
+     "sides": [
+      "Bedroom (tt6gm2)",
+      "outside every room"
+     ],
+     "exterior": true
+    }
+   ],
+   "openings_within_1_5m": [
+    {
+     "id": "iq075aiy",
+     "type": "doorway",
+     "distance_m": 0.98,
+     "width_m": 0.62,
+     "sides": [
+      "Closet (a5f9ag)",
+      "Hallway (onl0dl)"
+     ]
+    },
+    {
+     "id": "urx4htfd",
+     "type": "doorway",
+     "distance_m": 0,
+     "width_m": 1.22,
+     "sides": [
+      "Bedroom (tt6gm2)",
+      "Living Room (cdz3fk)"
+     ]
+    },
+    {
+     "id": "1ruazc50",
+     "type": "doorway",
+     "distance_m": 0,
+     "width_m": 1.31,
+     "sides": [
+      "Bathroom (h26t7k)",
+      "Bedroom (tt6gm2)"
+     ]
+    },
+    {
+     "id": "qzm715p7",
+     "type": "doorway",
+     "distance_m": 0.46,
+     "width_m": 0.62,
+     "sides": [
+      "Closet (wbpb7d)",
+      "Hallway (onl0dl)"
+     ]
+    },
+    {
+     "id": "c27y9kkf",
+     "type": "window",
+     "distance_m": 0,
+     "width_m": 0.91,
+     "sides": [
+      "Bedroom (tt6gm2)",
+      "outside every room"
+     ]
+    },
+    {
+     "id": "x5t7cpa3",
+     "type": "window",
+     "distance_m": 0,
+     "width_m": 0.95,
+     "sides": [
+      "Bedroom (tt6gm2)",
+      "outside every room"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "2qdmc5i9byxi79ry1pxdkqzea",
+   "floor": 1,
+   "areaM2": 16.08,
+   "polygonQuality": "ok",
+   "centroid": [
+    -0.83,
+    -7.32
+   ],
+   "doors_0_5": 4,
+   "windows_0_5": 2,
+   "doors_1_5": 5,
+   "windows_1_5": 2,
+   "exterior_walls": 1,
+   "exterior_wall_length_m": 4.77,
+   "walls": [
+    {
+     "wall": "7i5kx0r3",
+     "length_m": 1.99,
+     "sides": [
+      "Void (f97s71)",
+      "Bedroom (2qdmc5)"
+     ],
+     "exterior": false
+    },
+    {
+     "wall": "6ejbd7dm",
+     "length_m": 4.77,
+     "sides": [
+      "outside every room",
+      "Bedroom (2qdmc5)"
+     ],
+     "exterior": true
+    },
+    {
+     "wall": "c444xdzp",
+     "length_m": 1.18,
+     "sides": [
+      "Closet (b2kez6)",
+      "Bedroom (2qdmc5)"
+     ],
+     "exterior": false
+    },
+    {
+     "wall": "dw51hrdh",
+     "length_m": 0.66,
+     "sides": [
+      "Closet (a5f9ag)",
+      "Bedroom (2qdmc5)"
+     ],
+     "exterior": false
+    },
+    {
+     "wall": "4m0315a4",
+     "length_m": 1.61,
+     "sides": [
+      "Bedroom (2qdmc5)",
+      "Hallway (fpmc7x)"
+     ],
+     "exterior": false
+    },
+    {
+     "wall": "idd0iwgs",
+     "length_m": 1.85,
+     "sides": [
+      "Closet (kuc0fp)",
+      "Bedroom (2qdmc5)"
+     ],
+     "exterior": false
+    },
+    {
+     "wall": "crhuxdqh",
+     "length_m": 1.13,
+     "sides": [
+      "Bedroom (2qdmc5)",
+      "Hallway (onl0dl)"
+     ],
+     "exterior": false
+    },
+    {
+     "wall": "57ib82ny",
+     "length_m": 3.63,
+     "sides": [
+      "Bedroom (2qdmc5)",
+      "Bedroom (d3slsx)"
+     ],
+     "exterior": false
+    }
+   ],
+   "openings_within_1_5m": [
+    {
+     "id": "sf3rmwkh",
+     "type": "window",
+     "distance_m": 0,
+     "width_m": 0.91,
+     "sides": [
+      "outside every room",
+      "Bedroom (2qdmc5)"
+     ]
+    },
+    {
+     "id": "yzhfs10x",
+     "type": "window",
+     "distance_m": 0,
+     "width_m": 0.99,
+     "sides": [
+      "outside every room",
+      "Bedroom (2qdmc5)"
+     ]
+    },
+    {
+     "id": "ak2cud3t",
+     "type": "doorway",
+     "distance_m": 0.55,
+     "width_m": 0.79,
+     "sides": [
+      "Bedroom (d3slsx)",
+      "Hallway (fpmc7x)"
+     ]
+    },
+    {
+     "id": "wzya67pm",
+     "type": "doorway",
+     "distance_m": 0.47,
+     "width_m": 0.63,
+     "sides": [
+      "Hallway (fpmc7x)",
+      "Closet (b2kez6)"
+     ]
+    },
+    {
+     "id": "i22wyyn1",
+     "type": "doorway",
+     "distance_m": 0,
+     "width_m": 0.77,
+     "sides": [
+      "Bedroom (2qdmc5)",
+      "Hallway (fpmc7x)"
+     ]
+    },
+    {
+     "id": "fuhnw7gt",
+     "type": "doorway",
+     "distance_m": 0,
+     "width_m": 0.6,
+     "sides": [
+      "Closet (kuc0fp)",
+      "Bedroom (2qdmc5)"
+     ]
+    },
+    {
+     "id": "2m4i9xrm",
+     "type": "doorway",
+     "distance_m": 0,
+     "width_m": 0.82,
+     "sides": [
+      "Bedroom (2qdmc5)",
+      "Hallway (onl0dl)"
+     ]
+    }
+   ]
+  }
+ ],
+ "panos_nearest": [
+  {
+   "id": "37c3mt18e34bz5rzma9c261ib",
+   "d": 0.1601849511631616,
+   "pos": [
+    -5.12,
+    -6.87,
+    1.38
+   ],
+   "floor": 1,
+   "room": "Bedroom(d3slsx)",
+   "insideBedroomPolygon": true,
+   "res": [
+    "2k",
+    "low",
+    "high",
+    "4k"
+   ]
+  },
+  {
+   "id": "hnhtbkmiig1hd6n5squ0wyt8a",
+   "d": 1.9091278048682474,
+   "pos": [
+    -4.38,
+    -4.96,
+    1.4
+   ],
+   "floor": 1,
+   "room": "Bedroom(d3slsx)",
+   "insideBedroomPolygon": true,
+   "res": [
+    "2k",
+    "low",
+    "high",
+    "4k"
+   ]
+  },
+  {
+   "id": "n6gf8m67iafx4600x90nffbcc",
+   "d": 2.040027877257961,
+   "pos": [
+    -5.79,
+    -4.87,
+    1.38
+   ],
+   "floor": 1,
+   "room": "Bedroom(d3slsx)",
+   "insideBedroomPolygon": true,
+   "res": [
+    "2k",
+    "low",
+    "high",
+    "4k"
+   ]
+  },
+  {
+   "id": "umd9aznzu6smg1e2qa0xhtbma",
+   "d": 2.143797270288089,
+   "pos": [
+    -3.74,
+    -5.03,
+    1.41
+   ],
+   "floor": 1,
+   "room": "Bedroom(d3slsx)",
+   "insideBedroomPolygon": true,
+   "res": [
+    "2k",
+    "low",
+    "high",
+    "4k"
+   ]
+  },
+  {
+   "id": "m6ye4ky56u0pb7puzin116ftc",
+   "d": 2.7473600967713905,
+   "pos": [
+    -2.36,
+    -6.03,
+    1.4
+   ],
+   "floor": 1,
+   "room": "Bedroom(2qdmc5)",
+   "insideBedroomPolygon": false,
+   "res": [
+    "2k",
+    "low",
+    "high",
+    "4k"
+   ]
+  },
+  {
+   "id": "2p5wyzeus190qnt8h21raikaa",
+   "d": 2.973275577068927,
+   "pos": [
+    -4.29,
+    -3.88,
+    1.4
+   ],
+   "floor": 1,
+   "room": "Bathroom(b4qtyk)",
+   "insideBedroomPolygon": false,
+   "res": [
+    "2k",
+    "low",
+    "high",
+    "4k"
+   ]
+  }
+ ],
+ "faces_viewed": {
+  "pano": "37c3mt18e34bz5rzma9c261ib",
+  "faces": [
+   1,
+   2,
+   3,
+   4
+  ],
+  "resolution": "2k",
+  "stored": false,
+  "verdict": {
+   "1": "no",
+   "2": "no",
+   "3": "yes (edge)",
+   "4": "yes"
+  }
+ },
+ "conclusion": "real window not detected (floor plan error)"
+}

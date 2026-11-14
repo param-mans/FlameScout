@@ -1,0 +1,789 @@
+{
+ "id": 214905148,
+ "highlights": [
+  {
+   "text": "Media Room",
+   "kind": "feature"
+  },
+  {
+   "text": "Traditional Architecture",
+   "kind": "feature"
+  },
+  {
+   "text": "Game Room",
+   "kind": "feature"
+  },
+  {
+   "text": "Home Office",
+   "kind": "feature"
+  },
+  {
+   "text": "Walk-In Pantry",
+   "kind": "feature"
+  },
+  {
+   "text": "Family Room Off Kitchen",
+   "kind": "feature"
+  },
+  {
+   "text": "2 Car Attached Garage",
+   "kind": "feature"
+  },
+  {
+   "text": "Soaking Tub",
+   "kind": "feature"
+  },
+  {
+   "text": "Double Vanity",
+   "kind": "feature"
+  },
+  {
+   "text": "Breakfast Bar",
+   "kind": "feature"
+  },
+  {
+   "text": "Living Room",
+   "kind": "feature"
+  },
+  {
+   "text": "Tile Flooring",
+   "kind": "feature"
+  },
+  {
+   "text": "En-Suite Primary Bedroom",
+   "kind": "feature"
+  },
+  {
+   "text": "Programmable Thermostat",
+   "kind": "feature"
+  },
+  {
+   "text": "Central Heating and Cooling System",
+   "kind": "feature"
+  },
+  {
+   "text": "Ceiling Fan",
+   "kind": "feature"
+  },
+  {
+   "text": "Utility Room",
+   "kind": "feature"
+  }
+ ],
+ "sections": [
+  {
+   "category": "Inside This Home",
+   "subcategory": "Home Design",
+   "lines": [
+    "Built in 2009",
+    "Traditional Architecture",
+    "Single Family Detached Home"
+   ]
+  },
+  {
+   "category": "Inside This Home",
+   "subcategory": "Interior Spaces",
+   "lines": [
+    "Media Room",
+    "Game Room",
+    "Home Office",
+    "Family Room Off Kitchen",
+    "Living Room",
+    "Ceiling Fan",
+    "Utility Room",
+    "3,000 Sq Ft Home",
+    "2-Story Property",
+    "Wired For Sound",
+    "Window Treatments"
+   ]
+  },
+  {
+   "category": "Inside This Home",
+   "subcategory": "Kitchen",
+   "lines": [
+    "Walk-In Pantry",
+    "Breakfast Bar",
+    "Gas Range",
+    "Oven",
+    "Microwave",
+    "Dishwasher",
+    "Disposal"
+   ]
+  },
+  {
+   "category": "Inside This Home",
+   "subcategory": "Flooring",
+   "lines": [
+    "Tile",
+    "Carpet",
+    "Laminate"
+   ]
+  },
+  {
+   "category": "Inside This Home",
+   "subcategory": "Bedrooms and Bathrooms",
+   "lines": [
+    "Soaking Tub",
+    "Double Vanity",
+    "Bathtub with Shower",
+    "En-Suite Primary Bedroom",
+    "2.5 Bathrooms",
+    "4 Bedrooms"
+   ]
+  },
+  {
+   "category": "Inside This Home",
+   "subcategory": "Laundry",
+   "lines": [
+    "Dryer",
+    "Washer"
+   ]
+  },
+  {
+   "category": "Inside This Home",
+   "subcategory": "Home Security",
+   "lines": [
+    "Fire and Smoke Detector"
+   ]
+  },
+  {
+   "category": "Inside This Home",
+   "subcategory": "Parking",
+   "lines": [
+    "2 Car Attached Garage",
+    "Driveway"
+   ]
+  },
+  {
+   "category": "Inside This Home",
+   "subcategory": "Eco-Friendly Details",
+   "lines": [
+    "Energy-Efficient Thermostat"
+   ]
+  },
+  {
+   "category": "Inside This Home",
+   "subcategory": "Lot Details",
+   "lines": [
+    "4,725 Sq Ft Lot",
+    "Back Yard Fenced"
+   ]
+  },
+  {
+   "category": "Inside This Home",
+   "subcategory": "Schools",
+   "lines": [
+    "Schmalz Elementary School",
+    "Mayde Creek Junior High School",
+    "Mayde Creek High School"
+   ]
+  },
+  {
+   "category": "Inside This Home",
+   "subcategory": "Utilities",
+   "lines": [
+    "Programmable Thermostat",
+    "Central Heating and Cooling System",
+    "Heating System Uses Gas"
+   ]
+  },
+  {
+   "category": "Inside This Home",
+   "subcategory": "Listing and Financial Details",
+   "lines": [
+    "Property Available on 1/27/26",
+    "Long Term Lease"
+   ]
+  },
+  {
+   "category": "Community Details",
+   "subcategory": "Overview",
+   "lines": [
+    "Barkers Xing Subdivision"
+   ]
+  },
+  {
+   "category": "Community Details",
+   "subcategory": "Pet Policy",
+   "lines": [
+    "Call for details about the types of pets allowed",
+    "Pet Deposit Required"
+   ]
+  }
+ ],
+ "features": [
+  {
+   "id": 7226,
+   "name": "Media Room",
+   "category": "Inside This Home",
+   "subcategory1": "Interior Spaces",
+   "subcategory2": "Spaces - Media",
+   "source": "Mls",
+   "inSentence": false
+  },
+  {
+   "id": 3601,
+   "name": "Year Built",
+   "category": "Inside This Home",
+   "subcategory1": "Home Design",
+   "subcategory2": "Year Built",
+   "source": "Mls",
+   "inSentence": true,
+   "doubleValue": 2009
+  },
+  {
+   "id": 3002,
+   "name": "Lot Size Square Feet",
+   "category": "Inside This Home",
+   "subcategory1": "Lot Details",
+   "subcategory2": "Dimensions",
+   "source": "Mls",
+   "inSentence": true,
+   "doubleValue": 4725
+  },
+  {
+   "id": 3342,
+   "name": "Lot Size Acres",
+   "category": "Inside This Home",
+   "subcategory1": "Lot Details",
+   "subcategory2": "Dimensions",
+   "source": "Mls",
+   "inSentence": true,
+   "doubleValue": 0.1085
+  },
+  {
+   "id": 701,
+   "name": "Traditional Architecture",
+   "category": "Inside This Home",
+   "subcategory1": "Home Design",
+   "subcategory2": "Architectural Style",
+   "source": "Mls",
+   "inSentence": false
+  },
+  {
+   "id": 867,
+   "name": "Game Room",
+   "category": "Inside This Home",
+   "subcategory1": "Interior Spaces",
+   "subcategory2": "Spaces - Game Room",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 929,
+   "name": "Office",
+   "category": "Inside This Home",
+   "subcategory1": "Interior Spaces",
+   "subcategory2": "Spaces - Office",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 974,
+   "name": "Walk-In Pantry",
+   "category": "Inside This Home",
+   "subcategory1": "Kitchen",
+   "subcategory2": "Features - Pantry",
+   "source": "Mls",
+   "inSentence": false
+  },
+  {
+   "id": 1079,
+   "name": "Family Room Off Kitchen",
+   "category": "Inside This Home",
+   "subcategory1": "Interior Spaces",
+   "subcategory2": "Spaces - Family Room",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1148,
+   "name": "Attached Garage",
+   "category": "Inside This Home",
+   "subcategory1": "Parking",
+   "subcategory2": "Number of Spaces FLYOUT",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1214,
+   "name": "Soaking Tub",
+   "category": "Inside This Home",
+   "subcategory1": "Bedrooms and Bathrooms",
+   "subcategory2": "Bathroom Tub",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1232,
+   "name": "Double Vanity",
+   "category": "Inside This Home",
+   "subcategory1": "Bedrooms and Bathrooms",
+   "subcategory2": "Bathroom Vanity",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1276,
+   "name": "Breakfast Bar",
+   "category": "Inside This Home",
+   "subcategory1": "Kitchen",
+   "subcategory2": "Kitchen - Spaces",
+   "source": "Mls",
+   "inSentence": false
+  },
+  {
+   "id": 1283,
+   "name": "Bathtub with Shower",
+   "category": "Inside This Home",
+   "subcategory1": "Bedrooms and Bathrooms",
+   "subcategory2": "Bathroom Tub",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1329,
+   "name": "Living Room",
+   "category": "Inside This Home",
+   "subcategory1": "Interior Spaces",
+   "subcategory2": "Spaces - Living Rooms",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1302,
+   "name": "Tile Flooring",
+   "category": "Inside This Home",
+   "subcategory1": "Flooring",
+   "subcategory2": "Flooring - Tile",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 675,
+   "name": "En-Suite Primary Bedroom",
+   "category": "Inside This Home",
+   "subcategory1": "Bedrooms and Bathrooms",
+   "subcategory2": "Bedroom Configuration",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1588,
+   "name": "Programmable Thermostat",
+   "category": "Inside This Home",
+   "subcategory1": "Utilities",
+   "subcategory2": "Heating - Gauges",
+   "source": "Mls",
+   "inSentence": false
+  },
+  {
+   "id": 1604,
+   "name": "Gas Range",
+   "category": "Inside This Home",
+   "subcategory1": "Kitchen",
+   "subcategory2": "Appliances - Cooking Range",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1608,
+   "name": "Oven",
+   "category": "Inside This Home",
+   "subcategory1": "Kitchen",
+   "subcategory2": "Appliances - Cooking Oven",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1702,
+   "name": "Central Air",
+   "category": "Inside This Home",
+   "subcategory1": "Utilities",
+   "subcategory2": "Cooling - Type",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1714,
+   "name": "Central Heating",
+   "category": "Inside This Home",
+   "subcategory1": "Utilities",
+   "subcategory2": "Heating - Feature",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1723,
+   "name": "Ceiling Fan",
+   "category": "Inside This Home",
+   "subcategory1": "Interior Spaces",
+   "subcategory2": "Cooling Fan",
+   "source": "Mls",
+   "inSentence": false
+  },
+  {
+   "id": 872,
+   "name": "Garage",
+   "category": "Inside This Home",
+   "subcategory1": "Parking",
+   "subcategory2": "Number of Spaces FLYOUT",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 946,
+   "name": "Utility Room",
+   "category": "Inside This Home",
+   "subcategory1": "Interior Spaces",
+   "subcategory2": "Spaces - Utility",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 953,
+   "name": "Dryer",
+   "category": "Inside This Home",
+   "subcategory1": "Laundry",
+   "subcategory2": "Laundry Appliance",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 2567,
+   "name": "Carpet",
+   "category": "Inside This Home",
+   "subcategory1": "Flooring",
+   "subcategory2": "Flooring - Carpet",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 2592,
+   "name": "Laminate Flooring",
+   "category": "Inside This Home",
+   "subcategory1": "Flooring",
+   "subcategory2": "Flooring - Laminate",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1381,
+   "name": "Energy-Efficient Thermostat",
+   "category": "Inside This Home",
+   "subcategory1": "Eco-Friendly Details",
+   "subcategory2": "Features Energy",
+   "source": "Mls",
+   "inSentence": false
+  },
+  {
+   "id": 1569,
+   "name": "Availability Date",
+   "category": "Inside This Home",
+   "subcategory1": "Listing and Financial Details",
+   "subcategory2": "Overview Listing",
+   "source": "Mls",
+   "inSentence": true,
+   "stringValues": [
+    "2026-01-27"
+   ]
+  },
+  {
+   "id": 1633,
+   "name": "Microwave",
+   "category": "Inside This Home",
+   "subcategory1": "Kitchen",
+   "subcategory2": "Appliances - Warming Devices",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1635,
+   "name": "Heating Available",
+   "category": "Inside This Home",
+   "subcategory1": "Utilities",
+   "subcategory2": "Heating - Feature",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1746,
+   "name": "Washer",
+   "category": "Inside This Home",
+   "subcategory1": "Laundry",
+   "subcategory2": "Laundry Appliance",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1165,
+   "name": "Dishwasher",
+   "category": "Inside This Home",
+   "subcategory1": "Kitchen",
+   "subcategory2": "Appliances - Dishwasher",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1843,
+   "name": "Call for details about the types of pets allowed",
+   "category": "Community Details",
+   "subcategory1": "Pet Policy",
+   "subcategory2": "Pets Allowed",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 1852,
+   "name": "Pet Deposit Required",
+   "category": "Community Details",
+   "subcategory1": "Pet Policy",
+   "subcategory2": "Pets Allowed",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 4331,
+   "name": "Long Term Lease",
+   "category": "Inside This Home",
+   "subcategory1": "Listing and Financial Details",
+   "subcategory2": "Lease Term",
+   "source": "Mls",
+   "inSentence": false
+  },
+  {
+   "id": 1961,
+   "name": "Public Water Source",
+   "category": "Inside This Home",
+   "subcategory1": "Utilities",
+   "subcategory2": "Hidden Utilities",
+   "source": "Mls",
+   "inSentence": false
+  },
+  {
+   "id": 2120,
+   "name": "Single Family Home",
+   "category": "Inside This Home",
+   "subcategory1": "Home Design",
+   "subcategory2": "Year Built",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 3221,
+   "name": "Back Yard Fenced",
+   "category": "Inside This Home",
+   "subcategory1": "Lot Details",
+   "subcategory2": "Fence",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 3760,
+   "name": "Elementary School",
+   "category": "Inside This Home",
+   "subcategory1": "Schools",
+   "subcategory2": "School",
+   "source": "Mls",
+   "inSentence": true,
+   "stringValues": [
+    "SCHMALZ ELEMENTARY SCHOOL"
+   ]
+  },
+  {
+   "id": 3761,
+   "name": "Middle School",
+   "category": "Inside This Home",
+   "subcategory1": "Schools",
+   "subcategory2": "School",
+   "source": "Mls",
+   "inSentence": true,
+   "stringValues": [
+    "MAYDE CREEK JUNIOR HIGH SCHOOL"
+   ]
+  },
+  {
+   "id": 3762,
+   "name": "High School",
+   "category": "Inside This Home",
+   "subcategory1": "Schools",
+   "subcategory2": "School",
+   "source": "Mls",
+   "inSentence": true,
+   "stringValues": [
+    "MAYDE CREEK HIGH SCHOOL"
+   ]
+  },
+  {
+   "id": 3188,
+   "name": "Subdivision Name",
+   "category": "Community Details",
+   "subcategory1": "Overview",
+   "subcategory2": "Contact Info",
+   "source": "Mls",
+   "inSentence": true,
+   "stringValues": [
+    "Barkers Xing"
+   ]
+  },
+  {
+   "id": 3459,
+   "name": "Garage Spaces",
+   "category": "Inside This Home",
+   "subcategory1": "Parking",
+   "subcategory2": "Number of Spaces FLYOUT",
+   "source": "Mls",
+   "inSentence": true,
+   "doubleValue": 2
+  },
+  {
+   "id": 3687,
+   "name": "Driveway",
+   "category": "Inside This Home",
+   "subcategory1": "Parking",
+   "subcategory2": "Driveway",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 2893,
+   "name": "Heating System Uses Gas",
+   "category": "Inside This Home",
+   "subcategory1": "Utilities",
+   "subcategory2": "Heating - Fuel",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 3473,
+   "name": "Public Sewer",
+   "category": "Inside This Home",
+   "subcategory1": "Utilities",
+   "subcategory2": "Hidden Utilities",
+   "source": "Mls",
+   "inSentence": false
+  },
+  {
+   "id": 2965,
+   "name": "Fire and Smoke Detector",
+   "category": "Inside This Home",
+   "subcategory1": "Home Security",
+   "subcategory2": "Fire Safety",
+   "source": "Mls",
+   "inSentence": false
+  },
+  {
+   "id": 3340,
+   "name": "Full Bathrooms",
+   "category": "Inside This Home",
+   "subcategory1": "Bedrooms and Bathrooms",
+   "subcategory2": "Bathroom FLYOUT",
+   "source": "Mls",
+   "inSentence": true,
+   "doubleValue": 2
+  },
+  {
+   "id": 3341,
+   "name": "Half Bathrooms",
+   "category": "Inside This Home",
+   "subcategory1": "Bedrooms and Bathrooms",
+   "subcategory2": "Bathroom FLYOUT",
+   "source": "Mls",
+   "inSentence": true,
+   "doubleValue": 1
+  },
+  {
+   "id": 3267,
+   "name": "Total Bathrooms",
+   "category": "Inside This Home",
+   "subcategory1": "Bedrooms and Bathrooms",
+   "subcategory2": "Bathroom FLYOUT",
+   "source": "Mls",
+   "inSentence": true,
+   "doubleValue": 3
+  },
+  {
+   "id": 3682,
+   "name": "Total Bedrooms",
+   "category": "Inside This Home",
+   "subcategory1": "Bedrooms and Bathrooms",
+   "subcategory2": "Bedroom FLYOUT",
+   "source": "Mls",
+   "inSentence": true,
+   "doubleValue": 4
+  },
+  {
+   "id": 3003,
+   "name": "Living Area SF (Total of All Finished Spaces)",
+   "category": "Inside This Home",
+   "subcategory1": "Interior Spaces",
+   "subcategory2": "Square Feet FLYOUT",
+   "source": "Mls",
+   "inSentence": true,
+   "doubleValue": 3000
+  },
+  {
+   "id": 3525,
+   "name": "Total Sq Ft (Finished and Unfinished Spaces)",
+   "category": "Inside This Home",
+   "subcategory1": "Interior Spaces",
+   "subcategory2": "Square Feet FLYOUT",
+   "source": "Mls",
+   "inSentence": true,
+   "doubleValue": 3000
+  },
+  {
+   "id": 3680,
+   "name": "Disposal",
+   "category": "Inside This Home",
+   "subcategory1": "Kitchen",
+   "subcategory2": "Sink - Feature",
+   "source": "Mls",
+   "inSentence": false
+  },
+  {
+   "id": 3130,
+   "name": "Number of Stories",
+   "category": "Inside This Home",
+   "subcategory1": "Interior Spaces",
+   "subcategory2": "Stories",
+   "source": "Mls",
+   "inSentence": true,
+   "doubleValue": 2
+  },
+  {
+   "id": 3289,
+   "name": "Wired For Sound",
+   "category": "Inside This Home",
+   "subcategory1": "Interior Spaces",
+   "subcategory2": "Entertainment",
+   "source": "Mls",
+   "inSentence": true
+  },
+  {
+   "id": 3151,
+   "name": "Window Treatments",
+   "category": "Inside This Home",
+   "subcategory1": "Interior Spaces",
+   "subcategory2": "Window - Treatment",
+   "source": "Mls",
+   "inSentence": true
+  }
+ ],
+ "derivedValues": {
+  "totalParkingSpaces": 2,
+  "totalBathrooms": 2.5,
+  "lotSizeInAcres": 0.11,
+  "homeSquareFeet": 3000,
+  "propertyType": "House",
+  "numberOfStories": 2,
+  "yearBuilt": 2009,
+  "totalBedrooms": 4,
+  "totalGarageSpaces": 2,
+  "totalPrivateGarageSpaces": 2,
+  "squareFeetMin": 3000,
+  "squareFeetMax": 3000,
+  "availabilityDate": "2026-01-27",
+  "lotSizeInAcresRaw": 0.1085
+ }
+}
