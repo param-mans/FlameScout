@@ -2,7 +2,7 @@
 
 2D floor plan and 3D model of a house with an evacuation distance heat map, built from a floor plan
 generated from the Matterport API. Plain HTML + ES modules, no build step, no server code, no network
-calls outside this folder. Vite serves it as-is from `public/`, so it is available at
+calls outside this folder except the optional imagery API (see Oblique views). Vite serves it as-is from `public/`, so it is available at
 `/house-viewer/casa.html` in `npm run dev` and in the production build.
 
 ## Files
@@ -43,25 +43,24 @@ the entity table.
 | `sample-c` | 1 | 17 | |
 | `sample-d` | 1 | 15 | |
 
-`samples/index.json` lists each sample with a **fictitious** address (`address`) for the house picker,
-plus its title, floors and rooms.
-
 \* Rooms other than Void.
 
 All four passed the house quality check and have at least 4 windows. Every room polygon the viewer
 draws is `polygonQuality: "ok"`. The 2-floor samples contain a few `Void` areas with an unreliable
 outline. Void areas are never drawn and are not used for evacuation or stairs.
 
-Each file is `{ id, title, quality, stairs, plan }`:
+`samples/index.json` lists each house with its real address, city, market, coordinates (`location`),
+Matterport model id and listing facts (beds, baths, sq ft, year built, type). The picker in the MDT uses it.
+
+Each sample file is `{ id, title, address, location, matterportModelId, listing, quality, stairs, plan }`:
 
 - `plan`: floors, walls, openings and rooms in local meters (origin inside the house).
 - `quality`: result of the quality check (`estado`, `etiquetas`, `motivo`, counts).
 - `stairs`: precomputed stair analysis (`connected` per pair of floors, `pairs` with state, scale,
   direction and reason).
 
-The viewer recomputes stairs and evacuation at load time with the same modules. All
-identifying data was removed: model id, address, coordinates, listing and agent data. Matterport
-element ids were replaced with short opaque ids (`f1`, `r1`, `w1`, `o1`).
+The viewer recomputes stairs and evacuation at load time with the same modules. Matterport element
+ids inside `plan` are short ids (`f1`, `r1`, `w1`, `o1`).
 
 ## Oblique views (Vexcel)
 
@@ -69,15 +68,15 @@ Under the 2D plan the viewer shows the Vexcel oblique aerial views (N / E / S / 
 faces; the straight-down view is left out on purpose). Sources, in order:
 
 1. **API**: `GET /api/house-viewer/vexcel/<sample>` and `.../<sample>/oblique-<dir>.jpg`, same origin. In
-   `npm run dev`, Vite forwards `/api` to `localhost:8000`, where the imagery server runs (demo_costar
-   `tools/serve.py` with `VEXCEL_API_KEY` in its environment). The server maps the anonymous sample id to the
-   house, calls Vexcel with the key in the `X-API-KEY` header and caches the images. It returns only the
-   capture date and copyright: no key, coordinates, model id or request parameters reach the browser.
+   `npm run dev`, Vite forwards `/api` to `localhost:8000`, where `python scripts/imagery_server.py` runs.
+   The server takes the coordinates from `samples/index.json` and the key from `VEXCEL_API_KEY` in the
+   repo's `.env`. It calls Vexcel with the key only in the `X-API-KEY` header and caches the images in
+   `data/cache/vexcel/<sample>/` (gitignored). The key never reaches the browser.
 2. **Local copy**: `local-imagery/<sample>/` (`oblique-<dir>.jpg` + `meta.json`), kept out of git by its own
    `.gitignore`.
 
-Without either, the section explains what is missing (server not reachable, key not set...). The images are
-never committed: Vexcel's license, and a photo of the real house would reveal where the anonymized sample is.
+Without either, the section explains what is missing (server not reachable, key not set...). Vexcel imagery
+is licensed: it is cached locally, never committed.
 
 ## postMessage API
 

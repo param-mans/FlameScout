@@ -1,30 +1,86 @@
 [
  {
   "id": "sample-a",
-  "address": "14 Example Lane, Demo City",
+  "address": "317 E 35th Street, Houston",
   "title": "Sample A \u00b7 2 floors \u00b7 19 rooms",
   "floors": 2,
-  "rooms": 19
+  "rooms": 19,
+  "location": {
+   "lat": 29.81827,
+   "lon": -95.39513
+  },
+  "city": "Houston",
+  "market": "Houston",
+  "matterportModelId": "6h2k52bNwQN",
+  "listing": {
+   "beds": 3,
+   "baths": 2.5,
+   "sqft": 1726,
+   "yearBuilt": 2017,
+   "homeType": "Detached"
+  }
  },
  {
   "id": "sample-b",
-  "address": "220 Placeholder Ave, Demo City",
+  "address": "12306 Knobcrest Drive, Houston",
   "title": "Sample B \u00b7 2 floors \u00b7 27 rooms",
   "floors": 2,
-  "rooms": 27
+  "rooms": 27,
+  "location": {
+   "lat": 29.98374,
+   "lon": -95.60805
+  },
+  "city": "Houston",
+  "market": "Houston",
+  "matterportModelId": "dcMor6jD9Ji",
+  "listing": {
+   "beds": 4,
+   "baths": 2.5,
+   "sqft": 2622,
+   "yearBuilt": 1981,
+   "homeType": "Detached"
+  }
  },
  {
   "id": "sample-c",
-  "address": "7 Mock Court, Demo City",
+  "address": "310 E 25th Street, Houston",
   "title": "Sample C \u00b7 1 floor \u00b7 17 rooms",
   "floors": 1,
-  "rooms": 17
+  "rooms": 17,
+  "location": {
+   "lat": 29.80868,
+   "lon": -95.39551
+  },
+  "city": "Houston",
+  "market": "Houston",
+  "matterportModelId": "47wGnc2jnLH",
+  "listing": {
+   "beds": 3,
+   "baths": 2,
+   "sqft": 1844,
+   "yearBuilt": 1920,
+   "homeType": "Detached"
+  }
  },
  {
   "id": "sample-d",
-  "address": "93 Fixture Road, Demo City",
+  "address": "8040 Agnew Avenue, Los Angeles",
   "title": "Sample D \u00b7 1 floor \u00b7 15 rooms",
   "floors": 1,
-  "rooms": 15
+  "rooms": 15,
+  "location": {
+   "lat": 33.96624,
+   "lon": -118.40626
+  },
+  "city": "Los Angeles",
+  "market": "Los Angeles",
+  "matterportModelId": "d5orEWzUpvu",
+  "listing": {
+   "beds": 3,
+   "baths": 2,
+   "sqft": 1622,
+   "yearBuilt": 1947,
+   "homeType": "Detached"
+  }
  }
 ]

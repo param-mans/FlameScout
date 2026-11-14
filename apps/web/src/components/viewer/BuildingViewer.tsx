@@ -95,7 +95,7 @@ function SamplePicker({ samples, value, onChange }: { samples: SampleHouse[]; va
               </li>
             ))}
           </ul>
-          <div className="px-2.5 py-1 text-[11px] text-faint">Fictitious addresses. Sample data for the demo only.</div>
+          <div className="px-2.5 py-1 text-[11px] text-faint">Sample houses with a Matterport scan. Temporary picker.</div>
         </div>
       )}
     </div>

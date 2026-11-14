@@ -1,5 +1,5 @@
 // Visor 3D/2D + mapa de calor de evacuacion de una vivienda de muestra (samples/<id>.json), integrado en FlameScout.
-// Copia adaptada del visor de demo_costar: solo archivos estaticos, sin servidor, sin /api y sin llamadas externas.
+// Archivos estaticos; la unica llamada de red es la API de imagenes oblicuas (/api/house-viewer/vexcel, mismo origen).
 // Parametros: ?sample=<id> (por defecto el primero de samples/index.json), ?embed=1 (una sola vista, para iframe),
 // ?mode=2d|3d (vista en modo embed). API postMessage: ver README.md (mismo origen solamente).
 // Solo se usa lo que hay en el plano generado: nada se inventa (la altura de planta es una estimacion marcada como tal).
@@ -922,7 +922,7 @@ function pintarOblicuas() {
   const el = $('oblicuas-body'); if (!el) return
   if (OBL.estado === 'cargando') { el.innerHTML = '<div class="obl-vacio">Loading oblique views…<br><span class="hint">The first time for a house can take about 10 s.</span></div>'; return }
   if (OBL.estado !== 'ok') {
-    const ayuda = /not reachable/.test(OBL.error) ? 'Start the imagery server: demo_costar tools/serve.py on port 8000 with VEXCEL_API_KEY set.' : OBL.error
+    const ayuda = /not reachable/.test(OBL.error) ? 'Start the imagery server: python scripts/imagery_server.py (VEXCEL_API_KEY in .env).' : OBL.error
     el.innerHTML = `<div class="obl-vacio">No oblique imagery for this sample.<br><span class="hint">${esc(ayuda)}</span></div>`; return
   }
   const m = OBL.meta, v = m.views[OBL.dir], url = OBL.base + v.file
