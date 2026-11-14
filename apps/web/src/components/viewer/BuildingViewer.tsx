@@ -6,8 +6,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 // The sample house is chosen with the temporary picker on top; the choice is kept in ?sample=<id>.
 type Props = { mode?: "floor" | "scan3d"; layout?: "single" | "split"; sampleId?: string };
 
-/** Flip to true to show the house viewer in the MDT without ?viewer=1. */
-export const HOUSE_VIEWER_DEFAULT = false;
+/** House viewer in the MDT by default (true); ?viewer=0 shows the previous Map / Floor 2D / 3D scan tabs. */
+export const HOUSE_VIEWER_DEFAULT = true;
 type Status = { kind: "idle" } | { kind: "loading" } | { kind: "ready" } | { kind: "error"; message: string };
 export type SampleHouse = {
   id: string; address: string; city?: string; matterportModelId: string; location?: { lat: number; lon: number };

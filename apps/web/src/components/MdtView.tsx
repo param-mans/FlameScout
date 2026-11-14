@@ -6,9 +6,10 @@ import { Timeline } from "./Timeline";
 import { Btn, KV, Panel, StatusTag, fmt } from "./ui";
 import { BuildingViewer, HOUSE_VIEWER_DEFAULT } from "./viewer/BuildingViewer";
 
-// House viewer mode (?viewer=1 or HOUSE_VIEWER_DEFAULT): one central "Floor plan + 3D" view instead of the
-// Map / Floor 2D / 3D scan tabs. The house is picked inside the viewer (?sample=<id>).
-const VIEWER = HOUSE_VIEWER_DEFAULT || new URLSearchParams(window.location.search).get("viewer") === "1";
+// House viewer mode (HOUSE_VIEWER_DEFAULT or ?viewer=1; ?viewer=0 turns it off): one central "Floor plan + 3D" view
+// instead of the Map / Floor 2D / 3D scan tabs. The house is picked inside the viewer (?sample=<id>).
+const viewerParam = new URLSearchParams(window.location.search).get("viewer");
+const VIEWER = viewerParam === "1" || (HOUSE_VIEWER_DEFAULT && viewerParam !== "0");
 
 const LABELS: Record<string, string> = {
   "building.use": "Use",
