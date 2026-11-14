@@ -23,7 +23,8 @@ Subagents and the tools that write the JSON artifacts:
               (delegated in ONE orchestrator turn, so the three run concurrently; each makes two
                model calls: pull, then a short summary that code saves as notes/<layer>_summary.md;
                when the third layer lands, code merges them into dossier.json)
-  incident_mapper  get_transcript(), get_plan_index(), submit_overlay()  -> overlay_vN.json
+  incident_mapper  get_transcript(), get_plan_index(), resolve_place(), submit_overlay()  -> overlay_vN.json
+                   (+ a copilot question per place the plan cannot pin to one room)
               (the incident overlay for the 3D viewer, docs/INCIDENT_OVERLAY_SPEC.md; runs in
                parallel with the layer subagents, and first on an update)
   strategy    submit_considerations()   -> brief_vN.json  + notes/strategy_reasoning*.md
@@ -211,12 +212,27 @@ asked to pull its data layer for the building in the user message. Then reply "d
 one at a time, and call nothing else."""
 
 MAPPER_PROMPT = """You place what callers reported onto the building plan, for the incident overlay the \
-crew's 3D viewer draws. Your task says which overlay version N you produce. Use exactly three turns:
+crew's 3D viewer draws. Your task says which overlay version N you produce. Use exactly four turns:
 1. One turn, together: get_transcript(), get_plan_index(), and for N > 1
    read_file("/workspace/overlay_v<N-1>.json", limit=2000).
-2. submit_overlay with everything the callers reported. If it answers "Rejected", fix exactly what it
+2. One turn, together: resolve_place once for every place where a caller named a room or placed it
+   against one ("in the study", "the bedroom over the kitchen"). A floor alone ("upstairs") needs no
+   call: it is a floor location. Skip this turn if get_plan_index says NO INTERIOR SCAN, and skip places
+   already mapped in overlay_v<N-1>.json whose words did not change.
+3. submit_overlay with everything the callers reported. If it answers "Rejected", fix exactly what it
    lists and submit again (it accepts at most two more tries).
-3. Reply with one sentence: what you mapped and what stays unlocated.
+4. Reply with one sentence: what you mapped and what stays unlocated.
+
+resolve_place: put the caller's words into its fields, never your own guess:
+- type: the plan index room type for the kind of room the caller named (a "study" is the index's "office",
+  a "lounge" its "living room"); leave it out if the caller named no kind of room or the index has no such type.
+- floor_reported: the floor the caller gave ("upstairs" in a two-storey building is 2, "downstairs" or
+  "ground floor" is 1); leave it out if they gave none.
+- over / under / next_to: a room type or id the caller placed it against ("the bedroom over the kitchen" ->
+  over "kitchen"); at_stairs true for "by the stairs"; size "largest" / "smallest" for "the big / small one".
+- about: who or what it is, with the call ("two children (call 2)"); evidence_ids: the caller span ids.
+Its answer decides the location: "resolved" -> that room id; "ambiguous" -> floor level (floor_reported),
+never one of the candidate ids (the dispatcher is asked which one); "none" -> floor or unknown.
 
 What to submit:
 - occupants (count, or count_range [min, max] when unsure; "someone" is 1), fire (kind smoke, fire or
@@ -225,23 +241,21 @@ What to submit:
   status "reported" (never "verified"), confidence 0-1, evidence_ids (span ids from get_transcript,
   caller lines only), note (the caller's words, short), and location.
 - location: the most precise level the caller's words support, never more:
-  - room: the words name a kind of room AND the plan index has exactly one room of that kind on that
-    floor (one kitchen) -> {"kind": "room", "room_id": ...}
-  - anchor: a room as above, plus the words place it at one of its windows, doors or stairs, or a
-    side -> {"kind": "anchor", "anchor": {"room_id", "position", "ref_id"}}; ref_id is an opening id
-    for near_door / near_window, a stairs id for near_stairs
-  - floor: only the floor is known ("upstairs" in a two-storey building is 2, ground floor is 1), or the
-    room is ambiguous (two bedrooms upstairs and nothing in the index tells them apart)
-    -> {"kind": "floor", "floor_reported": n}
+  - room: resolve_place answered "resolved" -> {"kind": "room", "room_id": <that id>}
+  - anchor: a resolved room, plus the words place it at one of its windows, doors or stairs ->
+    {"kind": "anchor", "anchor": {"room_id", "position" (near_door, near_window, near_stairs or center),
+    "ref_id"}}; ref_id is an opening id of that floor for near_door / near_window, a stairs id for near_stairs
+  - floor: only the floor is known, or resolve_place answered "ambiguous" -> {"kind": "floor", "floor_reported": n}
   - unknown: nothing locates it -> {"kind": "unknown"}
-  Never guess a room to look precise. Ids only from get_plan_index; never coordinates.
+  Never guess a room to look precise: a room id that resolve_place did not resolve is rejected. Ids only
+  from get_plan_index and resolve_place; never coordinates, never a side or direction (there is no north).
 - If get_plan_index says there is NO INTERIOR SCAN: only floor and unknown locations, and no room,
   opening or stairs ids anywhere.
 - Callers disagree (different calls give different locations or counts for the same people or the same
   fire): one entity per caller, each with status "contradicted" and the same group_id, plus one
   contradictions entry {"group_id", "key" (e.g. "occupants.location"), "resolved_by_dispatcher": false}.
   Never pick a winner. One caller correcting themselves is not a contradiction.
-- objectives: "rescue" for reported occupants (target kind occupant, occupant_group, room or floor),
+- objectives: "rescue" for reported occupants (target kind occupant, occupant_group, a resolved room or floor),
   "recon" for hazards and unclear reports; priority 1 first; rationale; evidence_ids. A floor target
   is {"kind": "floor", "floor_reported": n}, with ref_id only if it is a floor id from get_plan_index.
 - considerations (optional, at most 3): text starts with "Consider" and is advisory; rationale;
@@ -382,6 +396,7 @@ class Session:
     rejections: int = 0    # draft considerations rejected for the current version
     overlay_attempts: int = 0    # mapper submissions for the current version
     overlay_rejections: int = 0  # of which refused
+    places: list = field(default_factory=list)  # resolve_place calls of the current version (query, result)
     agent: Any = None
     error: Optional[str] = None
     todos: list[TodoItem] = field(default_factory=list)
@@ -798,7 +813,7 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
 
     @tool
     def get_plan_index() -> str:
-        """The confirmed building's plan index: floors (numbered from the ground floor, 1), rooms, openings, stairs."""
+        """The confirmed building's plan index: floors (numbered from the ground floor, 1), rooms with their size and relations, openings, stairs."""
         index = overlay_mod.load_plan_index(_building_id(s))
         if not overlay_mod.has_scan(index):
             return ("NO INTERIOR SCAN on file for this building: use only floor (floor_reported) and unknown "
@@ -807,8 +822,49 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
         return json.dumps({"floors": floors, "rooms": index["rooms"], "openings": index["openings"],
                            "stairs": index["stairs"]}, indent=1)
 
+    @tool
+    def resolve_place(place: overlay_mod.PlaceQuery) -> str:
+        """Resolve one place a caller gave ("the bedroom over the kitchen") to plan ids. The only way to get a room id.
+
+        "resolved": exactly one room matches, use its id. "ambiguous": several match, keep the report at floor level
+        (floor_reported); the dispatcher gets the question below. "none": no room matches, use floor or unknown.
+        """
+        if not overlay_mod.names_a_room(place):  # only a floor: nothing to resolve, nothing to ask
+            return (f"floor only: the caller named no room. Give {place.about} a floor location"
+                    + (f" (floor_reported {place.floor_reported})." if place.floor_reported is not None else
+                       " or unknown."))
+        index = overlay_mod.load_plan_index(_building_id(s))
+        result = overlay_mod.resolve(index, place)
+        with s.lock:
+            s.places.append({"query": place.model_dump(), "result": result})
+        if result["status"] == "resolved":
+            return f"resolved: room {result['ids'][0]}. Use this room_id for {place.about}."
+        if result["status"] == "ambiguous":
+            return (f"ambiguous: {result['reason']} ({', '.join(result['ids'])}). Do not pick one: give {place.about} "
+                    f"a floor location (floor_reported). The dispatcher will be asked: {result['question']}")
+        return f"none: {result['reason']}. Give {place.about} a floor or unknown location."
+
+    def _resolved_rooms() -> set[str]:
+        """Room ids resolve_place resolved for this version, plus those of the previous accepted overlay."""
+        ids = {p["result"]["ids"][0] for p in s.places if p["result"]["status"] == "resolved"}
+        previous = overlay_mod.read(ws, s.version - 1)
+        index = overlay_mod.load_plan_index(_building_id(s))
+        return ids | ({r for _, r in overlay_mod.room_refs(previous, index)} if previous else set())
+
+    def _ask_places() -> None:
+        """A dispatcher question for every ambiguous place that was not resolved later in this version."""
+        for i, p in enumerate(s.places):
+            q, result = overlay_mod.PlaceQuery(**p["query"]), p["result"]
+            if result["status"] != "ambiguous" or any(
+                    later["query"]["about"] == q.about and later["result"]["status"] == "resolved"
+                    for later in s.places[i + 1:]):
+                continue
+            copilot.write_place_question(ws, s.incident_id, q.about, overlay_mod.place_label(q),
+                                         result["question"], result["ids"], q.evidence_ids)
+
     def overlay_refused(errors: list[str]) -> str:
         s.overlay_rejections += 1
+        log.warning("Incident %s: overlay v%d submission refused: %s", s.incident_id, s.version, "; ".join(errors))
         left = MAX_OVERLAY_SUBMISSIONS - s.overlay_attempts
         return (f"Rejected, nothing written ({left} tr{'y' if left == 1 else 'ies'} left). Fix these and "
                 "resubmit:\n- " + "\n- ".join(errors))
@@ -829,9 +885,11 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
                                       previous=overlay_mod.read(ws, s.version - 1))
         except ValueError as e:
             return overlay_refused([str(e)])
-        if errors := overlay_mod.check(ov, index, spans):
+        if errors := overlay_mod.check(ov, index, spans, _resolved_rooms()):
             return overlay_refused(errors)
         _write_overlay(s, ov)
+        ws.write(f"places_v{s.version}.json", json.dumps(s.places, indent=2))
+        _ask_places()
         return (f"Accepted: /workspace/{overlay_mod.overlay_rel(s.version)} written with {len(ov.occupants)} "
                 f"occupant, {len(ov.fire)} fire, {len(ov.hazards)} hazard and {len(ov.blocked)} blocked entries.")
 
@@ -845,7 +903,7 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
 
     return {t.name: t for t in (confirm_building, write_copilot_question, publish_brief,
                                 *map(pull_tool, LAYERS), pull_vexcel_entries, submit_considerations,
-                                submit_critique, get_transcript, get_plan_index, submit_overlay)}
+                                submit_critique, get_transcript, get_plan_index, resolve_place, submit_overlay)}
 
 
 def _budget_spent(s: Session) -> bool:
@@ -1043,7 +1101,8 @@ def build_orchestrator(s: Session, model: Any = None, checkpointer: Any = None):
          "description": "Places what callers reported (occupants, fire, hazards, blocked routes) on the building "
                         "plan by ids, with objectives, and writes the incident overlay for the version it is told.",
          "system_prompt": MAPPER_PROMPT,
-         "tools": [tools["get_transcript"], tools["get_plan_index"], tools["submit_overlay"]]},
+         "tools": [tools["get_transcript"], tools["get_plan_index"], tools["resolve_place"],
+                   tools["submit_overlay"]]},
         {"name": "critic",
          "middleware": m.middleware("critic", m.critic_backup),
          "description": "Checks a brief file (advisory wording, evidence support; returns pass or revise) "
@@ -1463,7 +1522,7 @@ def update_incident(incident_id: str, notes: list[str]) -> RunResult:
     if s.status != "briefed":
         raise ValueError(f"Incident {incident_id} has no brief to update yet (status: {s.status})")
     s.version, s.accepted, s.rejections = s.version + 1, 0, 0
-    s.overlay_attempts, s.overlay_rejections = 0, 0
+    s.overlay_attempts, s.overlay_rejections, s.places = 0, 0, []
     if _incident(s.ws).confirmed_building_id != s.building_id:
         # Fusion rewrote incident.json from a record that was never told (FusionEngine.confirm).
         log.warning("Incident %s: incident.json lost its confirmed building; restoring %s",

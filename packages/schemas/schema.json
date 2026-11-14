@@ -12,11 +12,7 @@
             "center",
             "near_door",
             "near_window",
-            "near_stairs",
-            "north_side",
-            "south_side",
-            "east_side",
-            "west_side"
+            "near_stairs"
           ],
           "title": "Position",
           "type": "string"
@@ -519,7 +515,8 @@
           "default": "missing",
           "enum": [
             "missing",
-            "contradiction"
+            "contradiction",
+            "ambiguous_place"
           ],
           "title": "Reason",
           "type": "string"
@@ -533,6 +530,20 @@
           ],
           "title": "Status",
           "type": "string"
+        },
+        "room_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Room Ids",
+          "type": "array"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
         }
       },
       "required": [

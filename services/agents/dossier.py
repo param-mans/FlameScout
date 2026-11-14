@@ -8,6 +8,7 @@ the same pulls directly, for tests and for the facts-only fallback.
 """
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import Iterable, Literal, Optional
 
@@ -148,6 +149,13 @@ def _count(n) -> str:
     return f"{n:g}" if isinstance(n, float) else str(n)
 
 
+def _agree(listing_key: str, listed: float, scanned: float) -> bool:
+    """Stories of 1.5 (a half storey under the roof) are scanned as 2 floors: compatible."""
+    if listing_key == "building.stories":
+        return math.ceil(listed) == scanned
+    return listed == scanned
+
+
 def layer_contradictions(facts: dict[str, Fact]) -> list[DataContradiction]:
     """The listing (CoStar) and the scan (Matterport) disagree. Only when both sides state a number."""
     out = []
@@ -156,7 +164,7 @@ def layer_contradictions(facts: dict[str, Fact]) -> list[DataContradiction]:
         if not (listed and scanned) or not all(isinstance(f.value, (int, float)) and not isinstance(f.value, bool)
                                                for f in (listed, scanned)):
             continue
-        if listed.value == scanned.value:
+        if _agree(listing_key, listed.value, scanned.value):
             continue
         plural = lambda n: noun if n == 1 else f"{noun}s"  # noqa: E731
         out.append(DataContradiction(

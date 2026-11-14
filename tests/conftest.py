@@ -42,6 +42,7 @@ def _offline_by_default(request, monkeypatch, tmp_path):
     monkeypatch.setattr(cache, "CACHE_ROOT", tmp_path / "prefetch_cache")
     monkeypatch.setattr(memory, "MEMORY_ROOT", tmp_path / "building_memory")  # no memory from real runs
     monkeypatch.setattr(overlay, "PLAN_INDEX_ROOT", tmp_path / "plan_indexes")  # no real data/raw: no-scan
+    monkeypatch.setattr(overlay, "FIXTURE_PLAN_ROOT", tmp_path / "fixture_plan_indexes")  # cedar: cedar_plan_index
     if "real_data" not in request.keywords:
         monkeypatch.setattr(providers, "RAW_ROOT", tmp_path / "raw")  # only fixtures, unless a test builds raw files
     if "live" not in request.keywords:

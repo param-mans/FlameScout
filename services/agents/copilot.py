@@ -6,6 +6,7 @@ Dismissed / asked state is kept by the caller (service) and passed in.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import TYPE_CHECKING, Optional, Sequence
 
@@ -95,3 +96,31 @@ def write_questions(ws: "Workspace", rec: IncidentRecord,
         written.append(by_id[sid])
     ws.write(QUESTIONS_FILE, json.dumps([q.model_dump() for q in by_id.values()], indent=2))
     return written
+
+
+# ---------- questions the incident mapper raises: a place the plan cannot pin to one room ----------
+#
+# resolve_place.py returns "ambiguous" with a question built from the plan's relations ("over the
+# kitchen or over the living room?"). The overlay keeps that report at floor level and the dispatcher
+# gets the question, worded by the resolver, never by a model.
+
+PLACE_FIELD = "overlay.place"
+
+
+def place_question_text(about: str, place: str, question: str) -> str:
+    return f"{about.strip().rstrip('.')}: which {place}? {question[:1].upper()}{question[1:]}"
+
+
+def write_place_question(ws: "Workspace", incident_id: str, about: str, place: str, question: str,
+                         room_ids: Sequence[str], evidence_ids: Sequence[str]) -> CopilotSuggestion:
+    """Add the dispatcher question for an ambiguous place. One per (about, candidate rooms); an existing one
+    keeps its status (asked / dismissed)."""
+    key = f"{PLACE_FIELD}.{about}.{'+'.join(sorted(room_ids))}"
+    sid = f"{incident_id}--place_{hashlib.sha1(key.encode()).hexdigest()[:10]}"
+    by_id = {q.id: q for q in read_questions(ws)}
+    if sid not in by_id:
+        by_id[sid] = CopilotSuggestion(id=sid, incident_id=incident_id, field=PLACE_FIELD, reason="ambiguous_place",
+                                       question=place_question_text(about, place, question),
+                                       room_ids=sorted(room_ids), evidence_ids=list(evidence_ids))
+        ws.write(QUESTIONS_FILE, json.dumps([q.model_dump() for q in by_id.values()], indent=2))
+    return by_id[sid]

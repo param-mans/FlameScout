@@ -14,6 +14,7 @@ from tests.test_validate_overlay import CASES as BRUNO_CASES
 CALLS = Path(__file__).resolve().parents[1] / "data" / "fixtures" / "calls"
 HERE = Path(__file__).resolve().parents[1] / "packages" / "schemas" / "overlay"
 HOUSE = "fake_cedar_house"
+RESOLVED = {"r4", "r5"}  # what resolve_place resolves on the cedar plan for S5: the kitchen, the garage
 
 
 @pytest.fixture
@@ -100,7 +101,7 @@ def test_code_fills_version_times_floor_ids_and_caps_confidence(spans, cedar_pla
     by_span = {s.span_id: s for s in spans}
     assert occ.reported_at == by_span["c1:42.0-51.5"].received_at
     assert ov.fire[0].confidence == 0.6  # a caller's report, capped
-    assert check(ov, cedar_plan_index, spans) == []
+    assert check(ov, cedar_plan_index, spans, RESOLVED) == []
     assert validate_overlay.validate(json.loads(overlay.dump(ov)), cedar_plan_index) == []
     assert "null" not in overlay.dump(ov)
 
@@ -118,7 +119,7 @@ def rejected(raw: dict, index: dict, spans) -> list[str]:
         ov = IncidentOverlay.model_validate(raw)
     except ValidationError as e:
         return [str(e)]
-    return check(ov, index, spans)
+    return check(ov, index, spans, RESOLVED)
 
 
 SCHEMA_SAYS = {  # where the Pydantic model stops one of Bruno's broken cases before his validator runs
@@ -127,6 +128,7 @@ SCHEMA_SAYS = {  # where the Pydantic model stops one of Bruno's broken cases be
     "confidence must be": "less than or equal to 1",
     "start with 'Consider'": "must start with 'Consider'",
     "produced_by must be 'planner'": "Input should be 'planner'",
+    "anchor.position must be one of": "Input should be 'center', 'near_door', 'near_window' or 'near_stairs'",
 }
 
 
@@ -138,18 +140,38 @@ def test_brunos_broken_cases_are_rejected(name, mutate, message, spans):
     assert message in errors or SCHEMA_SAYS.get(message, "\0") in errors, errors
 
 
-def test_brunos_example_guesses_rooms_our_check_does_not_allow(spans, cedar_plan_index):
-    """It is valid to his validator, but it puts "back bedroom" in r10: the index cannot tell r9 from r10.
+def test_brunos_example_guesses_rooms_resolve_place_does_not_resolve(spans, cedar_plan_index):
+    """It is valid to his validator, but it puts "the back bedroom upstairs" in r10: resolve_place cannot tell
+    r9 from r10 (there is no orientation), so only a floor location is accepted for those children.
     (His span ids "call-1:..." are S5's "c1:..."; the routes are the planner's, not checked here.)"""
     text = (HERE / "incident_overlay.example.json").read_text().replace('"call-1:', '"c1:').replace('"call-2:', '"c2:')
     raw = {**json.loads(text), "routes": []}
-    errors = check(IncidentOverlay.model_validate(raw), cedar_plan_index, spans)
-    assert [e for e in errors if "cannot tell them apart" in e] == [
-        "occ-1a: the plan has 2 rooms that match 'bedroom' on that floor (r10, r9) and the index cannot tell them "
-        "apart; use a floor location and put the caller's words in note",
-        "occ-1b: the plan has 2 rooms that match 'bedroom' on that floor (r10, r9) and the index cannot tell them "
-        "apart; use a floor location and put the caller's words in note"]
-    assert len(errors) == 2  # kitchen r4, its window w7 and garage r5 are unambiguous: accepted
+    places = {q["type"]: overlay.resolve(cedar_plan_index, overlay.PlaceQuery(about=q["type"], evidence_ids=[], **q))
+              for q in ({"type": "kitchen", "floor_reported": 1}, {"type": "garage", "floor_reported": 1},
+                        {"type": "bedroom", "floor_reported": 2})}
+    assert {k: (r["status"], r["ids"]) for k, r in places.items()} == {
+        "kitchen": ("resolved", ["r4"]), "garage": ("resolved", ["r5"]), "bedroom": ("ambiguous", ["r10", "r9"])}
+    resolved = {r["ids"][0] for r in places.values() if r["status"] == "resolved"}
+    errors = check(IncidentOverlay.model_validate(raw), cedar_plan_index, spans, resolved)
+    assert [e.split(":")[0] for e in errors] == ["occ-1a", "occ-1b"]
+    assert "room r10 was not resolved by resolve_place" in errors[0]
+
+
+def test_resolve_place_on_the_incident_index(cedar_plan_index):
+    def ask(**q):
+        return overlay.resolve(cedar_plan_index, overlay.PlaceQuery(about="x", evidence_ids=[], **q))
+
+    upstairs = ask(type="bedroom", floor_reported=2)
+    assert (upstairs["status"], upstairs["question"]) == ("ambiguous", "over the kitchen or over the living room?")
+    assert ask(type="bedroom", floor_reported=2, over="kitchen")["ids"] == ["r10"]
+    assert ask(type="bedroom", size="largest")["ids"] == ["r10"]
+    assert ask(type="bedroom", floor_reported=3) == {"status": "none", "ids": [], "question": None,
+                                                     "reason": "the scan has no floor 3"}
+    assert ask(type="bedroom", floor_reported=1)["status"] == "none"
+    assert overlay.resolve(overlay.EMPTY_INDEX, overlay.PlaceQuery(about="x", evidence_ids=[], type="kitchen"))[
+        "reason"] == "no interior scan on file"
+    assert overlay.place_label(overlay.PlaceQuery(about="x", evidence_ids=[], type="bedroom", floor_reported=2)) == \
+        "bedroom on floor 2"
 
 
 def mutated(draft: dict, change) -> dict:
@@ -165,10 +187,14 @@ OUR_RULES = [
     ("contradicted without a group", lambda d: d["occupants"][2].update(status="contradicted"), "needs the group_id"),
     ("a group from one call", lambda d: d["occupants"][1].update(evidence_ids=["c1:42.0-51.5"]), "different calls"),
     ("the mapper resolved it", lambda d: d["contradictions"][0].update(resolved_by_dispatcher=True), "only the dispatcher"),
-    ("a room the words do not name", lambda d: d["occupants"][2].update(location={"kind": "room", "room_id": "r9"}),
-     "do not name a bedroom"),
-    ("one of two bedrooms", lambda d: d["occupants"][0].update(location={"kind": "room", "room_id": "r10"}),
-     "cannot tell them apart"),
+    ("a room resolve_place did not resolve", lambda d: d["occupants"][0].update(
+        location={"kind": "room", "room_id": "r10"}), "room r10 was not resolved by resolve_place"),
+    ("an anchor in an unresolved room", lambda d: d["fire"][1]["location"]["anchor"].update(room_id="r2", ref_id="w7"),
+     "room r2 was not resolved"),
+    ("an objective on an unresolved room", lambda d: d["objectives"][1].update(target={"kind": "room", "ref_id": "r1"}),
+     "room r1 was not resolved"),
+    ("a side of a room", lambda d: d["fire"][1]["location"]["anchor"].update(position="north_side", ref_id=None),
+     "Input should be"),
     ("a windowless claim", lambda d: d["considerations"][0].update(text="Consider the bedroom with no window"),
      "window findings"),
     ("an invented room", lambda d: d["hazards"][0]["location"].update(room_id="r99"), "does not exist in the plan"),
@@ -179,8 +205,11 @@ OUR_RULES = [
 
 @pytest.mark.parametrize("name, change, message", OUR_RULES, ids=[r[0] for r in OUR_RULES])
 def test_our_rules(name, change, message, spans, cedar_plan_index):
-    assert check(build(V2, spans, cedar_plan_index, 2), cedar_plan_index, spans) == []
-    errors = check(build(mutated(V2, change), spans, cedar_plan_index, 2), cedar_plan_index, spans)
+    assert check(build(V2, spans, cedar_plan_index, 2), cedar_plan_index, spans, RESOLVED) == []
+    try:
+        errors = check(build(mutated(V2, change), spans, cedar_plan_index, 2), cedar_plan_index, spans, RESOLVED)
+    except ValidationError as e:  # the schema stops it first
+        errors = [str(e)]
     assert any(message in e for e in errors), errors
 
 
@@ -189,8 +218,8 @@ def test_no_scan_allows_only_floor_and_unknown(spans):
     unknown = mutated(V1, lambda d: d["fire"][0].update(location={"kind": "unknown"}))
     del unknown["objectives"]  # the occupant target is fine; keep it simple
     ov = build(unknown, spans, index)
-    assert check(ov, index, spans) == [] and ov.occupants[0].location.floor_id is None
-    errors = check(build(V1, spans, index), index, spans)
+    assert check(ov, index, spans, set()) == [] and ov.occupants[0].location.floor_id is None
+    errors = check(build(V1, spans, index), index, spans, RESOLVED)
     assert any("room_id 'r4' does not exist in the plan" in e for e in errors)
 
 
@@ -218,3 +247,20 @@ def test_fallback_is_valid_and_says_why(cedar_plan_index):
     ov = fallback("inc_s5", "m", 2, "the incident mapper did not submit one")
     assert ov.changes_since_last == ["Overlay not available: the incident mapper did not submit one"]
     assert validate_overlay.validate(json.loads(overlay.dump(ov)), cedar_plan_index) == []
+
+
+def test_fake_cedar_house_has_the_synthetic_v2_example_as_its_index(monkeypatch, tmp_path):
+    monkeypatch.setattr(overlay, "FIXTURE_PLAN_ROOT", Path(__file__).resolve().parents[1] / "data" / "fixtures")
+    index = overlay.load_plan_index(HOUSE)  # nothing in data/raw (tmp): the fixture
+    example = json.loads((HERE / "plan_index.example.json").read_text())
+    assert index["synthetic"] is True and index["version"] == 2
+    assert {k: v for k, v in index.items() if k not in ("synthetic", "note")} == example
+    assert overlay.resolve(index, overlay.PlaceQuery(about="x", evidence_ids=[], type="kitchen"))["ids"] == ["r4"]
+
+
+def test_a_floor_alone_names_no_room():
+    def q(**kw):
+        return overlay.PlaceQuery(about="x", evidence_ids=[], **kw)
+
+    assert not overlay.names_a_room(q(floor_reported=2))
+    assert all(overlay.names_a_room(q(**kw)) for kw in ({"type": "bedroom"}, {"over": "kitchen"}, {"at_stairs": False}))

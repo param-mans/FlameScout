@@ -242,6 +242,24 @@ same schema `/api/incidents/{id}/copilot` returns):
 - After the dispatcher resolves it (`FusionEngine.resolve(key, value)` + `save_incident`), the
   question is not asked again, but the old entry stays in the file: filter on `status`.
 
+**Ambiguous places** (`reason: "ambiguous_place"`, `field: "overlay.place"`). When a caller names a
+room the plan cannot pin to one ("a bedroom downstairs" and the ground floor has three), the overlay
+keeps that report at floor level and the same file gets a question worded by Bruno's
+`resolve_place.py` from the plan's relations, plus the candidate rooms and the caller spans:
+
+```json
+{"id": "inc_s6--place_3a33601c7c", "incident_id": "inc_s6", "field": "overlay.place",
+ "question": "two kids (call 2): which bedroom on floor 1? Under the staircase or another one?",
+ "reason": "ambiguous_place", "status": "open",
+ "room_ids": ["2qdmc5i9byxi79ry1pxdkqzea", "d3slsxy3zlg", "tt6gm2a0463x9wmnx7rn6gugc"],
+ "evidence_ids": ["c2:11.0-17.5"]}
+```
+
+`room_ids` are plan room ids: the UI can highlight the candidates in the viewer. One question per
+(report, candidate set); a rerun keeps its `status`. No model writes the wording.
+The API's `/api/incidents/{id}/copilot` does not read this file yet (neither these nor the
+life-safety questions): read it with `copilot.read_questions(...)` to show them.
+
 ## Incident overlay: `overlay_vN.json` and `overlay.updated`
 
 The contract is Bruno's `docs/INCIDENT_OVERLAY_SPEC.md`; the model is `IncidentOverlay` in
@@ -271,18 +289,27 @@ The web app forwards it to the viewer iframe with `postMessage({type: 'setIncide
 - **Brief considerations point at it:** `Consideration.refs` lists overlay ids (occupant, fire, hazard
   ids, contradiction group ids, objective ids) of the same version. Clicking a brief consideration can
   highlight those in the viewer.
+- **Places go through `resolve_place`:** the mapper's `resolve_place` tool runs Bruno's
+  `packages/schemas/overlay/resolve_place.py` on the plan index v2 (type, floor, `over` / `under`,
+  `next_to`, `at_stairs`, `size` largest / smallest; no orientation, no sides). A room id is used only
+  when it resolved to exactly one room; "ambiguous" keeps the report at floor level and writes the
+  dispatcher question above; a floor alone ("upstairs") is not sent to the resolver. Every call and
+  its answer are in `places_vN.json`.
 - **Checked before it is written:** Bruno's `validate_overlay.py` plus ours: evidence must be caller
-  spans, no `verified` from a caller, contradiction candidates come from different calls, a room
-  location only when the words name that kind of room and the plan has only one such room on that
-  floor, plan ids only. Rejected submissions go back to the mapper (two more tries);
-  `RunResult.overlay_rejections` counts them.
+  spans, no `verified` from a caller, contradiction candidates come from different calls, every room
+  id (in a location, an anchor, a blocked element or an objective) was resolved by `resolve_place` in
+  this version or is carried over from the previous accepted overlay, plan ids only. Rejected
+  submissions go back to the mapper (two more tries); `RunResult.overlay_rejections` counts them,
+  and each refusal is logged at WARNING with its reasons.
 - **If the mapper fails** (out of tries, or the run fails), the overlay of that version is valid but
   empty, with `changes_since_last: ["Overlay not available: <reason>"]`. The viewer keeps its version
   in step and shows nothing new.
 - **Plan index:** read from `data/raw/<building_id>/derived/plan_index.json` (sponsor data, gitignored,
-  never committed). Missing means no interior scan: only `floor` (with `floor_reported`) and `unknown`
-  locations, no routes. That is the case for every fixture building today, scanned or not, except
-  when you copy a plan index in.
+  never committed), else `data/fixtures/<building_id>/plan_index.json` (synthetic: `fake_cedar_house`
+  has Bruno's v2 example, marked `"synthetic": true`). Missing means no interior scan: only `floor`
+  (with `floor_reported`) and `unknown` locations, no routes. The heroes' indexes must be v2 (room
+  size and relations, built by `scripts/make_plan_index.py` from the enriched plan); a v1 index has
+  no relations, so only a type and a floor can resolve a room.
 - **Transcript:** `save_incident(record, new_segments)` now also appends the segments to
   `transcript.json` in the workspace; that is what the mapper cites. Always pass the new segments.
 
@@ -343,14 +370,16 @@ scan). Every other id comes from `data/fixtures/`. No vendor API is called; `DAT
 this is not configured.
 
 `brief.data_contradictions` (and `dossier.contradictions`): the data layers disagree, today the
-listing (CoStar) and the scan (Matterport) on bedrooms, bathrooms (full + half) or floors. Each has
+listing (CoStar) and the scan (Matterport) on bedrooms, bathrooms (full + half) or floors (listed
+stories of 1.5 agree with 2 scanned floors: the half storey is scanned as a floor). Each has
 `key`, `message` (e.g. `"Listing: 4 bedrooms; scan: 5. Verify occupant count."`), `values` (one per
 layer, with `evidence_ids`) and `status: "contradicted"`. The listing fact in `size_up` is marked
 `contradicted` and the message is also in `gaps`. Code never picks a side.
 
 `building.sprinklered` is `true` only from a fire-protection field (a commercial record's
-`hasSprinklers`, or "Fire Sprinkler..." under a listing's Home Security). A "Sprinkler System" under
-a listing's Lot Details is lawn irrigation: the fact stays `unverified`, and its value says why.
+`hasSprinklers`, or the feature named exactly "Fire Sprinkler System" under a listing's Home
+Security). "Sprinkler System", anywhere, is lawn irrigation: the fact stays `unverified`, and its
+value says why.
 
 Every orchestrator and subagent model call has a 12 s client timeout and one automatic retry
 (`services/agents/stalls.py`). Each stall and retry is logged at WARNING on the logger

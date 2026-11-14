@@ -39,9 +39,15 @@ BAD = [
     ("one waypoint", lambda o: o["routes"][0].update(waypoints=o["routes"][0]["waypoints"][:1]), "at least 2 items"),
     ("version 0", lambda o: o.update(version=0), "greater than or equal to 1"),
     ("floor target without ref", lambda o: o["objectives"][1]["target"].pop("ref_id"), "needs ref_id"),
-    ("floor_reported on a room target", lambda o: o["objectives"][1]["target"].update(floor_reported=1),
-     "takes no floor_reported"),
 ]
+
+
+def test_floor_reported_next_to_a_ref_id_is_dropped():
+    """The mapper sometimes adds the floor to a room / occupant target; the ref_id says it all."""
+    raw = copy.deepcopy(load("incident_overlay.example.json"))
+    raw["objectives"][1]["target"].update(kind="room", ref_id="r10", floor_reported=2)
+    target = IncidentOverlay.model_validate(raw).objectives[1].target
+    assert (target.kind, target.ref_id, target.floor_reported) == ("room", "r10", None)
 
 
 @pytest.mark.parametrize("name, mutate, message", BAD, ids=[b[0] for b in BAD])
