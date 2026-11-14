@@ -1,0 +1,22 @@
+{
+  "_fixture": "SYNTHETIC placeholder in FlameScout's normalized adapter shape (services/agents/tools/providers.py). Replace with real toolkit data after the Phase 0 smoke test.",
+  "property_id": "harbor_plaza_pine",
+  "name": "Harbor Plaza Shops",
+  "aliases": [
+    "Harbor Plaza"
+  ],
+  "address": "120 Pine Avenue, Long Beach, CA 90802",
+  "lat": 33.7712,
+  "lon": -118.1925,
+  "use": "Retail",
+  "stories": 2,
+  "year_built": 1958,
+  "area_sqft": 18000,
+  "as_of": "2025-11-01",
+  "tenants": [
+    {
+      "name": "Polished Nail Studio",
+      "category": "Nail salon"
+    }
+  ]
+}

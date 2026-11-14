@@ -1,0 +1,41 @@
+{
+  "script_id": "S4",
+  "description": "No-scan building. Expect a fallback brief with interior gaps and capped confidence.",
+  "segments": [
+    {
+      "call_id": "c1",
+      "speaker": "call_taker",
+      "text": "911, what's the address of your emergency?",
+      "t_start": 0.0,
+      "t_end": 2.0
+    },
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "Smoke is pouring out of the Maple Lofts at 455 Maple Street.",
+      "t_start": 2.2,
+      "t_end": 5.9
+    },
+    {
+      "call_id": "c1",
+      "speaker": "call_taker",
+      "text": "Is anyone inside?",
+      "t_start": 6.0,
+      "t_end": 7.0
+    },
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "There might be people inside, people live upstairs.",
+      "t_start": 7.2,
+      "t_end": 10.0
+    },
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "The e-bike shop downstairs has batteries everywhere.",
+      "t_start": 10.2,
+      "t_end": 13.1
+    }
+  ]
+}

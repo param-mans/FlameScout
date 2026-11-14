@@ -68,14 +68,18 @@ class _FixtureFiles:
     def __init__(self, root: Optional[Path] = None):
         self.root = Path(root) if root else FIXTURES
 
+    # Files with a "_fixture" key are the services/api pipeline's fixtures (tools/providers.py),
+    # a different format in the same folder: this adapter never serves them.
     def _read(self, building_id: str) -> Optional[dict]:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", building_id):
             raise ValueError(f"Bad building id {building_id!r}")
         path = self.root / building_id / f"{self.layer}.json"
-        return json.loads(path.read_text()) if path.exists() else None
+        data = json.loads(path.read_text()) if path.exists() else None
+        return None if data is None or "_fixture" in data else data
 
     def _all(self) -> list[dict]:
-        return [json.loads(p.read_text()) for p in sorted(self.root.glob(f"*/{self.layer}.json"))]
+        docs = (json.loads(p.read_text()) for p in sorted(self.root.glob(f"*/{self.layer}.json")))
+        return [d for d in docs if "_fixture" not in d]
 
 
 class FixtureCoStarProvider(_FixtureFiles):

@@ -1,9 +1,21 @@
+import json
 import os
+from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
 
+from flamescout_schemas import CallSegment
+
 load_dotenv()  # GEMINI_* / LANGSMITH_* from .env, for the live tests
+
+ROOT = Path(__file__).resolve().parents[1]
+FIXTURES = ROOT / "data" / "fixtures"
+
+
+def load_script(script_id: str) -> list[CallSegment]:
+    data = json.loads((FIXTURES / "calls" / f"{script_id.lower()}.json").read_text())
+    return [CallSegment(**s) for s in data["segments"]]
 
 
 def pytest_collection_modifyitems(config, items):
@@ -31,6 +43,8 @@ def _offline_by_default(request, monkeypatch, tmp_path):
         monkeypatch.setenv("LANGSMITH_TRACING", "false")
         monkeypatch.delenv("TIGER_DATABASE_URL", raising=False)
         monkeypatch.delenv("MONGODB_URI", raising=False)
+        for k in ("GEMINI_API_KEY", "GEOCODER", "COSTAR_INDEX"):  # services/api tests: no geocoder, no kit
+            monkeypatch.delenv(k, raising=False)
     utils.get_env_var.cache_clear()  # langsmith caches env lookups
     db.reset()
     mongo_store.reset()

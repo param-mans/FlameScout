@@ -1,0 +1,21 @@
+{
+  "_fixture": "SYNTHETIC placeholder in FlameScout's normalized adapter shape (services/agents/tools/providers.py). Replace with real toolkit data after the Phase 0 smoke test.",
+  "property_id": "harbor_plaza_ocean",
+  "name": "Harbor Plaza",
+  "aliases": [],
+  "address": "300 Ocean Boulevard, Long Beach, CA 90802",
+  "lat": 33.768,
+  "lon": -118.191,
+  "use": "Office",
+  "stories": 12,
+  "year_built": 1985,
+  "area_sqft": 210000,
+  "as_of": "2026-09-15",
+  "tenants": [
+    {
+      "name": "Harbor Fitness",
+      "category": "Gym"
+    }
+  ],
+  "matterport_model_id": "fx-harbor-001"
+}

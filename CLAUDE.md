@@ -12,6 +12,10 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
   (`--cold` ignores prefetched building data)
 - Prefetch a building's data layers for the next 24 h: `python scripts/prefetch.py fake_wilshire_tower`
 - Export JSON Schema for the frontend: `python scripts/export_schemas.py`
+- API: `uvicorn services.api.main:app --reload --port 8000` (docs at /docs, WS at /ws/incidents/{id})
+- Tiger Data schema (once): `python scripts/init_tiger.py`
+- Real CoStar data (once): `python scripts/build_costar_index.py ~/Downloads/costar-hackathon-kit`
+  -> `data/costar/properties.jsonl` (gitignored, licensed); set `COSTAR_INDEX` in `.env`.
 
 ## Layout
 - `packages/schemas/flamescout_schemas/` - Pydantic models. The contract between agents, API and UI.
@@ -45,6 +49,12 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - Incident workspace (MongoDB, or `workspace/<incident_id>/`): incident.json, candidates.json, layers/*.json,
   dossier.json, brief_vN.json, critique_vN.json, todos.json = the orchestrator's plan + status for the UI
   progress strip, notes/*.md. This is the deepagent filesystem AND what the UI renders. Not committed.
+- `services/agents/{rules_dossier,rules_brief,critic,copilot}.py`, `services/agents/tools/` - the earlier
+  plain-function pipeline used by `services/api/` (rules engine R-01..R-09 in `config/rules.yaml`, provider
+  adapters with live fallback, geocode, vision). `tools/costar_kit.py` normalizes the CoStar hackathon kit
+  (3,339 Houston/LA properties); with `COSTAR_INDEX` set it serves CoStar in every mode.
+- `services/api/` - FastAPI app (IncidentService, JSON workspace store, event bus, metrics). Still on the
+  rules pipeline above, not yet on the orchestrator / MongoDB workspace / `db.py`.
 
 ## Non-negotiable rules
 - Advisory only: considerations say "Consider ...", never orders.

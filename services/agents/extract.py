@@ -11,6 +11,8 @@ code in fusion.py, never the LLM.
   a call slower than EXTRACT_TIMEOUT_S (default 4 s), falls back to
   KeywordExtractor for that utterance.
 - get_extractor(): picks one from EXTRACTOR=keyword|gemini (default keyword).
+- validate_llm_facts(): the same checks for raw model facts (_LLMFact) from
+  other callers: known key, verbatim quote, value coerced per key.
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional, Protocol
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 log = logging.getLogger(__name__)
 
@@ -190,3 +192,48 @@ def get_extractor() -> Extractor:
     if name != "keyword":
         log.warning("Unknown EXTRACTOR=%r, using keyword", name)
     return KeywordExtractor()
+
+
+# ---------- raw model facts from other callers (services/api) ----------
+
+_BOOL_KEYS = {"people.reported", "people.trapped", "alarm.sounding"}
+_TRUE = {"true", "yes", "y", "1"}
+_FALSE = {"false", "no", "n", "0"}
+
+class _LLMFact(BaseModel):
+    key: str = Field(description="One of the allowed keys")
+    value: str
+    quote: str = Field(description="Exact words from the sentence that state this fact")
+
+
+class _LLMResult(BaseModel):
+    facts: list[_LLMFact] = []
+
+
+def _coerce(key: str, value: str) -> Any:
+    v = value.strip()
+    if key == "incident.floor":
+        m = re.search(r"\d+", v)
+        if m:
+            return int(m.group())
+        return _ORDINALS.get(v.lower())
+    if key in _BOOL_KEYS:
+        return True if v.lower() in _TRUE else False if v.lower() in _FALSE else None
+    if key == "incident.visible":
+        return "flames" if "flame" in v.lower() or "fire" in v.lower() else "smoke" if "smoke" in v.lower() else None
+    return v or None
+
+
+def validate_llm_facts(text: str, facts: list[_LLMFact]) -> list[ExtractedFact]:
+    """Deterministic gate on model output: known key, verbatim quote, coercible value."""
+    out: list[ExtractedFact] = []
+    hay = _squash(text)
+    for f in facts:
+        if f.key not in KEYS or not f.quote.strip() or _squash(f.quote) not in hay:
+            log.info("dropped llm fact %s=%r (key/quote check)", f.key, f.value)
+            continue
+        value = _coerce(f.key, f.value)
+        if value is None:
+            continue
+        out.append(ExtractedFact(key=f.key, value=value, quote=f.quote))
+    return out

@@ -1,0 +1,32 @@
+{
+  "_fixture": "SYNTHETIC placeholder in FlameScout's normalized adapter shape (services/agents/tools/providers.py). Replace with real toolkit data after the Phase 0 smoke test.",
+  "property_id": "wilshire_tower",
+  "name": "Wilshire Tower",
+  "aliases": [
+    "1200 Wilshire"
+  ],
+  "address": "1200 Wilshire Boulevard, Los Angeles, CA 90017",
+  "lat": 34.0545,
+  "lon": -118.265,
+  "use": "Office",
+  "stories": 8,
+  "year_built": 1968,
+  "area_sqft": 96000,
+  "construction": "Reinforced concrete",
+  "as_of": "2026-10-01",
+  "tenants": [
+    {
+      "name": "Sunrise Cafe",
+      "category": "Restaurant"
+    },
+    {
+      "name": "Volt Phone Repair",
+      "category": "Phone repair / electronics"
+    },
+    {
+      "name": "Reyes & Partners LLP",
+      "category": "Office - legal"
+    }
+  ],
+  "matterport_model_id": "fx-wilshire-001"
+}

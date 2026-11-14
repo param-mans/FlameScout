@@ -75,6 +75,54 @@ class IncidentRecord(BaseModel):
     open_questions: list[str] = []
     confirmed_building_id: Optional[str] = None
     ready_to_brief: bool = False
+    created_at: datetime = Field(default_factory=now)
+
+
+class LocationCandidate(BaseModel):
+    """A building the locator thinks the callers mean. Dispatcher must confirm one."""
+    building_id: str
+    name: Optional[str] = None
+    address: str
+    coordinates: dict = {}               # {"lat":..,"lon":..}
+    score: float = Field(ge=0, le=1)
+    match_reasons: list[str] = []
+    scan_available: Optional[bool] = None
+
+
+class CopilotSuggestion(BaseModel):
+    """L1 copilot: a question the dispatcher could ask next (FR-11)."""
+    id: str                              # "<incident_id>--<field_slug>"
+    incident_id: str
+    field: str                           # fact key the question would fill
+    question: str
+    reason: Literal["missing", "contradiction"] = "missing"
+    status: Literal["open", "dismissed", "asked"] = "open"
+
+
+class CrewFeedback(BaseModel):
+    """Officer marks a fact correct / wrong / outdated (FR-15)."""
+    id: str
+    incident_id: str
+    building_id: Optional[str] = None
+    fact_key: str
+    verdict: Literal["correct", "wrong", "outdated"]
+    note: Optional[str] = None
+    role: str = "officer"
+    created_at: datetime = Field(default_factory=now)
+
+
+EventType = Literal["transcript.segment", "incident.updated", "contradiction.raised",
+                    "location.candidates", "dossier.progress", "brief.updated",
+                    "copilot.suggestion", "metric.tick"]
+
+
+class Event(BaseModel):
+    """Envelope for every WebSocket message on /ws/incidents/{id}."""
+    type: EventType
+    incident_id: str
+    ts: datetime = Field(default_factory=now)
+    trace_id: Optional[str] = None
+    payload: dict = {}
 
 
 # ---------- Dossier and brief ----------
@@ -122,6 +170,7 @@ class Consideration(BaseModel):
 class Brief(BaseModel):
     brief_id: str
     incident_id: str
+    building_id: Optional[str] = None
     version: int
     generated_at: datetime = Field(default_factory=now)
     location_confirmed: bool
@@ -135,6 +184,7 @@ class Brief(BaseModel):
     gaps: list[str] = []
     verifier_rejections: int = 0         # draft considerations rejected (code checks + critic) for this version
     evidence: dict[str, Evidence] = {}   # so the UI evidence drawer can resolve every id
+    crew_notes: list[CrewFeedback] = []  # earlier crew feedback on this building
     disclaimer: str = "Advisory only. Verify on arrival."
 
 

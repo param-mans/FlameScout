@@ -1,0 +1,20 @@
+{
+  "_fixture": "SYNTHETIC placeholder in FlameScout's normalized adapter shape (services/agents/tools/providers.py). Replace with real toolkit data after the Phase 0 smoke test.",
+  "images": [
+    {
+      "image_id": "vx-ml-ortho-1",
+      "uri": "fixture://maple_lofts/aerial/ortho.jpg",
+      "captured_at": "2026-02-11T00:00:00Z",
+      "detections": [
+        {
+          "kind": "adjacent_structure",
+          "label": "2-story wood-frame building (north)",
+          "lat": 34.040254,
+          "lon": -118.2511,
+          "confidence": 0.8,
+          "source": "annotation"
+        }
+      ]
+    }
+  ]
+}

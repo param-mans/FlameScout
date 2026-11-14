@@ -1,0 +1,44 @@
+{
+  "_fixture": "SYNTHETIC placeholder in FlameScout's normalized adapter shape (services/agents/tools/providers.py). Replace with real toolkit data after the Phase 0 smoke test.",
+  "images": [
+    {
+      "image_id": "vx-wt-ortho-1",
+      "uri": "fixture://wilshire_tower/aerial/ortho.jpg",
+      "captured_at": "2026-03-02T00:00:00Z",
+      "detections": [
+        {
+          "kind": "adjacent_structure",
+          "label": "3-story brick building (east)",
+          "lat": 34.0545,
+          "lon": -118.264913,
+          "confidence": 0.8,
+          "source": "annotation"
+        },
+        {
+          "kind": "adjacent_structure",
+          "label": "Parking structure (south)",
+          "lat": 34.054275,
+          "lon": -118.265,
+          "confidence": 0.8,
+          "source": "annotation"
+        },
+        {
+          "kind": "adjacent_structure",
+          "label": "Office building (west)",
+          "lat": 34.0545,
+          "lon": -118.265489,
+          "confidence": 0.75,
+          "source": "annotation"
+        },
+        {
+          "kind": "roof_access",
+          "label": "Roof bulkhead above Stair A",
+          "confidence": 0.7,
+          "source": "annotation",
+          "lat": 34.054554,
+          "lon": -118.264902
+        }
+      ]
+    }
+  ]
+}
