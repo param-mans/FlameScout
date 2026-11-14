@@ -10,6 +10,7 @@ is built.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -105,11 +106,14 @@ def _gaps(incident: IncidentRecord, dossier: BuildingDossier) -> list[str]:
     return gaps
 
 
-def _freshness(dossier: BuildingDossier) -> dict:
+def _freshness(dossier: BuildingDossier, prefetched_at: Optional[datetime]) -> dict:
     costar = [e.captured_at for e in dossier.evidence.values() if e.source == "costar" and e.captured_at]
     return {
         "scan_age_days": (now() - dossier.scan_captured_at).days if dossier.scan_captured_at else None,
         "costar_as_of": min(costar).date().isoformat() if costar else None,
+        # True when the data layers came from the prefetch cache instead of being pulled for this incident
+        "prefetched": prefetched_at is not None,
+        "prefetched_at": prefetched_at.isoformat() if prefetched_at else None,
     }
 
 
@@ -168,7 +172,7 @@ def diff_briefs(prev: Brief, new: Brief, incident: IncidentRecord) -> list[str]:
 def build_brief(incident: IncidentRecord, dossier: BuildingDossier,
                 drafts: list[ConsiderationDraft], version: int = 1,
                 extra_gaps: tuple[str, ...] = (), previous: Optional[Brief] = None,
-                verifier_rejections: int = 0) -> Brief:
+                verifier_rejections: int = 0, prefetched_at: Optional[datetime] = None) -> Brief:
     evidence = merge_evidence(incident, dossier)
     if errors := check_considerations(drafts, evidence):
         raise ValueError("; ".join(errors))
@@ -190,7 +194,7 @@ def build_brief(incident: IncidentRecord, dossier: BuildingDossier,
         incident_id=incident.incident_id,
         version=version,
         location_confirmed=incident.confirmed_building_id == dossier.building_id,
-        freshness=_freshness(dossier),
+        freshness=_freshness(dossier, prefetched_at),
         size_up={k: f for k, f in facts.items() if not is_hazard(k)},
         markers=dossier.markers,
         hazards=[f for k, f in facts.items() if is_hazard(k)],

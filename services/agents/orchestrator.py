@@ -10,10 +10,11 @@ to v2, v3 ... as new information arrives.
 
 Subagents and the tools that write the JSON artifacts:
 
-  costar      pull_costar()      -> layers/costar.json      + notes/costar_summary.md
-  matterport  pull_matterport()  -> layers/matterport.json  + notes/matterport_summary.md
-  vexcel      pull_vexcel()      -> layers/vexcel.json      + notes/vexcel_summary.md
-              (delegated in ONE orchestrator turn, so the three run concurrently;
+  costar      pull_costar()      -> layers/costar.json
+  matterport  pull_matterport()  -> layers/matterport.json
+  vexcel      pull_vexcel()      -> layers/vexcel.json
+              (delegated in ONE orchestrator turn, so the three run concurrently; each makes two
+               model calls: pull, then a short summary that code saves as notes/<layer>_summary.md;
                when the third layer lands, code merges them into dossier.json)
   strategy    submit_considerations()   -> brief_vN.json  + notes/strategy_reasoning*.md
   critic      submit_critique()         -> critique_vN.json (pass | revise)
@@ -25,6 +26,10 @@ built-in filesystem tools can read /workspace/ but write only under
 
 The todo list is exposed three ways: workspace/<incident_id>/todos.json
 (rewritten on every change), the on_todos callback, and RunResult.todos.
+
+prefetch_building() runs the same three layer subagents ahead of time into
+data/cache/<building_id>/. An incident at a building with a cache under 24 h
+old copies it in at confirmation and skips the layer phase.
 
 Sessions live in this process (InMemorySaver). See docs/agents-api.md.
 """
@@ -38,6 +43,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Literal, Optional
 
@@ -51,6 +57,7 @@ from langgraph.types import Command
 from flamescout_schemas import (Brief, BuildingCandidate, BuildingDossier, IncidentRecord, Progress,
                                 TodoItem, now)
 
+from . import cache
 from . import dossier as dossier_mod
 from .brief import (ConsiderationDraft, build_brief, check_considerations, merge_evidence,
                     rejected_count)
@@ -79,8 +86,11 @@ A. FIRST BRIEF. The user message starts with "New incident".
 2. Next turn, one tool call only: confirm_building(candidates=[the candidate building ids from the
    user message, in the same order]). The run pauses until the dispatcher answers. If the dispatcher
    rejects the candidates, reply "No building confirmed." and do nothing else.
-3. Next turn, FOUR tool calls together, never one at a time: write_todos (confirm completed, the three
-   data todos in_progress) and task(subagent_type="costar"), task(subagent_type="matterport"),
+3. If confirm_building answered that the building data was PREFETCHED, skip this step: the data is
+   already in the workspace, so never call the costar, matterport or vexcel subagents, and treat the
+   three data todos as completed in step 4.
+   Otherwise, next turn, FOUR tool calls together, never one at a time: write_todos (confirm completed,
+   the three data todos in_progress) and task(subagent_type="costar"), task(subagent_type="matterport"),
    task(subagent_type="vexcel"), each asked to pull its data layer for this incident. Calling all
    three in the same turn makes them run in parallel.
 4. Next turn, two tool calls together: write_todos (the three data todos completed, draft
@@ -108,14 +118,18 @@ Apart from the one read_file in A1, never call read_file, ls, glob or grep: do n
 subagents' work yourself. Never state facts about the building or the incident yourself, and never
 contact anyone."""
 
-LAYER_PROMPT = """You pull one data layer of the building dossier for a confirmed fire incident: {what}. \
-Use exactly three turns:
-1. Call pull_{layer}() once. It saves /workspace/layers/{layer}.json and returns a digest.
-2. Call write_file once to create /workspace/notes/{layer}_summary.md: at most 60 words on what this
-   layer tells a fire crew ({focus}) and what is missing or unverified. Keep the evidence ids in
-   brackets next to each point. Use only what the digest says; never guess.
-3. Reply with one sentence: what was pulled and what is unknown.
+LAYER_PROMPT = """You pull one data layer of a building dossier for fire crews: {what}. \
+Use exactly two turns:
+1. Call pull_{layer}() once. It saves the layer and returns a digest.
+2. Reply with a summary of 2 to 4 short lines: what this layer tells a fire crew ({focus}) and what
+   is missing or unverified. Keep the evidence ids in brackets next to each point. Use only what the
+   digest says; never guess. Your reply is saved as this layer's note, so write nothing else.
 Do not call any other tool."""
+
+PREFETCH_PROMPT = """You prefetch building data before any incident. In ONE turn make three tool calls \
+together: task(subagent_type="costar"), task(subagent_type="matterport"), task(subagent_type="vexcel"), each \
+asked to pull its data layer for the building in the user message. Then reply "done". Never call them \
+one at a time, and call nothing else."""
 
 LAYERS_INFO = {
     "costar": ("the CoStar property record", "use, stories, tenants, tenant-related hazards"),
@@ -204,7 +218,11 @@ class Session:
     todos: list[TodoItem] = field(default_factory=list)
     on_todos: Optional[Callable[[Progress], None]] = None
     trace_run_id: Optional[str] = None
-    lock: Any = field(default_factory=threading.Lock)  # the three layer tools run concurrently
+    lock: Any = field(default_factory=threading.RLock)  # the three layer tools run concurrently
+    use_cache: bool = True                     # reuse prefetched layers (data/cache) when fresh
+    prefetched_at: Optional[datetime] = None   # set when the layers came from the cache
+    publish: bool = True                       # write todos.json / call on_todos (off for prefetch)
+    layer_tasks: dict = field(default_factory=dict)  # task tool_call_id -> layer, to save its reply
 
     def layer_path(self, layer: str) -> Path:
         return self.ws / "layers" / f"{layer}.json"
@@ -250,6 +268,10 @@ def _confirm(ws: Path, building_id: str) -> None:
     _write(ws / INCIDENT, incident.model_dump_json(indent=2))
 
 
+def _building_id(s: Session) -> str:
+    return s.building_id or _incident(s.ws).confirmed_building_id or ""
+
+
 def _layer_on_disk(s: Session, layer: str, building_id: str) -> Optional[LayerData]:
     path = s.layer_path(layer)
     if not path.exists():
@@ -260,7 +282,7 @@ def _layer_on_disk(s: Session, layer: str, building_id: str) -> Optional[LayerDa
 
 def _pull(s: Session, layer: str) -> str:
     """Tool body for pull_<layer>: save the layer, merge into dossier.json once all three are in."""
-    building_id = _incident(s.ws).confirmed_building_id
+    building_id = _building_id(s)
     if not building_id:
         return "Error: the dispatcher has not confirmed a building yet."
     if data := _layer_on_disk(s, layer, building_id):
@@ -277,11 +299,31 @@ def _pull(s: Session, layer: str) -> str:
     return dossier_mod.digest(data)
 
 
+def _load_prefetched(s: Session) -> bool:
+    """Copy a fresh prefetch cache for the confirmed building into the workspace and merge it."""
+    building_id = _building_id(s)
+    hit = cache.load_fresh(building_id) if s.use_cache and building_id else None
+    if hit is None:
+        return False
+    with s.lock:
+        for name, data in hit.layers.items():
+            _write(s.layer_path(name), data.model_dump_json(indent=2))
+        for name, note in hit.notes.items():
+            _write(s.ws / "notes" / f"{name}_summary.md", note)
+        dossier = dossier_mod.merge_layers(building_id, hit.layers.values())
+        _write(s.ws / DOSSIER, dossier.model_dump_json(indent=2))
+        s.prefetched_at = hit.prefetched_at
+    log.info("Incident %s: using data layers prefetched at %s", s.incident_id, hit.prefetched_at.isoformat())
+    return True
+
+
 def _ensure_dossier(s: Session) -> None:
     """dossier.json must exist before a brief is built: pull in code whatever a subagent did not."""
-    building_id = _incident(s.ws).confirmed_building_id or ""
+    building_id = _building_id(s)
     with s.lock:
         if (s.ws / DOSSIER).exists() and _dossier(s.ws).building_id == building_id:
+            return
+        if not any(_layer_on_disk(s, name, building_id) for name in LAYERS) and _load_prefetched(s):
             return
         layers = []
         for name in LAYERS:
@@ -299,12 +341,14 @@ def _write_brief(s: Session, drafts: list[ConsiderationDraft], extra_gaps: tuple
     prev_path = s.ws / f"brief_v{s.version - 1}.json"
     previous = Brief.model_validate_json(prev_path.read_text()) if prev_path.exists() else None
     brief = build_brief(_incident(s.ws), _dossier(s.ws), drafts, version=s.version, extra_gaps=extra_gaps,
-                        previous=previous, verifier_rejections=s.rejections)
+                        previous=previous, verifier_rejections=s.rejections, prefetched_at=s.prefetched_at)
     _write(s.brief_path, brief.model_dump_json(indent=2))
     return brief
 
 
 def _publish(s: Session, progress_status: str) -> None:
+    if not s.publish:
+        return
     progress = Progress(incident_id=s.incident_id, status=progress_status, version=s.version,
                         candidates=s.candidates, todos=s.todos, trace_run_id=s.trace_run_id)
     _write(s.ws / TODOS, progress.model_dump_json(indent=2))
@@ -329,7 +373,12 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
         if chosen_building_id not in known:
             return f"Error: the dispatcher has not chosen one of {known}."
         _confirm(ws, chosen_building_id)
-        return f"The dispatcher confirmed building {chosen_building_id}."
+        s.building_id = chosen_building_id
+        if _load_prefetched(s):
+            return (f"The dispatcher confirmed building {chosen_building_id}. Its building data was "
+                    "PREFETCHED and is already in /workspace/dossier.json: skip the costar, matterport "
+                    "and vexcel subagents and go straight to the strategy step.")
+        return f"The dispatcher confirmed building {chosen_building_id}. No prefetched data: pull the three layers."
 
     def pull_tool(layer: str) -> BaseTool:
         def pull() -> str:
@@ -337,8 +386,8 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
 
         return StructuredTool.from_function(
             pull, name=f"pull_{layer}",
-            description=f"Pull {LAYERS_INFO[layer][0]} for this incident's confirmed building and save it as "
-                        f"/workspace/layers/{layer}.json. Returns a digest with the evidence ids.")
+            description=f"Pull {LAYERS_INFO[layer][0]} for the building and save it as "
+                        f"layers/{layer}.json. Returns a digest with the evidence ids.")
 
     @tool(parse_docstring=True)
     def submit_considerations(considerations: list[ConsiderationDraft]) -> str:
@@ -349,7 +398,7 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
         """
         if s.accepted >= MAX_SUBMISSIONS:
             return "Error: regeneration budget used up. Do not resubmit."
-        if not _incident(ws).confirmed_building_id:
+        if not _building_id(s):
             return "Error: the dispatcher has not confirmed a building yet."
         _ensure_dossier(s)
         evidence = merge_evidence(_incident(ws), _dossier(ws))
@@ -399,18 +448,33 @@ def _model(thinking: bool = True):
                                   google_api_key=os.environ["GEMINI_API_KEY"], **effort)
 
 
+def _layer_subagents(tools: dict[str, BaseTool], quick: Any) -> list[dict]:
+    """The costar / matterport / vexcel subagents: one pull, one short summary. Two model calls each."""
+    return [{"name": layer,
+             "description": f"Pulls {LAYERS_INFO[layer][0]} for the building and returns a short summary. "
+                            "Independent of the other data layers.",
+             "system_prompt": LAYER_PROMPT.format(layer=layer, what=LAYERS_INFO[layer][0],
+                                                  focus=LAYERS_INFO[layer][1]),
+             "tools": [tools[f"pull_{layer}"]], "model": quick} for layer in LAYERS]
+
+
+def build_prefetcher(s: Session, model: Any = None):
+    """A small deep agent that only fans out to the three layer subagents (scripts/prefetch.py)."""
+    return create_deep_agent(
+        model=model or _model(),
+        system_prompt=PREFETCH_PROMPT,
+        subagents=_layer_subagents(make_tools(s), model or _model(thinking=False)),
+        name="flamescout-prefetch",
+    )
+
+
 def build_orchestrator(s: Session, model: Any = None, checkpointer: Any = None):
     tools = make_tools(s)
-    # Mechanical work (one tool call, one short note) and the critic ask for no thinking: at "low"
+    # Mechanical work (one tool call, one short summary) and the critic ask for no thinking: at "low"
     # a turn sometimes spent 1000+ reasoning tokens (13 s).
     quick = model or _model(thinking=False)
     subagents = [
-        *({"name": layer,
-           "description": f"Pulls {LAYERS_INFO[layer][0]} for the confirmed building into the workspace "
-                          "and writes a short note. Independent of the other data layers.",
-           "system_prompt": LAYER_PROMPT.format(layer=layer, what=LAYERS_INFO[layer][0],
-                                                focus=LAYERS_INFO[layer][1]),
-           "tools": [tools[f"pull_{layer}"]], "model": quick} for layer in LAYERS),
+        *_layer_subagents(tools, quick),
         {"name": "strategy",
          "description": "Drafts up to 5 advisory considerations from incident.json and dossier.json and "
                         "writes the brief for the version it is told. Can revise given critic issues.",
@@ -467,6 +531,19 @@ def _log_activity(ns: tuple, update: dict, t0: float) -> None:
             log.info("%5.1fs %-8s -> %s(%s)", time.perf_counter() - t0, who, call["name"], hint)
 
 
+def _save_layer_notes(s: Session, update: dict) -> None:
+    """A layer subagent's reply (the result of its task call) becomes notes/<layer>_summary.md."""
+    messages = update.get("messages") or []
+    messages = getattr(messages, "value", messages)
+    for m in messages if isinstance(messages, list) else [messages]:
+        for call in getattr(m, "tool_calls", None) or []:
+            if call["name"] == "task" and call["args"].get("subagent_type") in LAYERS:
+                s.layer_tasks[call["id"]] = call["args"]["subagent_type"]
+        layer = s.layer_tasks.pop(getattr(m, "tool_call_id", None), None)
+        if layer and (text := m.text.strip()):
+            _write(s.ws / "notes" / f"{layer}_summary.md", text + "\n")
+
+
 def _pending_confirmation(s: Session) -> Optional[dict]:
     """The confirm_building call waiting for the dispatcher, if the run is paused on one."""
     if s.agent is None:
@@ -498,6 +575,8 @@ def _run(s: Session, agent_input: Any, phase: str, t0: float) -> None:
                 if not isinstance(update, dict):
                     continue  # e.g. the __interrupt__ entry; read back from the checkpoint instead
                 _log_activity(chunk["ns"], update, t0)
+                if not chunk["ns"]:
+                    _save_layer_notes(s, update)
                 if not chunk["ns"] and "todos" in update:  # the orchestrator's own plan
                     s.todos = [TodoItem(**t) for t in update["todos"]]
                     _publish(s, "running")
@@ -547,8 +626,11 @@ def _session(incident_id: str) -> Session:
 
 def start_incident(incident_id: str, workspace_root: Path = WORKSPACE,
                    on_todos: Optional[Callable[[Progress], None]] = None,
-                   model: Any = None, checkpointer: Any = None) -> RunResult:
-    """Start the incident's agent. It plans, then pauses until the dispatcher confirms a building."""
+                   model: Any = None, checkpointer: Any = None, use_cache: bool = True) -> RunResult:
+    """Start the incident's agent. It plans, then pauses until the dispatcher confirms a building.
+
+    use_cache=False ignores prefetched building data (data/cache) for this incident.
+    """
     t0 = time.perf_counter()
     ws = Path(workspace_root) / incident_id
     candidates = find_candidates(_incident(ws))
@@ -566,7 +648,7 @@ def start_incident(incident_id: str, workspace_root: Path = WORKSPACE,
     saver = checkpointer or _CHECKPOINTER
     saver.delete_thread(incident_id)  # one thread per incident; starting again starts it clean
     s = _SESSIONS[incident_id] = Session(incident_id=incident_id, ws=ws, candidates=candidates,
-                                         on_todos=on_todos)
+                                         on_todos=on_todos, use_cache=use_cache)
     try:
         s.agent = build_orchestrator(s, model, saver)
     except Exception:
@@ -631,3 +713,37 @@ def update_incident(incident_id: str, notes: list[str]) -> RunResult:
               f"Produce brief version {s.version}: /workspace/brief_v{s.version}.json.")
     _run(s, {"messages": [{"role": "user", "content": prompt}]}, "update", t0)
     return _finish_brief(s, t0)
+
+
+@dataclass
+class PrefetchResult:
+    building_id: str
+    prefetched_at: datetime
+    path: Path                # data/cache/<building_id>/
+    notes: dict[str, str]     # layer -> summary written by its subagent
+    seconds: float
+
+
+def prefetch_building(building_id: str, model: Any = None) -> PrefetchResult:
+    """Run the three layer subagents now and cache what they pull (PRD F13).
+
+    An incident confirmed at this building within the next 24 h reuses the cache and skips its
+    layer phase. Raises if the building has no data (unknown building id).
+    """
+    t0 = time.perf_counter()
+    folder = cache.cache_dir(building_id)
+    dossier_mod.pull_layer("costar", building_id)  # fail now, before any model call, if the building is unknown
+    shutil.rmtree(folder, ignore_errors=True)
+    folder.mkdir(parents=True)
+    s = Session(incident_id=f"prefetch-{building_id}", ws=folder, building_id=building_id,
+                use_cache=False, publish=False)
+    try:
+        s.agent = build_prefetcher(s, model)
+    except Exception:
+        log.exception("Could not build the prefetch agent for %s", building_id)
+    _run(s, {"messages": [{"role": "user", "content": f"Prefetch building {building_id}."}]}, "prefetch", t0)
+    _ensure_dossier(s)  # any layer a subagent did not pull is pulled in code; raises for an unknown building
+    at = cache.stamp(building_id)
+    hit = cache.load_fresh(building_id)
+    return PrefetchResult(building_id=building_id, prefetched_at=at, path=folder,
+                          notes=hit.notes if hit else {}, seconds=time.perf_counter() - t0)

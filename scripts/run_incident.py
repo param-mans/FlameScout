@@ -1,15 +1,19 @@
 """Run one scripted incident end to end, the way the API will drive it.
 
-    python scripts/run_incident.py S2
+    python scripts/run_incident.py S2 [--cold]
 
   call 1 -> fusion -> start_incident   (agent plans, pauses for the dispatcher)
             simulated dispatcher picks the first candidate -> resume_incident -> brief_v1.json
   call 2 -> fusion change notes -> update_incident (same agent thread)      -> brief_v2.json
   ... one update per further call in the script.
 
+Building data prefetched with scripts/prefetch.py (under 24 h old) is reused and the layer subagents
+are skipped; --cold ignores that cache.
+
 Writes workspace/<incident_id>/: incident.json, candidates.json, layers/{costar,matterport,vexcel}.json,
 dossier.json, brief_vN.json, critique_vN.json, todos.json and notes/*.md.
 """
+import argparse
 import json
 import logging
 import sys
@@ -32,7 +36,12 @@ MARKS = {"completed": "x", "in_progress": "~", "pending": " "}
 logging.basicConfig(level=logging.WARNING, format="%(message)s")
 logging.getLogger("services.agents.orchestrator").setLevel(logging.INFO)
 
-script_id = (sys.argv[1] if len(sys.argv) > 1 else "S2").lower()
+parser = argparse.ArgumentParser()
+parser.add_argument("script_id", nargs="?", default="S2")
+parser.add_argument("--cold", action="store_true", help="ignore prefetched building data (data/cache)")
+args = parser.parse_args()
+
+script_id = args.script_id.lower()
 data = json.loads((ROOT / "data/fixtures/calls" / f"{script_id}.json").read_text())
 segments = [CallSegment(**s) for s in data["segments"]]
 call_ids = list(dict.fromkeys(s.call_id for s in segments))
@@ -77,7 +86,7 @@ def report(r: RunResult) -> bool:
 
 # Call 1 -> the agent plans and pauses for the dispatcher.
 replay(call_ids[0])
-started = start_incident(incident_id, on_todos=show_todos)
+started = start_incident(incident_id, on_todos=show_todos, use_cache=not args.cold)
 print(f"\npaused for dispatcher ({started.status}) after {started.seconds:.1f} s. Candidates:")
 for c in started.candidates:
     print(f"  {c.building_id}: {c.name}, {c.address} (match {c.score})")
@@ -88,8 +97,10 @@ eng.confirm(choice)
 print(f"dispatcher confirms: {choice}\n")
 v1 = resume_incident(incident_id, choice)
 ok = report(v1)
-timings = [f"v1: {started.seconds:.1f} s to the confirmation pause + {v1.seconds:.1f} s from resume to brief "
-           f"= {started.seconds + v1.seconds:.1f} s"]
+warm = v1.brief.freshness["prefetched"]
+print("building data:", f"prefetched at {v1.brief.freshness['prefetched_at']}" if warm else "pulled for this incident")
+timings = [f"v1 ({'warm, prefetched' if warm else 'cold'}): {started.seconds:.1f} s to the confirmation pause + "
+           f"{v1.seconds:.1f} s from resume to brief = {started.seconds + v1.seconds:.1f} s"]
 
 # Each later call -> same agent thread, next brief version.
 for call_id in call_ids[1:]:

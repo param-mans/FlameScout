@@ -11,3 +11,4 @@ dist/
 *.tsbuildinfo
 *.egg-info/
 .vscode/
+data/cache/

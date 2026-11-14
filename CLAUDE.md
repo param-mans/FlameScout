@@ -9,6 +9,8 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - Tests: `pytest -q` (offline). Live API tests: `RUN_LIVE=1 pytest -q -m live`
 - Replay a call script through fusion: `python scripts/run_fusion.py S2`
 - Run an incident end to end (call 1 -> dispatcher confirms -> brief v1, call 2 -> brief v2): `python scripts/run_incident.py S2`
+  (`--cold` ignores prefetched building data)
+- Prefetch a building's data layers for the next 24 h: `python scripts/prefetch.py fake_wilshire_tower`
 - Export JSON Schema for the frontend: `python scripts/export_schemas.py`
 
 ## Layout
@@ -30,6 +32,7 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
   cross-layer consideration), `changes_since_last` diff. No LLM.
 - `services/agents/dossier.py` - pulls the costar / matterport / vexcel layers through the adapters and
   merges them into a BuildingDossier. No LLM.
+- `services/agents/cache.py` - prefetch cache under `data/cache/<building_id>/` (24 h, not committed).
 - `data/fixtures/calls/` - scripted calls S1-S4. `data/fixtures/<building_id>/{costar,matterport,vexcel}.json`
   - per-layer fixtures, our own normalized fields only.
 - `workspace/<incident_id>/` - incident files (incident.json, candidates.json, layers/*.json, dossier.json, brief_vN.json,

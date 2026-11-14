@@ -10,12 +10,14 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
-from flamescout_schemas import Brief, BuildingDossier, CallSegment, Progress
-from services.agents import orchestrator
+from datetime import timedelta
+
+from flamescout_schemas import Brief, BuildingDossier, CallSegment, Progress, now
+from services.agents import cache, orchestrator
 from services.agents.dossier import LAYERS
 from services.agents.fusion import FusionEngine
-from services.agents.orchestrator import (MAX_SUBMISSIONS, Session, make_tools, resume_incident,
-                                          start_incident, update_incident)
+from services.agents.orchestrator import (MAX_SUBMISSIONS, Session, make_tools, prefetch_building,
+                                          resume_incident, start_incident, update_incident)
 
 CALLS = Path(__file__).resolve().parents[1] / "data" / "fixtures" / "calls"
 BUILDING = "fake_wilshire_tower"
@@ -68,6 +70,25 @@ def test_confirm_building_tool_only_accepts_a_candidate(session):
     assert BUILDING in confirm.invoke({"candidates": [BUILDING], "chosen_building_id": BUILDING})
     saved = orchestrator._incident(session.ws)
     assert (saved.confirmed_building_id, saved.status) == (BUILDING, "confirmed")
+
+
+def test_confirm_reuses_a_fresh_prefetch_cache(session, make_cache):
+    at = make_cache(BUILDING)
+    reply = make_tools(session)["confirm_building"].invoke({"candidates": [BUILDING], "chosen_building_id": BUILDING})
+    assert "PREFETCHED" in reply and session.prefetched_at == at
+    assert all((session.ws / "layers" / f"{name}.json").exists() for name in LAYERS)
+    assert (session.ws / "dossier.json").exists()
+    assert (session.ws / "notes" / "costar_summary.md").read_text() == "cached costar note\n"
+    assert make_tools(session)["pull_vexcel"].invoke({}).startswith("Already pulled")
+
+
+@pytest.mark.parametrize("use_cache, age_hours", [(False, 0), (True, 25)])
+def test_confirm_ignores_the_cache_when_cold_or_stale(session, make_cache, use_cache, age_hours):
+    make_cache(BUILDING, at=now() - timedelta(hours=age_hours))
+    session.use_cache = use_cache
+    reply = make_tools(session)["confirm_building"].invoke({"candidates": [BUILDING], "chosen_building_id": BUILDING})
+    assert "No prefetched data" in reply and session.prefetched_at is None
+    assert not (session.ws / "layers").exists()
 
 
 def test_pull_tools_write_layers_then_merge_and_do_not_repeat(session, incident):
@@ -160,11 +181,12 @@ class RuleModel(BaseChatModel):
     def _reply(self, messages) -> AIMessage:
         if "task" in self.tool_names:  # the orchestrator: its turns are sequential, so a script works
             return next(self.main_script, AIMessage(content="(script exhausted)"))
-        if any(isinstance(m, ToolMessage) for m in messages):
-            return AIMessage(content="Done.")
+        called = any(isinstance(m, ToolMessage) for m in messages)
         for layer in LAYERS:
-            if f"pull_{layer}" in self.tool_names:
-                return calls((f"pull_{layer}", {}))
+            if f"pull_{layer}" in self.tool_names:  # two calls: pull, then the summary code saves
+                return AIMessage(content=f"{layer} summary line [ev_x]") if called else calls((f"pull_{layer}", {}))
+        if called:
+            return AIMessage(content="Done.")
         if "submit_considerations" in self.tool_names:
             return calls(("submit_considerations", {"considerations": self.drafts.pop(0)}))
         return calls(("submit_critique", {"verdict": "pass", "issues": []}))
@@ -196,6 +218,9 @@ RESUME = [calls(todos("completed", "in_progress", "in_progress", "in_progress", 
           calls(todos(*["completed"] * 7)), AIMessage(content="pass")]
 UPDATE = [calls(todos(*["completed"] * 7, "in_progress", "pending"), task("strategy")),
           calls(task("critic")), calls(todos(*["completed"] * 9)), AIMessage(content="pass")]
+PREFETCH = [calls(task("costar"), task("matterport"), task("vexcel")), AIMessage(content="done")]
+WARM_RESUME = [calls(todos(*["completed"] * 4, "in_progress", "pending", "pending"), task("strategy")),
+               calls(task("critic")), calls(todos(*["completed"] * 7)), AIMessage(content="pass")]
 
 
 def test_start_pauses_resume_briefs_update_reuses_thread_and_layers(incident, monkeypatch):
@@ -228,6 +253,9 @@ def test_start_pauses_resume_briefs_update_reuses_thread_and_layers(incident, mo
     v1 = resume_incident("inc_s2", BUILDING)
     assert (v1.status, v1.version, v1.fallback_reason) == ("briefed", 1, None)
     assert not barrier.broken and all((incident.ws / "layers" / f"{name}.json").exists() for name in LAYERS)
+    for name in LAYERS:  # each layer subagent's reply, saved by code
+        assert (incident.ws / "notes" / f"{name}_summary.md").read_text() == f"{name} summary line [ev_x]\n"
+    assert v1.brief.freshness["prefetched"] is False and v1.brief.freshness["prefetched_at"] is None
     assert orchestrator._incident(incident.ws).confirmed_building_id == BUILDING
     assert [c.cross_layer for c in v1.brief.considerations] == [True, False]
     assert v1.critique["verdict"] == "pass" and all(t.status == "completed" for t in v1.todos)
@@ -247,6 +275,33 @@ def test_start_pauses_resume_briefs_update_reuses_thread_and_layers(incident, mo
     assert (incident.ws / "dossier.json").stat().st_mtime_ns == dossier_written  # data layers reused
     assert len(session.agent.get_state(session.config).values["messages"]) > messages_after_v1  # same thread
     assert len(v2.todos) == 9 and seen[-1].status == "done" and seen[-1].version == 2
+
+
+def test_prefetch_then_incident_skips_the_layer_phase(incident, monkeypatch):
+    fetched = prefetch_building(BUILDING, model=fake_model(*PREFETCH))
+    assert fetched.path == cache.cache_dir(BUILDING) and set(fetched.notes) == set(LAYERS)
+    assert fetched.notes["vexcel"] == "vexcel summary line [ev_x]\n"
+    assert cache.load_fresh(BUILDING).prefetched_at == fetched.prefetched_at
+
+    def no_pull(*a, **k):
+        raise AssertionError("a layer was pulled although the building was prefetched")
+
+    monkeypatch.setattr(orchestrator.dossier_mod, "pull_layer", no_pull)
+    start_incident("inc_s2", workspace_root=incident.root, model=fake_model(*START, *WARM_RESUME))
+    incident.eng.confirm(BUILDING)
+    v1 = resume_incident("inc_s2", BUILDING)
+    assert (v1.status, v1.fallback_reason) == ("briefed", None)
+    assert v1.brief.freshness["prefetched"] is True
+    assert v1.brief.freshness["prefetched_at"] == fetched.prefetched_at.isoformat()
+    assert [c.cross_layer for c in v1.brief.considerations] == [True, False]
+    assert (incident.ws / "notes" / "matterport_summary.md").read_text() == "matterport summary line [ev_x]\n"
+    assert all((incident.ws / "layers" / f"{name}.json").exists() for name in LAYERS)
+
+
+def test_prefetch_of_an_unknown_building_fails_before_any_model_call():
+    with pytest.raises(FileNotFoundError, match="No CoStar fixture"):
+        prefetch_building("no_such_building", model=fake_model())
+    assert not cache.cache_dir("no_such_building").exists()
 
 
 def test_dispatcher_can_reject_every_candidate(incident):

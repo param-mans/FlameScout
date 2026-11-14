@@ -29,16 +29,17 @@ Working example: `scripts/run_incident.py`.
 `workspace/<incident_id>/incident.json` must exist (fusion writes it: `FusionEngine.record`), and
 callers must have given an address or building name, otherwise there are no candidates.
 
-## `start_incident(incident_id, workspace_root=WORKSPACE, on_todos=None) -> RunResult`
+## `start_incident(incident_id, workspace_root=WORKSPACE, on_todos=None, use_cache=True) -> RunResult`
 
 Starts the agent. It writes its plan, then pauses at the `confirm_building` gate.
+`use_cache=False` makes this incident ignore prefetched building data (see Prefetch below).
 
 - Raises `ValueError` if the incident has no candidate buildings yet.
 - Returns `status="awaiting_confirmation"`, `candidates` (best match first), `brief=None`.
 - Clears earlier output for this incident (briefs, critiques, layers, dossier, notes, todos), then writes:
   - `candidates.json`: list of `BuildingCandidate` (`building_id`, `name`, `address`, `score`)
   - `todos.json`: `Progress` with `status="awaiting_confirmation"`
-- Takes about 4 s.
+- Takes about 5 s.
 
 ## `resume_incident(incident_id, building_id) -> RunResult`
 
@@ -51,11 +52,14 @@ The dispatcher's answer. Maps to `POST /api/incidents/{id}/confirm-location`.
 - Writes:
   - `incident.json`: sets `confirmed_building_id` and `status="confirmed"`
   - `layers/costar.json`, `layers/matterport.json`, `layers/vexcel.json`: one per data layer, pulled
-    by three subagents running in parallel, each with a note `notes/<layer>_summary.md`
+    by three subagents running in parallel. Each subagent's short summary is saved by code as
+    `notes/<layer>_summary.md`.
   - `dossier.json`: the three layers merged in code
+  - If the building was prefetched less than 24 h ago, the layers and notes are copied from
+    `data/cache/<building_id>/` instead and the three subagents do not run.
   - `brief_v1.json`, `critique_v1.json`, `notes/strategy_reasoning.md`
   - `todos.json`: ends with `status="done"`
-- Takes roughly 40-50 s.
+- Takes roughly 34-40 s cold, 26-29 s when the building was prefetched.
 
 Fusion also writes `incident.json`. So that a later save does not drop the confirmation, tell your
 `FusionEngine` too: `engine.confirm(building_id)` before or right after `resume_incident`.
@@ -72,7 +76,7 @@ returns; save the updated `incident.json` first, then call this. Skip the call w
   deterministic diff against the previous version, e.g. `"Floor contradicted: 3 vs 4 (Call 2)"`.
 - Writes `brief_vN.json`, `critique_vN.json`, `notes/strategy_reasoning_vN.md`, `todos.json`.
   Earlier versions stay on disk.
-- Takes roughly 25 s.
+- Takes roughly 26-35 s.
 
 ## `RunResult`
 
@@ -97,6 +101,10 @@ Each consideration has `cross_layer: bool`: true when its evidence comes from tw
 CoStar / Matterport / Vexcel layers (`evidence[id].source`). Every brief with considerations has at
 least one; highlight these in the UI.
 
+`brief.freshness` has `prefetched: bool` and `prefetched_at` (ISO time or `null`) next to
+`scan_age_days` and `costar_as_of`: true when the data layers came from the prefetch cache rather than
+being pulled for this incident.
+
 Building data comes through the adapters in `services/agents/providers.py`. `DATA_MODE=fixture`
 (default) reads `data/fixtures/<building_id>/{costar,matterport,vexcel}.json`; `DATA_MODE=live` is
 not implemented yet and logs "live adapter not configured; using fixtures".
@@ -104,6 +112,20 @@ not implemented yet and logs "live adapter not configured; using fixtures".
 **The functions do not raise when the agent or the model fails.** The crew still gets a brief with
 every deterministic fact and no considerations; `fallback_reason` says why and `gaps[0]` starts with
 "Considerations withheld". Show that brief as it is.
+
+## Prefetch: `prefetch_building(building_id) -> PrefetchResult`
+
+Runs the three layer subagents ahead of any incident and caches what they pull (PRD F13). Same thing
+from the shell: `python scripts/prefetch.py <building_id>`. Takes about 10 s.
+
+- Writes `data/cache/<building_id>/`: `cache.json` (`building_id`, `prefetched_at`),
+  `layers/{costar,matterport,vexcel}.json`, `notes/<layer>_summary.md`. The folder is gitignored.
+- Raises `FileNotFoundError` for a building with no data, before any model call.
+- Returns `building_id`, `prefetched_at`, `path`, `notes` (layer -> summary) and `seconds`.
+- For 24 h, `resume_incident` at that building reuses the cache: no layer subagents, about 8 s faster,
+  and the brief says so in `freshness.prefetched`. Older caches are ignored, not deleted.
+- Blocking, like the other functions. It does not need or touch an incident session, so it can run
+  at server start-up for the hero buildings or from a cron job.
 
 ## `on_todos`: live progress strip
 

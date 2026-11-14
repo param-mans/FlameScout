@@ -55,6 +55,10 @@ def test_gaps_and_freshness_are_computed(incident, dossier):
     assert "Unverified: building.sprinklered" in brief.gaps
     assert brief.freshness["scan_age_days"] >= 0
     assert brief.freshness["costar_as_of"] == "2026-09-01"
+    assert (brief.freshness["prefetched"], brief.freshness["prefetched_at"]) == (False, None)
+    at = brief.generated_at
+    warm = build_brief(incident, dossier, [], prefetched_at=at)
+    assert (warm.freshness["prefetched"], warm.freshness["prefetched_at"]) == (True, at.isoformat())
 
 
 @pytest.mark.parametrize("bad, message", [
