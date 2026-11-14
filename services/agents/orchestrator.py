@@ -57,6 +57,7 @@ See docs/agents-api.md.
 """
 from __future__ import annotations
 
+import contextvars
 import json
 import re
 import logging
@@ -75,6 +76,7 @@ from langchain.agents.middleware import AgentMiddleware, TodoListMiddleware
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool, StructuredTool, tool
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.errors import GraphBubbleUp
 from langgraph.types import Command
 from pydantic import BaseModel
 
@@ -91,7 +93,8 @@ from .brief import (ConsiderationDraft, apply_memory, build_brief, check_conside
 from .dossier import LAYERS, Layer, LayerData
 from .locator import find_candidates
 from .overlay import OverlayDraft
-from .stalls import MODEL_TIMEOUT_S, FailoverMiddleware, StallCounter, StallRetryMiddleware
+from .stalls import (MODEL_TIMEOUT_S, RUN_CANCEL, CancelMiddleware, FailoverMiddleware, RunCancelled, StallCounter,
+                     StallRetryMiddleware, cancelled)
 from .workspace import WORKSPACE_ROOT, Workspace, incident_workspace
 
 log = logging.getLogger(__name__)
@@ -104,6 +107,14 @@ BUDGET_SPENT = ("Stop: the regeneration budget for this brief is used up and the
                 "draft. Do not call strategy or critic again and do not publish: the considerations will be "
                 "withheld and the facts published. Finish your remaining todos and end your turn.")
 SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"  # mounted read-only at /skills/
+# Wall-clock cap per run (RUN_DEADLINE_S overrides both): past it, outstanding agents are cancelled and
+# the best partial brief is published. A hang in front of the crew is worse than a partial brief.
+RUN_DEADLINE_V1_S, RUN_DEADLINE_LATER_S = 90.0, 75.0
+PREVIOUS_RUN_JOIN_S = 30.0  # a cancelled run's agent finishes its in-flight model call before the next run
+# Tools that write the incident's artifacts: after the deadline they are refused, under s.lock. The layer
+# pulls are not here (they must run in parallel); _pull checks the deadline itself, under the lock.
+WRITER_TOOLS = frozenset({"confirm_building", "write_copilot_question", "publish_brief", "submit_considerations",
+                          "submit_critique", "submit_overlay"})
 NOTE_HEADER = ("> Unverified agent notes, written by the {layer} subagent. Not checked against the data: "
                "the source of truth is layers/{layer}.json.\n\n")
 
@@ -354,6 +365,8 @@ class RunResult:
     overlay_seconds: Optional[float] = None  # seconds into this call when the overlay was written (on_overlay)
     model_stalls: int = 0                # model calls in this call that hit the 12 s timeout
     model_retries: int = 0               # retries made in this call (each stall is retried once)
+    partial_reason: Optional[str] = None  # set when the run deadline cut this call short (brief.partial)
+    subagents_gave_up: list[str] = field(default_factory=list)  # subagents that failed; the run went on
 
 
 @dataclass
@@ -386,6 +399,9 @@ class Session:
     leg_stalls: tuple[int, int] = (0, 0)       # (stalls, retries) of the leg that just ran
     start_seconds: float = 0.0                 # start_incident's wall clock, for time-to-brief
     critic_model: Optional[str] = None         # "provider:model" of the critic, recorded in critique_vN.json
+    deadline_reason: Optional[str] = None      # set when the current call's run hit its deadline
+    gave_up: list[str] = field(default_factory=list)  # subagents that failed in the current call
+    worker: Optional[threading.Thread] = None  # the thread streaming the latest run
 
     @staticmethod
     def layer_rel(layer: str) -> str:
@@ -476,6 +492,8 @@ def _pull(s: Session, layer: str, **options) -> str:
     except (OSError, ValueError, KeyError) as e:
         return f"Error: {e}"
     with s.lock:
+        if cancelled():  # the run deadline passed while this layer was being pulled
+            return "Error: the run deadline passed; nothing written."
         s.ws.write(s.layer_rel(layer), data.model_dump_json(indent=2))
         layers = [_layer_on_disk(s, name, building_id) for name in LAYERS]
         if all(layers):
@@ -860,6 +878,52 @@ class BudgetStopMiddleware(AgentMiddleware):
         return handler(request)
 
 
+class RunGuardMiddleware(CancelMiddleware):
+    """CancelMiddleware, and a writer tool checks the deadline under s.lock: once _finish_brief holds the
+    lock after a deadline, a cancelled run can no longer write the brief, critique, overlay or layers."""
+
+    def __init__(self, agent: str, s: "Session"):
+        super().__init__(agent)
+        self.s = s
+
+    def wrap_tool_call(self, request, handler):
+        if request.tool_call.get("name") not in WRITER_TOOLS:
+            return super().wrap_tool_call(request, handler)
+        with self.s.lock:
+            return super().wrap_tool_call(request, handler)
+
+
+class SubagentGiveUpMiddleware(AgentMiddleware):
+    """A subagent that fails for good (its model stalled through the retry and the failover, or raised)
+    ends only itself: the orchestrator gets a tool result saying so and carries on. Code fills what
+    the subagent did not do (_ensure_dossier, _ensure_overlay, _finish_brief). Interrupts and the run
+    deadline still stop the run."""
+
+    def __init__(self, s: "Session"):
+        super().__init__()
+        self.s = s
+
+    def wrap_tool_call(self, request, handler):
+        call = request.tool_call
+        if call.get("name") != "task":
+            return handler(request)
+        try:
+            return handler(request)
+        except (GraphBubbleUp, RunCancelled):
+            raise
+        except Exception as e:  # noqa: BLE001 - one subagent's failure must not end the run
+            if cancelled():
+                raise RunCancelled("run deadline reached") from e
+            who = (call.get("args") or {}).get("subagent_type") or "unknown"
+            self.s.gave_up.append(who)
+            log.error("Subagent %s gave up for %s v%d (%s: %s); the run goes on without it",
+                      who, self.s.incident_id, self.s.version, type(e).__name__, str(e)[:120])
+            return ToolMessage(
+                content=(f"Error: the {who} subagent gave up ({type(e).__name__}). Do not call it again for this "
+                         "brief version. Continue with the rest of your plan; code fills in what it did not do."),
+                tool_call_id=call["id"], name="task", status="error")
+
+
 _MISSING = re.compile(r"\b(not (present|found|listed|included|contained)|missing|absent|"
                       r"does(n't| not) exist|not in (the )?(brief|evidence|size_up|markers))", re.I)
 
@@ -901,8 +965,8 @@ class _Models:
     LLM_PROVIDER, so a different model checks the brief, with LLM_PROVIDER's model as its backup.
     A model passed in (tests, scripts) is used everywhere, with no failover and no separate critic."""
 
-    def __init__(self, stalls: StallCounter, model: Any = None):
-        self.stalls = stalls
+    def __init__(self, stalls: StallCounter, model: Any = None, session: Optional["Session"] = None):
+        self.stalls, self.session = stalls, session
         if model is not None:
             self.main = self.quick = self.critic = model
             self.main_backup = self.quick_backup = self.critic_backup = None
@@ -921,7 +985,8 @@ class _Models:
             self.critic, self.critic_backup = self.quick, self.quick_backup
 
     def middleware(self, agent: str, backup: Any) -> list:
-        mw: list = [StallRetryMiddleware(agent, self.stalls)]
+        guard = RunGuardMiddleware(agent, self.session) if self.session else CancelMiddleware(agent)
+        mw: list = [guard, StallRetryMiddleware(agent, self.stalls)]  # guard outermost: no call after the deadline
         if backup is not None:
             mw.append(FailoverMiddleware(agent, backup, self.stalls))  # inside the retry: fail over first
         return mw
@@ -942,11 +1007,11 @@ def _layer_subagents(tools: dict[str, BaseTool], m: _Models) -> list[dict]:
 
 def build_prefetcher(s: Session, model: Any = None):
     """A small deep agent that only fans out to the three layer subagents (scripts/prefetch.py)."""
-    m = _Models(s.stalls, model)
+    m = _Models(s.stalls, model, s)
     return create_deep_agent(
         model=m.main,
         system_prompt=PREFETCH_PROMPT,
-        middleware=m.middleware("prefetch", m.main_backup),
+        middleware=[*m.middleware("prefetch", m.main_backup), SubagentGiveUpMiddleware(s)],
         subagents=_layer_subagents(make_tools(s), m),
         name="flamescout-prefetch",
     )
@@ -956,7 +1021,7 @@ def build_orchestrator(s: Session, model: Any = None, checkpointer: Any = None):
     tools = make_tools(s)
     # Mechanical work (one tool call, one short summary) and the critic ask for no thinking: at "low"
     # a turn sometimes spent 1000+ reasoning tokens (13 s).
-    m = _Models(s.stalls, model)
+    m = _Models(s.stalls, model, s)
     if m.critic_provider:
         from .llm import model_name, provider
 
@@ -990,7 +1055,8 @@ def build_orchestrator(s: Session, model: Any = None, checkpointer: Any = None):
         tools=[tools["confirm_building"], tools["write_copilot_question"], tools["publish_brief"]],
         system_prompt=ORCHESTRATOR_PROMPT,
         middleware=[TodoListMiddleware(),  # write_todos is opt-in in deepagents 0.7
-                    *m.middleware("orchestrator", m.main_backup), BudgetStopMiddleware(s)],
+                    *m.middleware("orchestrator", m.main_backup), BudgetStopMiddleware(s),
+                    SubagentGiveUpMiddleware(s)],
         subagents=subagents,
         # Only /workspace/ is persistent (MongoDB or disk); offloaded tool results etc. stay in ephemeral state.
         backend=CompositeBackend(default=StateBackend(), routes={
@@ -1053,6 +1119,8 @@ def _save_layer_notes(s: Session, update: dict) -> None:
             if call["name"] == "task" and call["args"].get("subagent_type") in LAYERS:
                 s.layer_tasks[call["id"]] = call["args"]["subagent_type"]
         layer = s.layer_tasks.pop(getattr(m, "tool_call_id", None), None)
+        if getattr(m, "status", None) == "error":  # the subagent gave up: no note, just the error
+            continue
         if layer and (text := m.text.strip()):
             rel = f"notes/{layer}_summary.md"
             earlier = s.ws.read_or_none(rel)  # a second reply (exterior entries) is appended
@@ -1075,36 +1143,75 @@ def _pending_confirmation(s: Session) -> Optional[dict]:
     return _pending(s, "confirm_building")
 
 
+def run_deadline_s(version: int) -> float:
+    """Wall-clock cap of one run: RUN_DEADLINE_S when set, else 90 s for brief v1 and 75 s for later versions."""
+    raw = os.getenv("RUN_DEADLINE_S", "").strip()
+    if raw:
+        try:
+            return float(raw)
+        except ValueError:
+            log.warning("RUN_DEADLINE_S=%r is not a number; using the defaults", raw)
+    return RUN_DEADLINE_V1_S if version <= 1 else RUN_DEADLINE_LATER_S
+
+
 def _run(s: Session, agent_input: Any, phase: str, t0: float) -> None:
-    """Stream one leg of the incident's thread. Never raises: failures land in s.error."""
+    """Stream one leg of the incident's thread, never past its deadline. Never raises: failures land in
+    s.error. The stream runs in a worker thread; when the deadline (counted from t0) passes, the run's
+    cancel event is set, every agent stops at its next model or tool call, and this returns at once
+    with s.deadline_reason set. _finish_brief then publishes the best partial brief."""
     run_id = uuid.uuid4()
     s.trace_run_id = str(run_id) if _enable_tracing() else None
-    s.error = None
+    s.error, s.deadline_reason, s.gave_up = None, None, []
     s.leg_t0 = t0
     stalls_before, retries_before = s.stalls.snapshot()
+    if s.worker is not None and s.worker.is_alive():  # a cancelled run still finishing its last model call
+        log.warning("Incident %s: waiting for the previous run to stop before %s", s.incident_id, phase)
+        s.worker.join(PREVIOUS_RUN_JOIN_S)
     _publish(s, "running")
-    try:
-        if s.agent is None:
-            raise RuntimeError("the orchestrator agent could not be built")
-        config = {**s.config, "run_id": run_id, "run_name": f"incident:{s.incident_id}:{phase}",
-                  "recursion_limit": 60, "tags": ["flamescout", "orchestrator", phase],
-                  "metadata": {"incident_id": s.incident_id, "thread_id": s.incident_id,
-                               "brief_version": s.version}}
-        for chunk in s.agent.stream(agent_input, config, stream_mode="updates", subgraphs=True, version="v2"):
-            if chunk["type"] != "updates":
-                continue
-            for update in chunk["data"].values():
-                if not isinstance(update, dict):
-                    continue  # e.g. the __interrupt__ entry; read back from the checkpoint instead
-                _log_activity(chunk["ns"], update, t0)
-                if not chunk["ns"]:
-                    _save_layer_notes(s, update)
-                if not chunk["ns"] and "todos" in update:  # the orchestrator's own plan
-                    s.todos = [TodoItem(**t) for t in update["todos"]]
-                    _publish(s, "running")
-    except Exception as e:  # the crew still gets the facts
-        log.exception("Orchestrator %s failed for %s", phase, s.incident_id)
-        s.error = f"the orchestrator run failed ({type(e).__name__})"
+    cancel, done = threading.Event(), threading.Event()
+
+    def stream() -> None:
+        RUN_CANCEL.set(cancel)  # inherited by the tool threads that run the subagents
+        try:
+            if s.agent is None:
+                raise RuntimeError("the orchestrator agent could not be built")
+            config = {**s.config, "run_id": run_id, "run_name": f"incident:{s.incident_id}:{phase}",
+                      "recursion_limit": 60, "tags": ["flamescout", "orchestrator", phase],
+                      "metadata": {"incident_id": s.incident_id, "thread_id": s.incident_id,
+                                   "brief_version": s.version}}
+            for chunk in s.agent.stream(agent_input, config, stream_mode="updates", subgraphs=True, version="v2"):
+                if cancel.is_set():
+                    break
+                if chunk["type"] != "updates":
+                    continue
+                for update in chunk["data"].values():
+                    if not isinstance(update, dict):
+                        continue  # e.g. the __interrupt__ entry; read back from the checkpoint instead
+                    _log_activity(chunk["ns"], update, t0)
+                    if not chunk["ns"]:
+                        _save_layer_notes(s, update)
+                    if not chunk["ns"] and "todos" in update:  # the orchestrator's own plan
+                        s.todos = [TodoItem(**t) for t in update["todos"]]
+                        _publish(s, "running")
+        except RunCancelled:
+            log.info("Incident %s: %s run stopped at its deadline", s.incident_id, phase)
+        except Exception as e:  # the crew still gets the facts
+            if not cancel.is_set():
+                log.exception("Orchestrator %s failed for %s", phase, s.incident_id)
+                s.error = f"the orchestrator run failed ({type(e).__name__})"
+        finally:
+            done.set()
+
+    s.worker = threading.Thread(target=contextvars.copy_context().run, args=(stream,), daemon=True,
+                                name=f"orchestrator-{s.incident_id}-{phase}")
+    s.worker.start()
+    deadline = run_deadline_s(s.version)
+    if not done.wait(max(0.0, deadline - (time.perf_counter() - t0))):
+        cancel.set()
+        with s.lock:  # a writer tool already under way finishes first; none starts after this
+            s.deadline_reason = f"run deadline of {deadline:.0f} s reached during {phase}; unfinished agents cancelled"
+            s.error = s.deadline_reason
+        log.error("Incident %s v%d: %s", s.incident_id, s.version, s.deadline_reason)
     stalls_after, retries_after = s.stalls.snapshot()
     s.leg_stalls = (stalls_after - stalls_before, retries_after - retries_before)
 
@@ -1118,7 +1225,8 @@ def _result(s: Session, t0: float, phase: str, brief: Optional[Brief] = None, cr
         _save_state(s)
         detail: dict[str, Any] = {"status": s.status, "version": s.version, "error": s.error,
                                   "trace_run_id": s.trace_run_id, "model_stalls": s.leg_stalls[0],
-                                  "model_retries": s.leg_stalls[1]}
+                                  "model_retries": s.leg_stalls[1], "deadline_hit": s.deadline_reason is not None,
+                                  "subagents_gave_up": list(s.gave_up)}
         if brief is not None:
             detail |= {"considerations": len(brief.considerations), "fallback": fallback_reason is not None,
                        "prefetched": s.prefetched_at is not None, "published": published}
@@ -1138,13 +1246,36 @@ def _result(s: Session, t0: float, phase: str, brief: Optional[Brief] = None, cr
                      fallback_reason=fallback_reason, seconds=seconds, trace_run_id=s.trace_run_id,
                      needs_review=needs_review, model_stalls=stalls, model_retries=retries,
                      overlay=overlay_mod.read(s.ws, s.version) if brief is not None else None,
-                     overlay_rejections=s.overlay_rejections, overlay_seconds=overlay_seconds)
+                     overlay_rejections=s.overlay_rejections, overlay_seconds=overlay_seconds,
+                     partial_reason=brief.partial_reason if brief is not None else None,
+                     subagents_gave_up=list(s.gave_up))
 
 
 def _finish_brief(s: Session, t0: float, phase: str) -> RunResult:
     """Settle the current version: publish the agent's brief, hold it for the dispatcher when a
-    consideration has low confidence, or fall back to facts only (PRD FR-6)."""
+    consideration has low confidence, or fall back to facts only (PRD FR-6).
+
+    After a run deadline: publish the best partial brief at once (facts plus the accepted
+    considerations; low-confidence ones are dropped, nobody reviewed them), marked partial."""
+    with s.lock:  # a cancelled run's writer tools wait or are refused (RunGuardMiddleware)
+        return _settle(s, t0, phase)
+
+
+def _drop_unreviewed(brief: Brief, reason: str) -> Brief:
+    low = [c.id for c in low_confidence(brief)]
+    if not low:
+        return brief
+    out = brief.model_copy(deep=True)
+    out.considerations = [c for c in out.considerations if c.id not in low]
+    for rank, c in enumerate(out.considerations, 1):
+        c.rank = rank
+    out.gaps.insert(0, f"Low-confidence consideration(s) {', '.join(low)} left out, not reviewed: {reason}")
+    return out
+
+
+def _settle(s: Session, t0: float, phase: str) -> RunResult:
     critique, brief = _critique(s), _brief(s)
+    partial = s.deadline_reason if not (brief and brief.published) else None  # published in time: complete
     fallback_reason: Optional[str] = None
     if brief is None:
         fallback_reason = s.error or "the strategy agent produced no accepted considerations"
@@ -1165,10 +1296,17 @@ def _finish_brief(s: Session, t0: float, phase: str) -> RunResult:
     elif not brief.published:
         if critique is None:
             brief.gaps.insert(0, "Considerations were not checked by the critic")
-        if low_confidence(brief):
+        if partial:
+            brief = publish(_drop_unreviewed(brief, partial))  # no review wait after a deadline
+        elif low_confidence(brief):
             s.status = "awaiting_approval"  # with or without the agent paused at publish_brief
         else:
             brief = publish(brief)  # nothing to review: the agent just did not get to publish_brief
+        s.ws.write(s.brief_rel, brief.model_dump_json(indent=2))
+    if partial:
+        brief.partial, brief.partial_reason = True, partial
+        if fallback_reason != partial:  # facts only already says why in its gap
+            brief.gaps.insert(0, f"Partial brief: {partial}")
         s.ws.write(s.brief_rel, brief.model_dump_json(indent=2))
     return _result(s, t0, phase, brief, critique, fallback_reason)
 

@@ -2,6 +2,7 @@ import json
 import os
 import re
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -257,6 +258,7 @@ class RuleModel(BaseChatModel):
     seen: Any                   # agent name -> its system prompt, shared by every bound copy
     stall: Any                  # agent name -> how many of its next calls time out, shared
     overlays: Any = None        # the incident mapper's submissions, in order (each a draft dict)
+    hang: Any = None            # agent name -> seconds its first call sits before answering (run deadline)
     tool_names: tuple = ()
 
     @property
@@ -278,6 +280,8 @@ class RuleModel(BaseChatModel):
         return "other"
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        if self.hang and self.hang.get(self._who()):
+            time.sleep(self.hang.pop(self._who()))
         if self.stall.get(self._who(), 0) > 0:  # like the API: no answer before the client timeout
             self.stall[self._who()] -= 1
             raise TimeoutError("simulated model stall")
@@ -351,9 +355,10 @@ def task(subagent: str, ask: str = "") -> tuple[str, dict]:
     return "task", {"subagent_type": subagent, "description": f"Incident: do the {subagent} step. {ask}"}
 
 
-def fake_model(*main_turns, drafts=None, stall=None, overlays=None) -> RuleModel:
+def fake_model(*main_turns, drafts=None, stall=None, overlays=None, hang=None) -> RuleModel:
     drafts = drafts or [[GOOD, SINGLE_LAYER], [{**GOOD, "title": "Consider Stair B (back stairs) from the alley"}]]
-    return RuleModel(main_script=iter(main_turns), drafts=drafts, seen={}, stall=stall or {}, overlays=overlays or [])
+    return RuleModel(main_script=iter(main_turns), drafts=drafts, seen={}, stall=stall or {}, overlays=overlays or [],
+                     hang=hang or {})
 
 
 START = [calls(todos("in_progress", *["pending"] * 6)),
@@ -635,6 +640,65 @@ def test_a_second_stall_gives_up_and_the_brief_says_what_was_skipped(incident, c
     assert any(r.getMessage().startswith("Model stall: critic stalled again on the retry") for r in caplog.records)
     assert v1.status == "briefed" and v1.critique is None
     assert v1.brief.gaps[0] == "Considerations were not checked by the critic"
+
+
+def test_a_subagent_that_gives_up_ends_only_itself(incident, caplog):
+    """vexcel stalls through its retry: only that subagent ends. Code pulls the layer; the brief is whole."""
+    start_incident("inc_s2", workspace_root=incident.root, model=fake_model(*START, *RESUME, stall={"vexcel": 2}))
+    incident.eng.confirm(BUILDING)
+    with caplog.at_level("ERROR", logger="services.agents.orchestrator"):
+        v1 = resume_incident("inc_s2", BUILDING)
+    assert v1.subagents_gave_up == ["vexcel"]
+    assert any(r.getMessage().startswith("Subagent vexcel gave up for inc_s2 v1") for r in caplog.records)
+    assert (v1.status, v1.fallback_reason, v1.partial_reason) == ("briefed", None, None)
+    assert v1.critique["verdict"] == "pass" and len(v1.brief.considerations) == 2 and v1.brief.published
+    assert incident.ws.exists("layers/vexcel.json") and not incident.ws.exists("notes/vexcel_summary.md")
+
+
+def test_run_deadline_publishes_a_facts_only_partial_brief(incident, monkeypatch):
+    """The strategy subagent hangs past RUN_DEADLINE_S: the call returns at the deadline, facts only."""
+    monkeypatch.setenv("RUN_DEADLINE_S", "1.5")
+    start_incident("inc_s2", workspace_root=incident.root, model=fake_model(*START, *RESUME, hang={"strategy": 4}))
+    incident.eng.confirm(BUILDING)
+    v1 = resume_incident("inc_s2", BUILDING)
+    assert v1.seconds < 3  # not the 4 s the strategy model sits on
+    assert v1.status == "briefed" and v1.brief.published and v1.brief.partial
+    assert v1.partial_reason.startswith("run deadline of 2 s reached during resume") or \
+        v1.partial_reason.startswith("run deadline of 1 s reached during resume")
+    assert v1.fallback_reason == v1.partial_reason and v1.brief.considerations == []
+    assert v1.brief.gaps[0] == f"Considerations withheld: {v1.partial_reason}"
+    assert v1.brief.size_up["building.stories"].value == 6  # the facts are all there
+    on_disk = Brief.model_validate_json(incident.ws.read("brief_v1.json"))
+    assert on_disk.partial and on_disk.partial_reason == v1.partial_reason
+
+
+def test_run_deadline_keeps_accepted_considerations_and_v2_runs_normally(incident, monkeypatch):
+    """The critic hangs: v1 is published at the deadline with the accepted draft, unchecked and partial.
+    The cancelled run stops at its next model call; the update then runs on the same thread."""
+    monkeypatch.setenv("RUN_DEADLINE_S", "1.5")
+    model = fake_model(*START, *RESUME[:3], *UPDATE, hang={"critic": 3})  # RESUME up to task(critic)
+    start_incident("inc_s2", workspace_root=incident.root, model=model)
+    incident.eng.confirm(BUILDING)
+    v1 = resume_incident("inc_s2", BUILDING)
+    assert v1.seconds < 3 and v1.status == "briefed" and v1.critique is None
+    assert v1.brief.partial and v1.fallback_reason is None and v1.brief.published
+    assert v1.brief.gaps[:2] == [f"Partial brief: {v1.partial_reason}", "Considerations were not checked by the critic"]
+    assert [c.title for c in v1.brief.considerations] == [GOOD["title"], SINGLE_LAYER["title"]]
+    session = orchestrator._SESSIONS["inc_s2"]
+    session.worker.join(5)  # the hung critic answers, then its run stops at the next call
+    assert not session.worker.is_alive() and not incident.ws.exists("critique_v1.json")  # nothing late
+
+    monkeypatch.delenv("RUN_DEADLINE_S")
+    v2 = update_incident("inc_s2", incident.replay("c2"))
+    assert (v2.status, v2.version, v2.fallback_reason, v2.partial_reason) == ("briefed", 2, None, None)
+    assert v2.critique["verdict"] == "pass" and not v2.brief.partial
+
+
+def test_run_deadline_defaults(monkeypatch):
+    monkeypatch.delenv("RUN_DEADLINE_S", raising=False)
+    assert (orchestrator.run_deadline_s(1), orchestrator.run_deadline_s(2)) == (90.0, 75.0)
+    monkeypatch.setenv("RUN_DEADLINE_S", "30")
+    assert orchestrator.run_deadline_s(1) == orchestrator.run_deadline_s(3) == 30.0
 
 
 EAST_BUILDING = {"category": "exposure", "title": "Consider the building to the east",

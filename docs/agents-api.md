@@ -306,6 +306,8 @@ The web app forwards it to the viewer iframe with `postMessage({type: 'setIncide
 | `overlay` | the `IncidentOverlay` of this version (`overlay_vN.json`); `None` while there is no brief |
 | `overlay_rejections` | incident-mapper submissions refused by the checks for this version |
 | `overlay_seconds` | seconds into this call when the overlay was written and `on_overlay` fired |
+| `partial_reason` | set when the run deadline cut this call short (same as `brief.partial_reason`) |
+| `subagents_gave_up` | subagents that failed for good in this call; the run went on without them |
 
 In the `Brief`: `considerations` (0-5, each "Consider ...", with `evidence_ids` that resolve in
 `evidence`), `changes_since_last`, `gaps`, and `verifier_rejections` (how many draft considerations
@@ -354,7 +356,23 @@ Every orchestrator and subagent model call has a 12 s client timeout and one aut
 (`services/agents/stalls.py`). Each stall and retry is logged at WARNING on the logger
 `services.agents.stalls` with the agent's name ("Model stall: critic got no answer in 10.5 s; retrying
 once"), and counted in `RunResult.model_stalls` / `model_retries` and in Tiger's `pipeline_events`
-detail. If the retry stalls too, that agent's step fails and the usual fallbacks apply.
+detail. If the retry stalls too (and the failover provider, when set, fails as well), that subagent
+gives up: only that subagent ends. The orchestrator gets an error result for that `task` call and carries
+on; code fills in what the subagent did not do (a missing layer is pulled in code, a missing overlay is
+the empty fallback, an unchecked brief says "Considerations were not checked by the critic"). Logged at
+ERROR on `services.agents.orchestrator` ("Subagent vexcel gave up for inc_s2 v1 ...") and listed in
+`RunResult.subagents_gave_up`.
+
+**Every call has a wall-clock deadline** (`RUN_DEADLINE_S`; unset: 90 s for brief v1, 75 s for later
+versions, counted from the start of the call). When it passes, the outstanding agents are cancelled
+(each stops at its next model or tool call; no retry or failover starts) and the call returns at once
+with the best partial brief: every fact plus the considerations already accepted. Low-confidence
+considerations are left out (nobody reviewed them; a gap says so) instead of waiting for the dispatcher,
+and a brief the critic sent back still has its considerations withheld. The brief is published with
+`partial: true`, `partial_reason` ("run deadline of 90 s reached during resume; ..."), and
+`gaps[0]` = "Partial brief: ..." (or "Considerations withheld: ..." when it is facts-only). The next call on
+the incident waits (up to 30 s) for the cancelled run to finish its in-flight model call, then runs on the
+same thread as usual.
 
 **The functions do not raise when the agent or the model fails.** The crew still gets a brief with
 every deterministic fact and no considerations; `fallback_reason` says why and `gaps[0]` starts with

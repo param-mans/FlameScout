@@ -165,6 +165,23 @@
           "title": "Published",
           "type": "boolean"
         },
+        "partial": {
+          "default": false,
+          "title": "Partial",
+          "type": "boolean"
+        },
+        "partial_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Partial Reason"
+        },
         "data_contradictions": {
           "default": [],
           "items": {

@@ -202,6 +202,8 @@ class Brief(BaseModel):
     evidence: dict[str, Evidence] = {}   # so the UI evidence drawer can resolve every id
     crew_notes: list[CrewFeedback] = []  # earlier crew feedback on this building
     published: bool = False              # false while low-confidence considerations await the dispatcher
+    partial: bool = False                # the run deadline (RUN_DEADLINE_S) cut this version short
+    partial_reason: Optional[str] = None  # why, e.g. "run deadline of 90 s reached during resume; ..."
     data_contradictions: list[DataContradiction] = []  # data layers that disagree (listing vs scan)
     disclaimer: str = "Advisory only. Verify on arrival."
 
