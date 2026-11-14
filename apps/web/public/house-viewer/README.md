@@ -1,8 +1,8 @@
 # House viewer (static, embeddable)
 
 2D floor plan and 3D model of a house with an evacuation distance heat map, built from a floor plan
-generated from the Matterport API. Plain HTML + ES modules, no build step, no server code, no network
-calls outside this folder except the optional imagery API (see Oblique views). Vite serves it as-is from `public/`, so it is available at
+generated live from the Matterport API. Plain HTML + ES modules, no build step. House data comes from
+same-origin API routes served by the Vite plugin `apps/web/server/house-data.mjs` (see Data). Vite serves it as-is from `public/`, so it is available at
 `/house-viewer/casa.html` in `npm run dev` and in the production build.
 
 ## Files
@@ -13,7 +13,7 @@ calls outside this folder except the optional imagery API (see Oblique views). V
 | `theme.js`, `theme.css` | Monochrome theme. Colors can be overridden with CSS variables (see below) |
 | `evac.js` | Evacuation graph: rooms linked by doors, exits on the lowest floor, floors linked by staircases |
 | `escaleras.js` | Stair pairing between floors, climb direction and footprint fit |
-| `samples/` | Four normalized sample houses + `index.json` |
+| `samples/index.json` | House catalog: address, coordinates, Matterport model id, listing facts |
 | `vendor/three/` | Three.js r160 (MIT, `vendor/three/LICENSE`): `build/three.module.js` and the addons used |
 
 `vendor/three` holds only the files the viewer imports. The one change from the npm package
@@ -34,50 +34,43 @@ an unresolved bare `three` import makes it skip pre-bundling for the whole app.
 Without `embed=1` the page shows the full viewer: view, layer and room-type controls, both views and
 the entity table.
 
-## Samples
+## Data: everything from the APIs
 
-| Id | Floors | Rooms* | Notes |
-| --- | --- | --- | --- |
-| `sample-a` | 2 | 19 | One flight of stairs; climb direction clear; footprint fits at 100 % |
-| `sample-b` | 2 | 27 | One flight of stairs; climb direction clear; footprint fits at 100 % |
-| `sample-c` | 1 | 17 | |
-| `sample-d` | 1 | 15 | |
+The viewer stores no house data. Only the catalog `samples/index.json` is in the repo: for each house, its real
+address, city, market, coordinates (`location`), Matterport model id and listing facts (beds, baths, sq ft, year
+built, type). Everything else is generated at request time by the Vite server through the plugin
+`apps/web/server/house-data.mjs`, running in `npm run dev` and `npm run preview` with no extra process:
 
-\* Rooms other than Void.
+| Route | Source | What it returns |
+| --- | --- | --- |
+| `GET /api/house-viewer/sample/<id>` | Matterport GraphQL API | `{ id, address, location, matterportModelId, listing, quality, stairs, plan }` |
+| `GET /api/house-viewer/vexcel/<id>` | Vexcel API 2.0 | oblique views `{ views: { dir: { file, captureDate } }, copyright }` |
+| `GET /api/house-viewer/vexcel/<id>/oblique-<dir>.jpg` | Vexcel API 2.0 | JPEG |
 
-All four passed the house quality check and have at least 4 windows. Every room polygon the viewer
-draws is `polygonQuality: "ok"`. The 2-floor samples contain a few `Void` areas with an unreliable
-outline. Void areas are never drawn and are not used for evacuation or stairs.
+- **`plan`**: `server/matterport-plan.mjs`, a Node port of the demo's `tools/mp_plan.py`. It sends the same
+  read-only query (floors, edges with openings, rooms with boundary, holes, classifications and metric
+  dimensions; never a mutation). It then runs the same room-outline graph assembly and validation, and
+  reproduces Python's numbers (`server/py.mjs`: round half to even on the exact value, float modulo).
+- **`quality`**: `server/house-quality.mjs`, a port of the demo's `tools/calidad.py`, with the same criteria
+  and texts. The listing sq ft and beds come from the catalog. The vertical-connection criterion uses the
+  same stairs module the viewer draws with. Checked against the demo's results for all 1,463 houses:
+  identical.
+- **`stairs`**: stair analysis of `escaleras.js`, with pairs, fit state, scale, direction and reason.
 
-`samples/index.json` lists each house with its real address, city, market, coordinates (`location`),
-Matterport model id and listing facts (beds, baths, sq ft, year built, type). The picker in the MDT uses it.
+Results are cached in memory for 6 hours per server process; nothing is written to disk. Credentials are read
+on the server from the repo's `.env` (gitignored) and never reach the browser:
 
-Each sample file is `{ id, title, address, location, matterportModelId, listing, quality, stairs, plan }`:
+- `VEXCEL_API_KEY`;
+- the Matterport API token as `MATTERPORT_API_KEY` (token id) plus `MATTERPORT_API_SECRET` (token secret),
+  or `MATTERPORT_API_KEY=<id>:<secret>`.
 
-- `plan`: floors, walls, openings and rooms in local meters (origin inside the house).
-- `quality`: result of the quality check (`estado`, `etiquetas`, `motivo`, counts).
-- `stairs`: precomputed stair analysis (`connected` per pair of floors, `pairs` with state, scale,
-  direction and reason).
-
-The viewer recomputes stairs and evacuation at load time with the same modules. Matterport element
-ids inside `plan` are short ids (`f1`, `r1`, `w1`, `o1`).
+A static deploy without the Vite server has no house data until the backend serves these routes.
 
 ## Oblique views (Vexcel)
 
 Under the 2D plan the viewer shows the Vexcel oblique aerial views (N / E / S / W = the direction the camera
-faces; the straight-down view is left out on purpose). Sources, in order:
-
-1. **API**: `GET /api/house-viewer/vexcel/<sample>` and `.../<sample>/oblique-<dir>.jpg`, same origin, served
-   by the Vite server itself through the plugin `apps/web/vexcel-imagery.mjs` (`npm run dev` and
-   `npm run preview`; no extra process). It takes the coordinates from `samples/index.json` and the key from
-   `VEXCEL_API_KEY` in the repo's `.env`. It calls Vexcel with the key only in the `X-API-KEY` header and
-   caches the images in `data/cache/vexcel/<sample>/` (gitignored). The key never reaches the browser. A static
-   deploy without the Vite server has no imagery until the backend serves this route.
-2. **Local copy**: `local-imagery/<sample>/` (`oblique-<dir>.jpg` + `meta.json`), kept out of git by its own
-   `.gitignore`.
-
-Without either, the section explains what is missing (server not reachable, key not set...). Vexcel imagery
-is licensed: it is cached locally, never committed.
+faces; the straight-down view is left out on purpose), from `/api/house-viewer/vexcel/<id>`. The key travels
+only in the `X-API-KEY` header. Vexcel imagery is licensed: it is never stored or committed.
 
 ## postMessage API
 

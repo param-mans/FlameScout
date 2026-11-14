@@ -1,12 +1,13 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { vexcelImagery } from "./vexcel-imagery.mjs";
+import { houseData } from "./server/house-data.mjs";
 
 // /api and /ws proxy to the FastAPI backend (default :8000) once it exists.
-// vexcelImagery() answers /api/house-viewer/vexcel/* itself (before the proxy), with the key from the repo .env.
+// houseData() answers /api/house-viewer/* itself (before the proxy): live Matterport plans and Vexcel imagery,
+// with the keys from the repo .env (server side only).
 export default defineConfig({
-  plugins: [react(), tailwindcss(), vexcelImagery()],
+  plugins: [react(), tailwindcss(), houseData()],
   server: {
     proxy: {
       "/api": "http://localhost:8000",

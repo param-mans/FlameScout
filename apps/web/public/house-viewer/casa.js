@@ -1,5 +1,5 @@
-// Visor 3D/2D + mapa de calor de evacuacion de una vivienda de muestra (samples/<id>.json), integrado en FlameScout.
-// Archivos estaticos; la unica llamada de red es la API de imagenes oblicuas (/api/house-viewer/vexcel, mismo origen).
+// Visor 3D/2D + mapa de calor de evacuacion de una vivienda, con datos en vivo de la API (/api/house-viewer/sample/<id>).
+// Llamadas de red solo al mismo origen: /api/house-viewer/sample/<id> (plano, calidad, escaleras) y /api/house-viewer/vexcel.
 // Parametros: ?sample=<id> (por defecto el primero de samples/index.json), ?embed=1 (una sola vista, para iframe),
 // ?mode=2d|3d (vista en modo embed). API postMessage: ver README.md (mismo origen solamente).
 // Solo se usa lo que hay en el plano generado: nada se inventa (la altura de planta es una estimacion marcada como tal).
@@ -890,9 +890,8 @@ function zoomPan2D() {
 }
 
 // ---------------------------------------------------------------- vistas oblicuas (Vexcel) bajo el plano 2D
-// Solo las diagonales N/E/S/W (sin la vista cenital). Origen, por orden:
-// 1) API: /api/house-viewer/vexcel/<sample> (mismo origen; la sirve el propio servidor de Vite con el plugin
-//    apps/web/vexcel-imagery.mjs, que guarda la clave de Vexcel); 2) copia local en local-imagery/<sample>/ (fuera de git).
+// Solo las diagonales N/E/S/W (sin la vista cenital). Origen: API /api/house-viewer/vexcel/<sample> (mismo origen; la sirve
+// el propio servidor de Vite con el plugin apps/web/server/house-data.mjs, que guarda la clave). Nada se guarda en local.
 const OBL = { id: null, meta: null, base: '', dir: 'north', estado: '', error: '' }
 const OBL_DIRS = [['north', 'N'], ['east', 'E'], ['south', 'S'], ['west', 'W']]
 const OBL_ARCHIVO = /^oblique-(north|east|south|west)\.jpg$/
@@ -908,11 +907,6 @@ async function cargarOblicuas(id) {
   OBL.id = id; OBL.meta = null; OBL.estado = 'cargando'; OBL.error = ''; pintarOblicuas()
   let res = null
   try { res = await leerOblicuas(OBL_API + encodeURIComponent(id)); if (res.meta) OBL.base = OBL_API + encodeURIComponent(id) + '/' } catch (e) { res = { error: 'imagery server not reachable' } }
-  if (!res.meta) {
-    const err = res.error
-    try { const loc = await leerOblicuas('local-imagery/' + encodeURIComponent(id) + '/meta.json'); if (loc.meta) { res = loc; OBL.base = 'local-imagery/' + encodeURIComponent(id) + '/' } } catch (e) { /* sin copia local */ }
-    if (!res.meta) res = { error: err }
-  }
   if (OBL.id !== id) return
   if (res.meta) { OBL.meta = res.meta; OBL.estado = 'ok'; if (!res.meta.views[OBL.dir]) OBL.dir = Object.keys(res.meta.views)[0] }
   else { OBL.estado = 'nada'; OBL.error = res.error || '' }
@@ -1137,7 +1131,7 @@ function tema(vars) {
   avisarPadre({ type: 'themeApplied' })
 }
 
-// ---------------------------------------------------------------- carga (solo archivos estaticos de samples/)
+// ---------------------------------------------------------------- carga (catalogo samples/index.json + datos en vivo de la API)
 function fallo(msg) {
   $('vista3d').style.opacity = 0.2; $('der').style.opacity = 0.4; $('izq').innerHTML = `<div class="nota">${esc(msg)}</div>`; $('carga').textContent = ''
   estadoEmbed(msg); avisarPadre({ type: 'error', message: msg })
@@ -1145,15 +1139,17 @@ function fallo(msg) {
 async function cargar(id) {
   const t0 = performance.now()
   S.id = id; S.sel = null; S.hover = null; S.vb = null
-  $('carga').textContent = 'Loading…'; $('inspector').style.display = 'none'; estadoEmbed('Loading house…')
+  $('carga').textContent = 'Loading…'; $('inspector').style.display = 'none'; estadoEmbed('Loading house from Matterport…')
   let doc
   try {
     if (!/^[a-z0-9-]+$/.test(id)) throw new Error('Unknown sample')
-    const r = await fetch('samples/' + id + '.json')
-    if (!r.ok) throw new Error('Sample not found (HTTP ' + r.status + ')')
-    doc = await r.json()
-    if (!doc || !doc.plan || !Array.isArray(doc.plan.floors) || !doc.plan.floors.length) throw new Error('Sample file has no floor plan')
-  } catch (e) { return fallo(e.message === 'Failed to fetch' ? 'Sample could not be loaded' : e.message) }
+    // plano, calidad y escaleras generados en vivo desde la API de Matterport (plugin apps/web/server/house-data.mjs)
+    const r = await fetch('/api/house-viewer/sample/' + encodeURIComponent(id))
+    const j = await r.json().catch(() => null)
+    if (!r.ok) throw new Error(j && j.error ? 'Floor plan unavailable: ' + j.error : r.status >= 500 ? 'House data server not reachable (npm run dev or npm run preview)' : 'Sample not found (HTTP ' + r.status + ')')
+    doc = j
+    if (!doc || !doc.plan || !Array.isArray(doc.plan.floors) || !doc.plan.floors.length) throw new Error('The API returned no floor plan')
+  } catch (e) { return fallo(e.message === 'Failed to fetch' ? 'House data server not reachable' : e.message) }
   const plan = doc.plan, t1 = performance.now()
   S.fila = doc.quality || null
   const okCasa = S.fila && S.fila.estado === 'ok'
@@ -1190,7 +1186,7 @@ async function inicio() {
   } catch (e) { return fallo('Sample list could not be loaded') }
   const ids = LISTA.map((x) => x.id), pedido = Q.get('sample')
   const id = pedido || ids[0]
-  $('modelo').innerHTML = LISTA.map((x) => `<option value="${esc(x.id)}" ${x.id === id ? 'selected' : ''}>${esc((x.address ? x.address + ' · ' : '') + (x.title || x.id))}</option>`).join('')
+  $('modelo').innerHTML = LISTA.map((x) => `<option value="${esc(x.id)}" ${x.id === id ? 'selected' : ''}>${esc(x.address || x.id)}</option>`).join('')
   if (!ids.includes(id)) return fallo('Unknown sample: ' + id)
   await cargar(id)
 }

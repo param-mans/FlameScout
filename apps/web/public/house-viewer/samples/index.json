@@ -2,9 +2,6 @@
  {
   "id": "sample-a",
   "address": "317 E 35th Street, Houston",
-  "title": "Sample A \u00b7 2 floors \u00b7 19 rooms",
-  "floors": 2,
-  "rooms": 19,
   "location": {
    "lat": 29.81827,
    "lon": -95.39513
@@ -23,9 +20,6 @@
  {
   "id": "sample-b",
   "address": "12306 Knobcrest Drive, Houston",
-  "title": "Sample B \u00b7 2 floors \u00b7 27 rooms",
-  "floors": 2,
-  "rooms": 27,
   "location": {
    "lat": 29.98374,
    "lon": -95.60805
@@ -44,9 +38,6 @@
  {
   "id": "sample-c",
   "address": "310 E 25th Street, Houston",
-  "title": "Sample C \u00b7 1 floor \u00b7 17 rooms",
-  "floors": 1,
-  "rooms": 17,
   "location": {
    "lat": 29.80868,
    "lon": -95.39551
@@ -65,9 +56,6 @@
  {
   "id": "sample-d",
   "address": "8040 Agnew Avenue, Los Angeles",
-  "title": "Sample D \u00b7 1 floor \u00b7 15 rooms",
-  "floors": 1,
-  "rooms": 15,
   "location": {
    "lat": 33.96624,
    "lon": -118.40626

@@ -9,7 +9,11 @@ type Props = { mode?: "floor" | "scan3d"; layout?: "single" | "split"; sampleId?
 /** Flip to true to show the house viewer in the MDT without ?viewer=1. */
 export const HOUSE_VIEWER_DEFAULT = false;
 type Status = { kind: "idle" } | { kind: "loading" } | { kind: "ready" } | { kind: "error"; message: string };
-export type SampleHouse = { id: string; address: string; title: string; floors: number; rooms: number };
+export type SampleHouse = {
+  id: string; address: string; city?: string; matterportModelId: string; location?: { lat: number; lon: number };
+  listing?: { beds?: number; baths?: number; sqft?: number; yearBuilt?: number; homeType?: string };
+};
+const facts = (s: SampleHouse) => [s.listing?.beds != null && `${s.listing.beds} bd`, s.listing?.sqft && `${s.listing.sqft.toLocaleString("en-US")} sq ft`].filter(Boolean).join(" · ");
 
 const BASE = `${import.meta.env.BASE_URL}house-viewer/`;
 const TIMEOUT_MS = 15000;
@@ -39,7 +43,7 @@ function SamplePicker({ samples, value, onChange }: { samples: SampleHouse[]; va
   const box = useRef<HTMLDivElement>(null);
   const current = samples.find((s) => s.id === value) ?? null;
   const q = query.trim().toLowerCase();
-  const shown = samples.filter((s) => !q || `${s.address} ${s.title} ${s.id}`.toLowerCase().includes(q));
+  const shown = samples.filter((s) => !q || `${s.address} ${s.city ?? ""} ${s.id}`.toLowerCase().includes(q));
 
   useEffect(() => {
     if (!open) return;
@@ -63,7 +67,7 @@ function SamplePicker({ samples, value, onChange }: { samples: SampleHouse[]; va
           current ? "border-accent bg-accent/15 text-accent" : "border-line-hi text-dim hover:bg-panel-hi hover:text-ink"
         }`}
       >
-        <span className="truncate">{current ? `${current.address} · ${current.floors} FL · ${current.rooms} rooms` : "Select a sample house"}</span>
+        <span className="truncate">{current ? [current.address, facts(current)].filter(Boolean).join(" · ") : "Select a sample house"}</span>
         <span aria-hidden>▾</span>
       </button>
       {open && (
@@ -73,7 +77,7 @@ function SamplePicker({ samples, value, onChange }: { samples: SampleHouse[]; va
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && shown.length) pick(shown[0].id); }}
-            placeholder="Search address, floors, rooms…"
+            placeholder="Search address or city…"
             aria-label="Search sample houses"
             className="num w-full border-b border-line bg-bg px-2.5 py-1.5 text-[12px] text-ink outline-none placeholder:text-faint"
           />
@@ -90,7 +94,7 @@ function SamplePicker({ samples, value, onChange }: { samples: SampleHouse[]; va
                   }`}
                 >
                   <span className="text-[13px] text-ink">{s.address}</span>
-                  <span className="num text-[11px] text-dim">{s.floors} FL · {s.rooms} rooms</span>
+                  <span className="num text-[11px] text-dim">{facts(s)}</span>
                 </button>
               </li>
             ))}
