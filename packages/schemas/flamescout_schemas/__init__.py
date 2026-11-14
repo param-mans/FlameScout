@@ -25,8 +25,8 @@ def now() -> datetime:
 class Evidence(BaseModel):
     id: str
     kind: Literal["scan_frame", "scan_floorplan", "aerial_crop",
-                  "costar_record", "transcript_span", "rule_output"]
-    source: Literal["matterport", "vexcel", "costar", "call", "rules"]
+                  "costar_record", "transcript_span", "rule_output", "crew_feedback"]
+    source: Literal["matterport", "vexcel", "costar", "call", "rules", "crew"]
     uri: Optional[str] = None
     captured_at: Optional[datetime] = None
     # {"call_id": "c1", "start": 3.2, "end": 7.9, "text": "..."} or {"sweep_id": ..., "bbox": [x, y, w, h]}

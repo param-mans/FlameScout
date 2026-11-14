@@ -35,9 +35,10 @@ def _offline_by_default(request, monkeypatch, tmp_path):
     never changes a test's path."""
     from langsmith import utils
 
-    from services.agents import cache, db, mongo_store
+    from services.agents import cache, db, memory, mongo_store
 
     monkeypatch.setattr(cache, "CACHE_ROOT", tmp_path / "prefetch_cache")
+    monkeypatch.setattr(memory, "MEMORY_ROOT", tmp_path / "building_memory")  # no memory from real runs
     if "live" not in request.keywords:
         monkeypatch.setenv("EXTRACTOR", "keyword")
         monkeypatch.setenv("LANGSMITH_TRACING", "false")

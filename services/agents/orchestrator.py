@@ -36,6 +36,10 @@ built-in filesystem tools can read /workspace/ but write only under
 The todo list is exposed three ways: todos.json in the workspace (rewritten on every
 change), the on_todos callback, and RunResult.todos.
 
+Long-term memory (memory.py): crew feedback is kept per building and mounted read-only at
+/memories/. At a building with memory the strategy subagent reads its crew_notes.md, and code
+applies it either way: "Crew reported: ..." facts in the brief, markers marked wrong left out.
+
 prefetch_building() runs the same three layer subagents ahead of time into the
 building's prefetch cache (cache.py). An incident at a building with a cache under
 24 h old copies it in at confirmation and skips the layer phase.
@@ -73,9 +77,10 @@ from flamescout_schemas import (Brief, BuildingCandidate, BuildingDossier, CallS
                                 Progress, TodoItem, now)
 
 from . import cache, copilot, db
+from . import memory as memory_mod
 from . import dossier as dossier_mod
-from .brief import (ConsiderationDraft, build_brief, check_considerations, low_confidence,
-                    merge_evidence, publish, rejected_count)
+from .brief import (ConsiderationDraft, apply_memory, build_brief, check_considerations, low_confidence,
+                    merge_evidence, publish, rejected_count, wrong_markers)
 from .dossier import LAYERS, Layer, LayerData
 from .locator import find_candidates
 from .stalls import MODEL_TIMEOUT_S, StallCounter, StallRetryMiddleware
@@ -126,6 +131,9 @@ A. FIRST BRIEF. The user message starts with "New incident".
    LIFE-SAFETY CONTRADICTION: if incident.json has an unresolved contradiction on incident.floor or
    people.trapped, in this same turn also call write_copilot_question(key=<that key>) and include a
    todo "Ask dispatcher: <floor or trapped> contradiction" (completed) in write_todos.
+   CREW MEMORY: if confirm_building said crews left notes about this building, include a todo "Read
+   crew memory for this building" (completed with the draft) and give the strategy subagent the
+   /memories/... path it named, here and in every later strategy task for this incident.
 6. Next turn, two tool calls together: write_todos (draft completed, critique in_progress) and
    task(subagent_type="critic"): ask it to check /workspace/brief_v1.json AND the layer notes.
 7. Only if the critic's verdict is "revise": task the strategy subagent again, quoting the critic's
@@ -182,7 +190,8 @@ STRATEGY_PROMPT = """You draft advisory considerations for the first-arriving fi
 which brief version N you are drafting. Use exactly three turns:
 1. One turn, all tool calls together: read_file("/workspace/incident.json", limit=1000),
    read_file("/workspace/dossier.json", limit=1000), and read_file(<path>, limit=1000) for the SKILL.md
-   of every skill in your skills list that applies to this draft. Do not spend an extra turn on skills.
+   of every skill in your skills list that applies to this draft, and the crew memory file if your
+   task names one (a /memories/... path). Do not spend an extra turn on skills or memory.
 2. One turn, two tool calls together:
    - write_file: at most 60 words on what you prioritised and why, what you left out, and anything
      unresolved. Path: /workspace/notes/strategy_reasoning.md for version 1,
@@ -209,7 +218,10 @@ Rules for every consideration:
   interior. Markers of kind "entry" then come from aerial imagery and are the only entries known:
   use them where they matter, say they are seen from the air and not verified, and cite their
   evidence. They carry low confidence, so the dispatcher reviews them before the brief is published.
-- Files under /workspace/notes/ are unverified agent notes. Never take a fact from them."""
+- Files under /workspace/notes/ are unverified agent notes. Never take a fact from them.
+- Crew memory lists what crews reported at this building at earlier incidents. Say "a crew reported"
+  and cite the evidence id given on that line. Never recommend an item a crew marked wrong, and do
+  not name it: the checks reject any consideration that does."""
 
 CRITIC_PROMPT = """You are the critic for a fire-crew advisory brief. Use exactly three turns:
 1. read_file(<the brief path given in your task>, limit=3000). If your task also asks you to check the
@@ -345,6 +357,28 @@ def _layer_on_disk(s: Session, layer: str, building_id: str) -> Optional[LayerDa
     return data if data.building_id == building_id else None
 
 
+def _memory(s: Session) -> list[memory_mod.CrewRecord]:
+    """What crews reported at this building before (newest verdict per item). Not for prefetch runs."""
+    return memory_mod.building_memory(_building_id(s)) if s.publish else []
+
+
+def _merged(s: Session, building_id: str, layers: Iterable[LayerData]) -> BuildingDossier:
+    """The layers merged, minus markers a crew marked wrong. The layer files themselves stay raw."""
+    return apply_memory(dossier_mod.merge_layers(building_id, layers), _memory(s))
+
+
+def _refresh_dossier(s: Session) -> None:
+    """Crew feedback may have arrived since dossier.json was written: rebuild it from the layers."""
+    building_id = _building_id(s)
+    with s.lock:
+        layers = [_layer_on_disk(s, name, building_id) for name in LAYERS]
+        if not all(layers) or not s.ws.exists(DOSSIER):
+            return
+        fresh = _merged(s, building_id, layers)
+        if [m.id for m in fresh.markers] != [m.id for m in _dossier(s.ws).markers]:  # else leave it untouched
+            s.ws.write(DOSSIER, fresh.model_dump_json(indent=2))
+
+
 def _pull(s: Session, layer: str, **options) -> str:
     """Tool body for pull_<layer>: save the layer, merge into dossier.json once all three are in.
     options: exterior_entries=True for the vexcel layer when there is no interior scan."""
@@ -362,7 +396,7 @@ def _pull(s: Session, layer: str, **options) -> str:
         s.ws.write(s.layer_rel(layer), data.model_dump_json(indent=2))
         layers = [_layer_on_disk(s, name, building_id) for name in LAYERS]
         if all(layers):
-            s.ws.write(DOSSIER, dossier_mod.merge_layers(building_id, layers).model_dump_json(indent=2))
+            s.ws.write(DOSSIER, _merged(s, building_id, layers).model_dump_json(indent=2))
     return dossier_mod.digest(data)
 
 
@@ -377,7 +411,7 @@ def _load_prefetched(s: Session) -> bool:
             s.ws.write(s.layer_rel(name), data.model_dump_json(indent=2))
         for name, note in hit.notes.items():
             s.ws.write(f"notes/{name}_summary.md", note)
-        dossier = dossier_mod.merge_layers(building_id, hit.layers.values())
+        dossier = _merged(s, building_id, hit.layers.values())
         s.ws.write(DOSSIER, dossier.model_dump_json(indent=2))
         s.prefetched_at = hit.prefetched_at
     log.info("Incident %s: using data layers prefetched at %s", s.incident_id, hit.prefetched_at.isoformat())
@@ -401,7 +435,7 @@ def _ensure_dossier(s: Session) -> None:
                 data = dossier_mod.pull_layer(name, building_id)
                 s.ws.write(s.layer_rel(name), data.model_dump_json(indent=2))
             layers.append(data)
-        s.ws.write(DOSSIER, dossier_mod.merge_layers(building_id, layers).model_dump_json(indent=2))
+        s.ws.write(DOSSIER, _merged(s, building_id, layers).model_dump_json(indent=2))
 
 
 def _ensure_exterior_entries(s: Session) -> None:
@@ -418,7 +452,7 @@ def _ensure_exterior_entries(s: Session) -> None:
         s.ws.write(s.layer_rel("vexcel"),
                    dossier_mod.pull_layer("vexcel", building_id, exterior_entries=True).model_dump_json(indent=2))
         layers = [_layer_on_disk(s, name, building_id) for name in LAYERS]
-        s.ws.write(DOSSIER, dossier_mod.merge_layers(building_id, layers).model_dump_json(indent=2))
+        s.ws.write(DOSSIER, _merged(s, building_id, layers).model_dump_json(indent=2))
 
 
 def _write_brief(s: Session, drafts: list[ConsiderationDraft], extra_gaps: tuple[str, ...] = (),
@@ -426,7 +460,8 @@ def _write_brief(s: Session, drafts: list[ConsiderationDraft], extra_gaps: tuple
     prev_text = s.ws.read_or_none(f"brief_v{s.version - 1}.json")
     previous = Brief.model_validate_json(prev_text) if prev_text else None
     brief = build_brief(_incident(s.ws), _dossier(s.ws), drafts, version=s.version, extra_gaps=extra_gaps,
-                        previous=previous, verifier_rejections=s.rejections, prefetched_at=s.prefetched_at)
+                        previous=previous, verifier_rejections=s.rejections, prefetched_at=s.prefetched_at,
+                        memory=_memory(s))
     brief.published = published
     s.ws.write(s.brief_rel, brief.model_dump_json(indent=2))
     return brief
@@ -485,12 +520,17 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
             return f"Error: the dispatcher has not chosen one of {known}."
         _confirm(ws, chosen_building_id)
         s.building_id = chosen_building_id
+        remembered = _memory(s)
+        crew = (f" CREW MEMORY: crews left {len(remembered)} note(s) about this building at earlier incidents, "
+                f"in {memory_mod.notes_path(chosen_building_id)}. Give that path to the strategy subagent."
+                if remembered else "")
         if _load_prefetched(s):
             scan = "" if _dossier(ws).scan_available else " There is NO INTERIOR SCAN on file for it."
             return (f"The dispatcher confirmed building {chosen_building_id}. Its building data was "
                     "PREFETCHED and is already in /workspace/dossier.json: skip the costar and matterport "
-                    f"subagents and the first vexcel pull.{scan}")
-        return f"The dispatcher confirmed building {chosen_building_id}. No prefetched data: pull the three layers."
+                    f"subagents and the first vexcel pull.{scan}{crew}")
+        return (f"The dispatcher confirmed building {chosen_building_id}. No prefetched data: pull the "
+                f"three layers.{crew}")
 
     @tool(parse_docstring=True)
     def write_copilot_question(key: Literal["incident.floor", "people.trapped"]) -> str:
@@ -557,9 +597,11 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
             return "Error: the dispatcher has not confirmed a building yet."
         _ensure_dossier(s)
         _ensure_exterior_entries(s)
-        evidence = merge_evidence(_incident(ws), _dossier(ws))
-        if errors := check_considerations(considerations, evidence):
-            s.rejections += rejected_count(considerations, evidence)
+        _refresh_dossier(s)  # crew feedback given since the dossier was written
+        remembered = _memory(s)
+        evidence, wrong = merge_evidence(_incident(ws), _dossier(ws), remembered), wrong_markers(remembered)
+        if errors := check_considerations(considerations, evidence, wrong):
+            s.rejections += rejected_count(considerations, evidence, wrong)
             return "Rejected, nothing written. Fix these and resubmit:\n- " + "\n- ".join(errors)
         _write_brief(s, considerations)
         ws.delete(s.critique_rel)  # any earlier critique is about an older draft
@@ -671,11 +713,14 @@ def build_orchestrator(s: Session, model: Any = None, checkpointer: Any = None):
         backend=CompositeBackend(default=StateBackend(), routes={
             "/workspace/": s.ws.backend(),
             "/skills/": FilesystemBackend(root_dir=SKILLS_DIR, virtual_mode=True),  # repo skills, read-only
+            # Long-term memory: crew feedback per building (/memories/<building_id>/), MongoDB or data/memories/.
+            "/memories/": memory_mod.memory_workspace().backend(),
         }),
-        # First match wins: the model may write notes, nothing else in the workspace or the skills.
+        # First match wins: the model may write notes, nothing else in the workspace, skills or memory.
         permissions=[
             FilesystemPermission(operations=["write"], paths=["/workspace/notes/**"], mode="allow"),
-            FilesystemPermission(operations=["write"], paths=["/workspace/**", "/skills/**"], mode="deny"),
+            FilesystemPermission(operations=["write"], paths=["/workspace/**", "/skills/**", "/memories/**"],
+                                 mode="deny"),
         ],
         interrupt_on={
             # The dispatcher picks the building: the answer is an "edit" that fills chosen_building_id.
@@ -989,6 +1034,7 @@ def update_incident(incident_id: str, notes: list[str]) -> RunResult:
         log.warning("Incident %s: incident.json lost its confirmed building; restoring %s",
                     incident_id, s.building_id)
         _confirm(s.ws, s.building_id)
+    _refresh_dossier(s)  # crew feedback since the last brief changes what the strategy may use
     listing = "\n".join(f"- {n}" for n in notes)
     prompt = (f"Update for incident {incident_id}. /workspace/incident.json has changed. "
               f"New information from the calls:\n{listing}\n"

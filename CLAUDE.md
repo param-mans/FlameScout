@@ -37,6 +37,9 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - `services/agents/locator.py` - candidate buildings for an incident via the CoStar adapter. No LLM.
 - `services/agents/brief.py` - deterministic Brief assembly, consideration checks (incl. at least one
   cross-layer consideration), `changes_since_last` diff. No LLM.
+- `services/agents/memory.py` - long-term building memory: crew feedback (`feedback(incident_id, item_id,
+  verdict, note)`) kept per building (MongoDB namespace `["memories"]`, or `data/memories/`, not committed),
+  mounted read-only at `/memories/`; `brief.py` applies it ("Crew reported: ..." facts, wrong markers left out).
 - `services/agents/stalls.py` - 12 s client timeout on every orchestrator / subagent model call, one retry,
   each stall and retry logged with the agent name and counted in `RunResult`.
 - `services/agents/copilot.py` - also holds the orchestrator's dispatcher questions for life-safety

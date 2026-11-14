@@ -175,3 +175,73 @@ def test_low_confidence_and_publish():
 def test_confidence_of_exactly_half_is_not_low(incident, dossier):
     brief = build_brief(incident, dossier, [draft(evidence_ids=["ev_scan_fp_1", "ev_aerial_1"])])  # roof 0.5
     assert brief.considerations[0].confidence == 0.5 and low_confidence(brief) == []
+
+
+# ---------- crew memory ----------
+
+def crew(item_id, verdict, kind="marker", label="Stair B (rear / back stairs, north side), serves floors 1-6",
+         note=None):
+    from flamescout_schemas import CrewFeedback
+    from services.agents.memory import CrewRecord
+
+    fb = CrewFeedback(id=f"fb_{verdict}", incident_id="inc_earlier", building_id="fake_wilshire_tower",
+                      fact_key=item_id, verdict=verdict, note=note)
+    return CrewRecord(feedback=fb, kind=kind, label=label)
+
+
+OTHER = dict(category="exposure", title="Consider the building to the east",
+             rationale="A 3-storey building is 4.5 m away.", evidence_ids=["ev_aerial_1", "ev_costar_1"])
+
+
+def test_marker_marked_wrong_is_left_out_and_reported(incident, dossier):
+    wrong = crew("m_stair_b", "wrong", note="bricked up")
+    brief = build_brief(incident, dossier, [draft(**OTHER)], memory=[wrong])
+    assert "m_stair_b" not in {m.id for m in brief.markers} and len(brief.markers) == len(dossier.markers) - 1
+    fact = brief.size_up["crew.m_stair_b"]
+    assert fact.value == f"Crew reported: Stair B is wrong: bricked up ({wrong.feedback.created_at.date()})"
+    assert (fact.status, fact.confidence, fact.evidence_ids) == ("reported", 0.6, [wrong.evidence_id])
+    evidence = brief.evidence[wrong.evidence_id]
+    assert (evidence.kind, evidence.source, evidence.locator["item_id"]) == ("crew_feedback", "crew", "m_stair_b")
+    assert [n.fact_key for n in brief.crew_notes] == ["m_stair_b"]
+    assert Brief.model_validate_json(brief.model_dump_json()).size_up["crew.m_stair_b"].status == "reported"
+
+
+def test_consideration_naming_a_wrong_marker_is_rejected(incident, dossier):
+    wrong = crew("m_stair_b", "wrong", note="bricked up")
+    evidence = merge_evidence(incident, dossier, [wrong])
+    errors = check_considerations([draft(), draft(**OTHER)], evidence, [wrong])  # draft() is "Consider Stair B ..."
+    assert len(errors) == 1 and errors[0].startswith('#1: uses "Stair B", which a crew marked wrong on ')
+    assert rejected_count([draft(), draft(**OTHER)], evidence, [wrong]) == 1
+    with pytest.raises(ValueError, match="marked wrong"):
+        build_brief(incident, dossier, [draft()], memory=[wrong])
+    by_id = draft(title="Consider the rear stair", rationale="m_stair_b discharges to the alley.")
+    assert any("marked wrong" in e for e in check_considerations([by_id], evidence, [wrong]))
+    stair_a = draft(title="Consider Stair A and the standpipe", rationale="Stair A has a standpipe outlet.",
+                    evidence_ids=["ev_scan_fp_4", "ev_aerial_1"])
+    assert check_considerations([stair_a], evidence, [wrong]) == []  # "Stair B" is not "Stair A"
+
+
+def test_confirmed_and_outdated_only_add_the_crew_fact(incident, dossier):
+    confirmed = crew("m_stair_b", "correct")
+    outdated = crew("m_key_box", "outdated", label="Key box, right of the main entrance", note="moved inside")
+    brief = build_brief(incident, dossier, [draft()], memory=[confirmed, outdated])  # Stair B is usable again
+    assert len(brief.markers) == len(dossier.markers)
+    assert brief.size_up["crew.m_stair_b"].value.startswith("Crew reported: Stair B confirmed (")
+    assert brief.size_up["crew.m_key_box"].value.startswith("Crew reported: Key box is outdated: moved inside (")
+    assert brief.considerations[0].cross_layer  # still matterport + vexcel; crew evidence is not a data layer
+
+
+def test_fact_marked_wrong_stays_visible_as_contradicted(incident, dossier):
+    wrong = crew("building.stories", "wrong", kind="fact", label="building.stories = 6", note="7 with the penthouse")
+    brief = build_brief(incident, dossier, [draft()], memory=[wrong])  # a wrong fact excludes no marker
+    stories = brief.size_up["building.stories"]
+    assert (stories.value, stories.status) == (6, "contradicted") and wrong.evidence_id in stories.evidence_ids
+    assert brief.size_up["crew.building.stories"].value.startswith(
+        "Crew reported: building.stories = 6 is wrong: 7 with the penthouse (")
+
+
+def test_crew_report_arriving_between_versions_shows_in_changes(incident, dossier):
+    v1 = build_brief(incident, dossier, [draft(**OTHER)])
+    wrong = crew("m_stair_b", "wrong", note="bricked up")
+    v2 = build_brief(incident, dossier, [draft(**OTHER)], version=2, previous=v1, memory=[wrong])
+    assert v2.changes_since_last == [wrong.sentence]

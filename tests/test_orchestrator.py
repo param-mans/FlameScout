@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import threading
 import uuid
 from pathlib import Path
@@ -13,7 +14,7 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from datetime import timedelta
 
 from flamescout_schemas import Brief, BuildingDossier, CallSegment, Progress, now
-from services.agents import cache, copilot, orchestrator
+from services.agents import cache, copilot, memory, orchestrator
 from services.agents.dossier import LAYERS
 from services.agents.fusion import FusionEngine
 from services.agents.orchestrator import (MAX_SUBMISSIONS, NOTE_HEADER, Session, make_tools,
@@ -290,12 +291,24 @@ class RuleModel(BaseChatModel):
                     return (AIMessage(content="vexcel exterior entries [ev_x]") if called
                             else calls(("pull_vexcel_entries", {})))
                 return AIMessage(content=f"{layer} summary line [ev_x]") if called else calls((f"pull_{layer}", {}))
+        if "submit_considerations" in self.tool_names:
+            return self._strategy(messages, asked, called)
         if called:
             return AIMessage(content="Done.")
-        if "submit_considerations" in self.tool_names:
-            self.seen["strategy"] = " ".join(m.text for m in messages if m.type == "system")
-            return calls(("submit_considerations", {"considerations": self.drafts.pop(0)}))
         return calls(("submit_critique", {"verdict": "pass", "issues": []}))
+
+    def _strategy(self, messages, asked: str, called: bool) -> AIMessage:
+        """Reads the crew memory file its task names, submits a draft, and resubmits when rejected."""
+        last = messages[-1].text if called else ""
+        if last.startswith("Accepted") or last.startswith("Error"):
+            return AIMessage(content="Done.")
+        path = re.search(r"/memories/\S+\.md", asked)
+        if path and not called:
+            return calls(("read_file", {"file_path": path.group(0), "limit": 1000}))
+        if called and not last.startswith("Rejected"):
+            self.seen["memory_read"] = last  # what read_file returned through the /memories/ mount
+        self.seen["strategy"] = " ".join(m.text for m in messages if m.type == "system")
+        return calls(("submit_considerations", {"considerations": self.drafts.pop(0)}))
 
 
 TODOS = ["Confirm building with dispatcher", "CoStar property record", "Matterport interior scan",
@@ -593,6 +606,63 @@ def test_a_second_stall_gives_up_and_the_brief_says_what_was_skipped(incident, c
     assert any(r.getMessage().startswith("Model stall: critic stalled again on the retry") for r in caplog.records)
     assert v1.status == "briefed" and v1.critique is None
     assert v1.brief.gaps[0] == "Considerations were not checked by the critic"
+
+
+EAST_BUILDING = {"category": "exposure", "title": "Consider the building to the east",
+                 "rationale": "A 3-storey building stands 4.5 m from this mixed-use property.",
+                 "evidence_ids": ["ev_aerial_1", "ev_costar_1"]}  # vexcel + costar, no Stair B
+STANDPIPE = {**SINGLE_LAYER, "rationale": "A standpipe outlet is on the floor 4 landing of Stair A."}
+
+
+def test_crew_feedback_is_remembered_at_the_next_incident_in_the_same_building(incident, storage):
+    # Incident A: a normal brief. Stair B is in it; the officer finds it bricked up.
+    start_incident("inc_s2", workspace_root=incident.root, model=fake_model(*START, *RESUME))
+    incident.eng.confirm(BUILDING)
+    first = resume_incident("inc_s2", BUILDING)
+    assert "m_stair_b" in {m.id for m in first.brief.markers} and first.brief.crew_notes == []
+    memory.feedback("inc_s2", "m_stair_b", "wrong", "bricked up at the alley door", workspace_root=incident.root)
+    memory.feedback("inc_s2", "building.stories", "confirmed", workspace_root=incident.root)
+
+    # Incident B, later, same building (S1 is a call to 1200 Wilshire Boulevard too).
+    later = Incident(storage, "s1")
+    later.replay("c1")
+    path = f"/memories/{BUILDING}/crew_notes.md"
+    with_memory = [
+        calls(todos("completed", "in_progress", "in_progress", "in_progress", "pending", "pending", "pending"),
+              task("costar"), task("matterport"), task("vexcel")),
+        calls(task("strategy", f"Crew memory: {path}")), calls(task("critic")),
+        calls(todos(*["completed"] * 7), ("publish_brief", {})), AIMessage(content="pass")]
+    model = fake_model(*START, *with_memory, drafts=[[GOOD, STANDPIPE], [EAST_BUILDING, STANDPIPE]])
+    start_incident("inc_s1", workspace_root=later.root, model=model)
+    later.eng.confirm(BUILDING)
+    second = resume_incident("inc_s1", BUILDING)
+
+    # The orchestrator was told about the memory when the building was confirmed ...
+    session = orchestrator._SESSIONS["inc_s1"]
+    confirm_reply = next(m.text for m in session.agent.get_state(session.config).values["messages"]
+                         if m.type == "tool" and m.name == "confirm_building")
+    assert f"CREW MEMORY: crews left 2 note(s)" in confirm_reply and path in confirm_reply
+    # ... the strategy subagent read it through the /memories/ mount ...
+    assert "Crew reported: Stair B is wrong: bricked up at the alley door" in model.seen["memory_read"]
+    # ... its first draft, built on Stair B, was refused; the second went through.
+    assert (second.status, second.fallback_reason, second.brief.verifier_rejections) == ("briefed", None, 1)
+    assert [c.title for c in second.brief.considerations] == [EAST_BUILDING["title"], STANDPIPE["title"]]
+
+    brief = Brief.model_validate_json(later.ws.read("brief_v1.json"))
+    assert "m_stair_b" not in {m.id for m in brief.markers} and len(brief.markers) == 9
+    assert "m_stair_b" not in {m.id for m in orchestrator._dossier(later.ws).markers}  # nor on the map
+    reported = brief.size_up["crew.m_stair_b"]
+    assert reported.status == "reported" and reported.value.startswith(
+        "Crew reported: Stair B is wrong: bricked up at the alley door (20")
+    assert brief.size_up["crew.building.stories"].value.startswith("Crew reported: building.stories = 6 confirmed (")
+    assert all(brief.evidence[e].source == "crew" for f in (reported,) for e in f.evidence_ids)
+    assert {n.fact_key: n.verdict for n in brief.crew_notes} == {"m_stair_b": "wrong", "building.stories": "correct"}
+    assert "m_stair_b" in json.loads(later.ws.read("layers/matterport.json"))["markers"][3]["id"]  # layers stay raw
+
+    # A crew at incident B finds the stair reopened: the next version has it back.
+    memory.feedback("inc_s1", "m_stair_b", "confirmed", "reopened", workspace_root=later.root)
+    orchestrator._refresh_dossier(session)
+    assert "m_stair_b" in {m.id for m in orchestrator._dossier(later.ws).markers}
 
 
 def test_dispatcher_can_reject_every_candidate(incident):

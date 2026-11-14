@@ -8,6 +8,7 @@ start_incident(incident_id)               -> pauses, returns candidates
 resume_incident(incident_id, building_id) -> brief_v1.json
 update_incident(incident_id, notes)       -> brief_v2.json, brief_v3.json, ...
 review_brief(incident_id, drop=[...])     -> only when a call above returned "awaiting_approval"
+feedback(incident_id, item_id, verdict)   -> any time after a brief; remembered for the building
 ```
 
 **Always check `RunResult.status` after `resume_incident` and `update_incident`.** `"briefed"` means
@@ -143,6 +144,56 @@ The dispatcher's answer when a brief is held. A brief is held when any considera
 - Raises `ValueError` if nothing is awaiting approval, or an id is not in the brief.
 - Returns `status="briefed"` with the published brief. Takes 1-5 s.
 - Works after a restart with Tiger, like the other functions.
+
+## Crew feedback and building memory: `feedback(...)`
+
+```python
+from services.agents.memory import feedback
+
+fb = feedback(incident_id, item_id, verdict, note=None, role="officer")   # -> CrewFeedback
+```
+
+The officer marks a fact or marker of a brief as wrong, outdated or confirmed. It is stored for the
+**building**, so it applies to the next brief version of this incident and to every later incident
+at the same building. Call it from `POST /api/incidents/{id}/feedback`.
+
+- `item_id`: a marker id (`brief.markers[].id`, e.g. `"m_stair_b"`) or a fact key (a key of
+  `brief.size_up`, or `brief.hazards[].key`, e.g. `"building.stories"`), taken from the incident's
+  latest brief. An item already in the building's memory is accepted too, so a marker that was
+  left out as wrong can later be confirmed.
+- `verdict`: `"wrong"`, `"outdated"` or `"confirmed"`. The returned `CrewFeedback.verdict` uses the
+  schema's word `"correct"` for confirmed; `"correct"` is accepted as input as well.
+- `note`: free text, shown in the brief ("bricked up at the alley door").
+- Raises `ValueError` for an unknown verdict, an incident with no confirmed building or no brief
+  yet, or an `item_id` that is in neither the latest brief nor the building's memory.
+- Returns the stored `CrewFeedback` (`id`, `incident_id`, `building_id`, `fact_key` = the item id,
+  `verdict`, `note`, `role`, `created_at`). No model call; needs no live session; takes milliseconds.
+
+What it writes: the building's memory, in MongoDB (namespace `["memories"]`, keys
+`/<building_id>/feedback.json` and `/<building_id>/crew_notes.md`) when `MONGODB_URI` is set, else
+`data/memories/<building_id>/` (gitignored). The orchestrator mounts it read-only at `/memories/`.
+Read it with `memory.building_memory(building_id)` (newest record per item) or
+`memory.records(building_id)` (everything).
+
+What the next brief at that building looks like (`resume_incident` or `update_incident`):
+
+- `todos.json` gets "Read crew memory for this building", and the strategy subagent reads
+  `/memories/<building_id>/crew_notes.md`.
+- `brief.size_up["crew.<item_id>"]`: a fact with `status: "reported"` and a value such as
+  `"Crew reported: Stair B is wrong: bricked up at the alley door (2026-11-14)"`. Its
+  `evidence_ids` resolve to an evidence item with `kind: "crew_feedback"`, `source: "crew"`.
+- `brief.crew_notes`: the `CrewFeedback` records themselves (newest per item).
+- **A marker marked wrong is gone**: not in `brief.markers`, not in `dossier.json`, and no
+  consideration may name it (a draft that does is rejected and counted in `verifier_rejections`).
+  The raw `layers/*.json` still contain it. A later `"confirmed"` on the same item brings it back.
+- A *fact* marked wrong stays in `size_up` with `status: "contradicted"`.
+- `"outdated"` and `"confirmed"` add the "Crew reported" fact only; they do not change the item.
+- If the feedback arrives between two versions of the same incident, the next version's
+  `changes_since_last` contains the "Crew reported: ..." line.
+
+This is separate from the rules pipeline's `add_feedback` (`feedback.jsonl` and
+`_buildings/<building_id>/feedback.jsonl` in the JSON workspace): the orchestrator does not read
+those files, and `feedback()` does not write them. While both pipelines exist, call both.
 
 ## `copilot_questions.json`: questions the orchestrator plans for the dispatcher
 
