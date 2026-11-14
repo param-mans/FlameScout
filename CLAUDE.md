@@ -8,6 +8,7 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - Install: `python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"`
 - Tests: `pytest -q` (offline). Live API tests: `RUN_LIVE=1 pytest -q -m live`
 - Replay a call script through fusion: `python scripts/run_fusion.py S2`
+- Run an incident end to end (fusion -> confirm building -> orchestrator -> brief): `python scripts/run_incident.py S2`
 - Export JSON Schema for the frontend: `python scripts/export_schemas.py`
 
 ## Layout
@@ -16,8 +17,13 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - `services/agents/extract.py` - per-utterance fact extraction (KeywordExtractor stub, GeminiExtractor;
   `EXTRACTOR=keyword|gemini`, default keyword; `EXTRACT_TIMEOUT_S`, default 4.0).
 - `services/agents/fusion.py` - deterministic merge, contradictions, open questions. No LLM.
+- `services/agents/orchestrator.py` - one deep agent per confirmed incident; subagents dossier, strategy,
+  critic. JSON artifacts are written only by its tools; the model may write only `notes/*.md`.
+- `services/agents/brief.py` - deterministic Brief assembly and consideration checks. No LLM.
+- `services/agents/dossier.py` - loads `data/fixtures/<building_id>/dossier.json` (live adapters not built).
 - `data/fixtures/calls/` - scripted calls S1-S4. `data/fixtures/<building_id>/` - dossier fixtures.
-- `workspace/<incident_id>/` - incident files (incident.json, dossier.json, brief_vN.json).
+- `workspace/<incident_id>/` - incident files (incident.json, dossier.json, brief_vN.json, critique_vN.json,
+  todos.json = the orchestrator's plan for the UI progress strip, notes/*.md).
   This is the deepagent filesystem AND what the UI renders. Not committed.
 
 ## Non-negotiable rules
@@ -50,3 +56,8 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - Commit small and often. Repo is public.
 - Commit directly to `main` (no feature branches): `git pull` first, then commit and push.
 - Timebox: if a feature isn't working in its estimate, fall back to the fixture and move on.
+
+## TODO (later)
+- Split the dossier subagent into parallel `costar` / `matterport` / `vexcel` subagents once real data
+  arrives (today it is one subagent loading a fixture).
+- Add an `interrupt_on` gate before publishing a brief that has low-confidence considerations.

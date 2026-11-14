@@ -1,0 +1,113 @@
+{
+  "building_id": "fake_wilshire_tower",
+  "address": "1200 Wilshire Boulevard",
+  "coordinates": {"lat": 34.05, "lon": -118.26},
+  "facts": {
+    "building.name": {
+      "key": "building.name", "value": "Wilshire Tower", "status": "verified", "confidence": 0.95,
+      "evidence_ids": ["ev_costar_1"], "as_of": "2026-09-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "building.use": {
+      "key": "building.use", "value": "Mixed use: ground-floor retail, residential on floors 2-6",
+      "status": "verified", "confidence": 0.9,
+      "evidence_ids": ["ev_costar_1"], "as_of": "2026-09-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "building.stories": {
+      "key": "building.stories", "value": 6, "status": "verified", "confidence": 0.95,
+      "evidence_ids": ["ev_costar_1"], "as_of": "2026-09-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "building.year_built": {
+      "key": "building.year_built", "value": 1987, "status": "verified", "confidence": 0.9,
+      "evidence_ids": ["ev_costar_1"], "as_of": "2026-09-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "building.sprinklered": {
+      "key": "building.sprinklered", "value": null, "status": "unverified", "confidence": 0.0,
+      "evidence_ids": [], "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "hazard.commercial_kitchen": {
+      "key": "hazard.commercial_kitchen",
+      "value": "Ground-floor restaurant tenant: commercial kitchen, cooking/grease fire potential",
+      "status": "inferred", "confidence": 0.6,
+      "evidence_ids": ["ev_costar_2"], "as_of": "2026-09-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "hazard.lithium_batteries": {
+      "key": "hazard.lithium_batteries",
+      "value": "Ground-floor e-bike sales and repair tenant: lithium-ion batteries likely on site",
+      "status": "inferred", "confidence": 0.55,
+      "evidence_ids": ["ev_costar_3"], "as_of": "2026-09-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    }
+  },
+  "tenants": [
+    {
+      "key": "tenant.unit_101", "value": "Corner Noodle House (restaurant), ground floor, unit 101",
+      "status": "verified", "confidence": 0.85,
+      "evidence_ids": ["ev_costar_2"], "as_of": "2026-09-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    {
+      "key": "tenant.unit_102", "value": "Volt Cycle (e-bike sales and repair), ground floor, unit 102",
+      "status": "verified", "confidence": 0.85,
+      "evidence_ids": ["ev_costar_3"], "as_of": "2026-09-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    }
+  ],
+  "markers": [
+    {"id": "m_entry_main", "kind": "entry", "label": "Main entrance, Wilshire Boulevard side (south)",
+     "floor": 1, "status": "inferred", "confidence": 0.8, "evidence_ids": ["ev_scan_fp_1"]},
+    {"id": "m_entry_rear", "kind": "entry", "label": "Rear service entrance, alley side (north)",
+     "floor": 1, "status": "inferred", "confidence": 0.7, "evidence_ids": ["ev_scan_fp_1", "ev_aerial_1"]},
+    {"id": "m_stair_a", "kind": "stair", "label": "Stair A (front, south side), serves floors 1-6",
+     "status": "inferred", "confidence": 0.8, "evidence_ids": ["ev_scan_fp_1", "ev_scan_fp_4"]},
+    {"id": "m_stair_b", "kind": "stair",
+     "label": "Stair B (rear / back stairs, north side), serves floors 1-6, discharges to the alley",
+     "status": "inferred", "confidence": 0.75, "evidence_ids": ["ev_scan_fp_1", "ev_scan_fp_4"]},
+    {"id": "m_elevator", "kind": "elevator", "label": "Passenger elevator, main lobby",
+     "floor": 1, "status": "inferred", "confidence": 0.8, "evidence_ids": ["ev_scan_fp_1"]},
+    {"id": "m_key_box", "kind": "key_box", "label": "Key box, right of the main entrance",
+     "floor": 1, "status": "inferred", "confidence": 0.6, "evidence_ids": ["ev_scan_frame_1"]},
+    {"id": "m_fdc", "kind": "fdc", "label": "Fire department connection, south wall near the main entrance",
+     "floor": 1, "status": "inferred", "confidence": 0.65, "evidence_ids": ["ev_scan_frame_1"]},
+    {"id": "m_standpipe", "kind": "standpipe", "label": "Standpipe outlet in Stair A, floor 4 landing",
+     "floor": 4, "status": "inferred", "confidence": 0.55, "evidence_ids": ["ev_scan_fp_4"]},
+    {"id": "m_roof", "kind": "roof_access", "label": "Roof access door at the top of Stair A",
+     "floor": 6, "status": "inferred", "confidence": 0.5, "evidence_ids": ["ev_aerial_1"]}
+  ],
+  "exposures": [
+    {"id": "x_east", "label": "3-storey commercial building to the east", "side": "east",
+     "distance_m": 4.5, "status": "inferred", "confidence": 0.6, "evidence_ids": ["ev_aerial_1"]},
+    {"id": "x_north", "label": "Alley to the north, about 6 m wide", "side": "north",
+     "distance_m": 6.0, "status": "inferred", "confidence": 0.6, "evidence_ids": ["ev_aerial_1"]}
+  ],
+  "evidence": {
+    "ev_costar_1": {"id": "ev_costar_1", "kind": "costar_record", "source": "costar",
+                    "uri": "fixture://fake_wilshire_tower/costar/property",
+                    "captured_at": "2026-09-01T00:00:00Z",
+                    "locator": {"note": "synthetic hand-written fixture, not a real CoStar record"}},
+    "ev_costar_2": {"id": "ev_costar_2", "kind": "costar_record", "source": "costar",
+                    "uri": "fixture://fake_wilshire_tower/costar/tenant-101",
+                    "captured_at": "2026-09-01T00:00:00Z",
+                    "locator": {"note": "synthetic hand-written fixture, not a real CoStar record"}},
+    "ev_costar_3": {"id": "ev_costar_3", "kind": "costar_record", "source": "costar",
+                    "uri": "fixture://fake_wilshire_tower/costar/tenant-102",
+                    "captured_at": "2026-09-01T00:00:00Z",
+                    "locator": {"note": "synthetic hand-written fixture, not a real CoStar record"}},
+    "ev_scan_fp_1": {"id": "ev_scan_fp_1", "kind": "scan_floorplan", "source": "matterport",
+                     "uri": "fixture://fake_wilshire_tower/scan/floorplan-1",
+                     "captured_at": "2026-06-12T00:00:00Z",
+                     "locator": {"floor": 1, "note": "synthetic hand-written fixture, not a real scan"}},
+    "ev_scan_fp_4": {"id": "ev_scan_fp_4", "kind": "scan_floorplan", "source": "matterport",
+                     "uri": "fixture://fake_wilshire_tower/scan/floorplan-4",
+                     "captured_at": "2026-06-12T00:00:00Z",
+                     "locator": {"floor": 4, "note": "synthetic hand-written fixture, not a real scan"}},
+    "ev_scan_frame_1": {"id": "ev_scan_frame_1", "kind": "scan_frame", "source": "matterport",
+                        "uri": "fixture://fake_wilshire_tower/scan/frame-entrance",
+                        "captured_at": "2026-06-12T00:00:00Z",
+                        "locator": {"floor": 1, "note": "synthetic hand-written fixture, not a real scan"}},
+    "ev_aerial_1": {"id": "ev_aerial_1", "kind": "aerial_crop", "source": "vexcel",
+                    "uri": "fixture://fake_wilshire_tower/aerial/overhead",
+                    "captured_at": "2026-03-20T00:00:00Z",
+                    "locator": {"note": "synthetic hand-written fixture, not real aerial imagery"}}
+  },
+  "scan_available": true,
+  "scan_captured_at": "2026-06-12T00:00:00Z",
+  "matterport_model_id": null,
+  "generated_at": "2026-11-14T00:00:00Z"
+}

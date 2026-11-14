@@ -134,3 +134,18 @@ class Brief(BaseModel):
     gaps: list[str] = []
     evidence: dict[str, Evidence] = {}   # so the UI evidence drawer can resolve every id
     disclaimer: str = "Advisory only. Verify on arrival."
+
+
+# ---------- Orchestrator progress (workspace/<incident_id>/todos.json) ----------
+
+class TodoItem(BaseModel):
+    content: str
+    status: Literal["pending", "in_progress", "completed"]
+
+
+class Progress(BaseModel):
+    """The orchestrator's write_todos plan, rewritten on every change. UI progress strip."""
+    incident_id: str
+    todos: list[TodoItem] = []
+    updated_at: datetime = Field(default_factory=now)
+    trace_run_id: Optional[str] = None   # LangSmith run id of the orchestrator run

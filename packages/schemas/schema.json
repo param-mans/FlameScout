@@ -633,6 +633,68 @@
       ],
       "title": "Marker",
       "type": "object"
+    },
+    "Progress": {
+      "description": "The orchestrator's write_todos plan, rewritten on every change. UI progress strip.",
+      "properties": {
+        "incident_id": {
+          "title": "Incident Id",
+          "type": "string"
+        },
+        "todos": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TodoItem"
+          },
+          "title": "Todos",
+          "type": "array"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "trace_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trace Run Id"
+        }
+      },
+      "required": [
+        "incident_id"
+      ],
+      "title": "Progress",
+      "type": "object"
+    },
+    "TodoItem": {
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "completed"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content",
+        "status"
+      ],
+      "title": "TodoItem",
+      "type": "object"
     }
   },
   "title": "FlameScout"
