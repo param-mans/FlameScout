@@ -1,0 +1,34 @@
+# Deploy main to the Vultr host on every push (docs/deploy-vultr.md).
+# Same as deploy/deploy.sh without --sync: .env, data/costar and data/raw stay on the server as they are.
+# Repo secrets: VULTR_HOST (IP), VULTR_SSH_KEY (private key whose .pub is in the server's authorized_keys).
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vultr
+  cancel-in-progress: false   # never kill a build halfway; the next push queues behind it
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Pull and rebuild on the server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VULTR_HOST }}
+          username: root
+          key: ${{ secrets.VULTR_SSH_KEY }}
+          command_timeout: 15m
+          script: |
+            set -e
+            cd /opt/flamescout
+            git pull --ff-only
+            docker compose up -d --build
+            docker compose ps
+            sleep 5
+            docker compose exec -T api python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read().decode())"
