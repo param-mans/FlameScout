@@ -213,3 +213,4 @@ html.embed.layout-split #inc-banner { top: 10px; }
 #inspector .calidad-datos { margin: 6px 0 2px; border: 1px solid var(--border); }
 #inspector .calidad-datos > summary { cursor: pointer; padding: 6px 8px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--textDim); }
 #inspector .ver-salida { margin-top: 4px; }
+#inspector td.relaciones { color: var(--text); font-size: 12px; }

@@ -987,6 +987,13 @@ function tabla() {
 
 // ---------------------------------------------------------------- inspector y notas
 const fila = (k, v) => (v == null || v === '' ? '' : `<tr><td>${esc(k)}</td><td>${v}</td></tr>`)
+// "Over: kitchen · Next to: hallway, bathroom" from the relations stored in the plan (plan-extras.mjs); nothing recomputed
+function relacionesTxt(r) {
+  const nombre = (id) => { for (const f of S.plan.floors) { const x = f.rooms.find((y) => y.id === id); if (x) return (x.label || x.type || 'room').toLowerCase() } return null }
+  const lista = (ids) => [...new Set((ids || []).map(nombre).filter(Boolean))].join(', ')
+  const partes = [r.over && r.over.length ? `Over: ${lista(r.over)}` : '', r.next_to && r.next_to.length ? `Next to: ${lista(r.next_to)}` : ''].filter(Boolean)
+  return partes.length ? `<tr><td colspan="2" class="relaciones">${esc(partes.join(' · '))}</td></tr>` : ''
+}
 const ESTADOS = { verified: ['●', 'VER', 'Verified'], inferred: ['◆', 'INF', 'Inferred'], unverified: ['○', 'UNV', 'Unverified'] }
 const chip = (k, nota) => `<span class="st st-${k}" title="${esc(ESTADOS[k][2] + (nota ? ': ' + nota : ''))}"><span aria-hidden="true">${ESTADOS[k][0]}</span>${ESTADOS[k][1]}</span>`
 function inspector() {
@@ -1005,7 +1012,7 @@ function inspector() {
     h += `<h3>${esc(nombreSala(r))}</h3><div class="hint">ROOM · ${esc(f.label.toUpperCase())}</div>`
     t = fila('Type', esc(r.type || 'Not available') + ' <span class="hint">detected by AI, can be wrong</span>') + fila('Area', r.areaM2 != null ? areaTxt(r.areaM2) : 'Not available') +
       fila('Distance to nearest exit', ruta ? `<b style="color:${T.sel}">≈ ${pies(ruta.dist)}</b>, estimate` : `<span style="color:${T.noRoute}">${SIN_RUTA}</span>`) +
-      fila('Nearest exit', descSalida ? `${descSalida}<br><button id="ver-salida" class="ver-salida">Show on plan</button>` : '')
+      fila('Nearest exit', descSalida ? `${descSalida}<br><button id="ver-salida" class="ver-salida">Show on plan</button>` : '') + relacionesTxt(r)
     dq = fila('Outline', r.polygonQuality === 'ok' ? 'reliable' + chip('verified', 'outline passed validation') : `<span class="aviso">unreliable (no slab drawn)</span> ${esc((r.polygonIssues || []).join(', '))}` + chip('unverified', 'outline failed validation'))
   } else {
     const o = f.openings.find((x) => x.id === s.id), info = S.ev.puertas.get(o.id)
