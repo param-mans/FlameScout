@@ -34,6 +34,7 @@ const SIN_RUTA = 'no computable route'
 const Q = new URLSearchParams(location.search)
 const EMBED = Q.get('embed') === '1', MODO = Q.get('mode') === '2d' ? '2d' : '3d'
 const DEBUG = Q.get('debug') === '1' // selector de escenarios de incidente de prueba (chip DEBUG)
+const TACTIL = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches // iPad y otras pantallas tactiles
 const HOST = Q.get('host') === '1'   // dentro de la UI de FlameScout: el panel de consideraciones lo muestra la pagina anfitriona
 // unidades: pies y pies cuadrados primero, metros entre parentesis
 const FT = 3.28084, FT2 = 10.7639
@@ -52,7 +53,7 @@ const C = (h) => new THREE.Color(h)
 const S = {
   id: null, plan: null, ev: null, cal: null, fila: null,
   capas: { walls: true, doors: true, windows: true, slabs: true, stairs: true, points: true, labels: true, route: true, incident: true, sleeping: true, ignition: false },
-  color: 'type', foco: 0, f2d: 0, sep: 0, ctx: FX.ctxDefault, niveles: [], alturas: [], nivelEst: [], escaleras: [], ocultarSup: false, fx: true, detalle: false,
+  color: 'type', foco: 0, f2d: 0, sep: 0, ctx: FX.ctxDefault, niveles: [], alturas: [], nivelEst: [], escaleras: [], ocultarSup: false, fx: !TACTIL, detalle: false, efectosReducidos: false,
   tipos: new Set(), sel: null, hover: null, vb: null, ms: {}, fps: 0, muros: [],
 }
 let renderer, camara, escena, controles, composer, bloom, raycaster = new THREE.Raycaster(), vistaListo = false
@@ -712,7 +713,7 @@ function avisoHud() {
     $('aviso3d').innerHTML = `<span class="aviso" title="${txt}" aria-label="${txt}">ⓘ EST</span>`
     return
   }
-  $('aviso3d').innerHTML = `${S.detalle ? 'DETAIL' : 'CALM'} · LEVELS FROM DOOR HEIGHTS · TOP FLOOR ${pies(FLOOR_H).toUpperCase()} (${FLOOR_H} M) <span class="aviso">ESTIMATE</span> · ${S.fps} FPS`
+  $('aviso3d').innerHTML = `${S.efectosReducidos ? 'REDUCED EFFECTS (LOW FRAME RATE) · ' : ''}${S.detalle ? 'DETAIL' : 'CALM'} · LEVELS FROM DOOR HEIGHTS · TOP FLOOR ${pies(FLOOR_H).toUpperCase()} (${FLOOR_H} M) <span class="aviso">ESTIMATE</span> · ${S.fps} FPS`
 }
 
 // ---------------------------------------------------------------- limites
@@ -783,7 +784,7 @@ function render2D() {
   if (S.salidaVista && S.salidaVista.fi === fi) { const o = f.openings.find((x) => x.id === S.salidaVista.id); if (o) h += `<circle cx="${o.center[0]}" cy="${-o.center[1]}" r="0.55" fill="none" stroke="${T.sel}" stroke-width="2.5" ${ns} filter="url(#brillo)"><animate attributeName="r" values="0.45;0.75;0.45" dur="1.4s" repeatCount="indefinite"/></circle>` }
   // rotulos: nombre o tipo (o la distancia), 70 %, con colisiones (gana la sala mas grande); al tocar una sala su rotulo aparece
   if (S.capas.labels) {
-    const vb = S.vb, escPx = Math.max(vb[2] / (cont.clientWidth || 400), vb[3] / (cont.clientHeight || 300)), fs = Math.max(0.16, 9 * escPx), ocupado = []
+    const vb = S.vb, escPx = Math.max(vb[2] / (cont.clientWidth || 400), vb[3] / (cont.clientHeight || 300)), fs = Math.max(0.16, 12 * escPx), ocupado = []
     salas.forEach((r) => {
       if ((r.areaM2 || 0) < SALA_MIN && !esEscalera(r)) return
       const c = centroSala(r); if (!c) return
@@ -794,7 +795,7 @@ function render2D() {
       ocupado.push(caja2)
       const comun = `font-family="${T.font}" text-anchor="middle" letter-spacing="${fs * 0.08}" opacity="${hov ? 1 : OP.label}" pointer-events="none"`
       h += `<text x="${c[0]}" y="${-c[1]}" font-size="${fs}" fill="${T.text}" ${comun}>${esc(l1.toUpperCase())}</text>`
-      if (l2) h += `<text x="${c[0]}" y="${-c[1] + fs * 1.2}" font-size="${fs * 0.78}" fill="${l2 === SIN_RUTA ? T.noRoute : T.textDim}" ${comun}>${esc(l2.toUpperCase())}</text>`
+      if (l2) h += `<text x="${c[0]}" y="${-c[1] + fs * 1.2}" font-size="${fs}" fill="${l2 === SIN_RUTA ? T.noRoute : T.textDim}" ${comun}>${esc(l2.toUpperCase())}</text>`
     })
   }
   // escaleras (mismo ajuste que el 3D): peldanos y flecha dentro del rectangulo que cabe en su sala y en la casa.
@@ -851,6 +852,9 @@ function selectoresPlanta() {
   barraSplit()
 }
 // ---------------------------------------------------------------- modo split: barra comun (planta, color, capas) y paneles plegables
+// modo compacto: pantalla de 1180 px o menos (en la UI se mira el ancho de la pagina anfitriona)
+function anchoPantalla() { try { return HOST && window.parent !== window ? window.parent.innerWidth : window.innerWidth } catch (e) { return window.innerWidth } }
+function aplicarCompacto() { document.documentElement.classList.toggle('compacto', SPLIT && anchoPantalla() <= 1180); inspector() }
 function montarSplit() {
   const barra = document.createElement('div')
   barra.id = 'barra-split'
@@ -864,6 +868,13 @@ function montarSplit() {
   }
   $('der').appendChild($('leyenda2d'))
   plegable('insp-split', 'Inspector', true, $('inspector'))
+  const pest = document.createElement('div'); pest.id = 'der-tabs'; pest.className = 'fila-btn'
+  pest.innerHTML = '<button data-der="plan" class="on">Plan</button><button data-der="entorno">Surroundings</button>'
+  $('der').insertBefore(pest, $('der').firstChild)
+  pest.addEventListener('click', (e) => { const b = e.target.closest('[data-der]'); if (!b) return
+    document.documentElement.classList.toggle('der-entorno', b.dataset.der === 'entorno')
+    pest.querySelectorAll('[data-der]').forEach((x) => x.classList.toggle('on', x === b)) })
+  window.addEventListener('resize', aplicarCompacto); aplicarCompacto()
   plegable('tabla-split', 'Entities', false, $('tabla'))
   const menu = (abrir) => { $('izq').classList.toggle('abierto', abrir); $('btn-capas').setAttribute('aria-expanded', String(abrir)); $('btn-capas').classList.toggle('on', abrir) }
   barra.addEventListener('click', (e) => {
@@ -892,15 +903,27 @@ function zoomPan2D() {
     const e2 = Math.max(vb[2] / r.width, vb[3] / r.height), cx = vb[0] + vb[2] / 2 + (e.clientX - r.left - r.width / 2) * e2, cy = vb[1] + vb[3] / 2 + (e.clientY - r.top - r.height / 2) * e2
     S.vb = [cx - (cx - vb[0]) * k, cy - (cy - vb[1]) * k, vb[2] * k, vb[3] * k]; render2D()
   }, { passive: false })
-  let arr = null, movido = false
-  cont.addEventListener('pointerdown', (e) => { if (S.vb) { arr = { x: e.clientX, y: e.clientY, vb: [...S.vb] }; movido = false } })
+  let arr = null, movido = false, pinza = null
+  const dedos = new Map()
+  cont.addEventListener('pointerdown', (e) => {
+    dedos.set(e.pointerId, [e.clientX, e.clientY])
+    if (dedos.size === 2 && S.vb) { const [a, b] = [...dedos.values()]; pinza = { d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, vb: [...S.vb], m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] }; arr = null; movido = true; return }
+    if (S.vb) { arr = { x: e.clientX, y: e.clientY, vb: [...S.vb] }; movido = false }
+  })
   window.addEventListener('pointermove', (e) => {
+    if (dedos.has(e.pointerId)) dedos.set(e.pointerId, [e.clientX, e.clientY])
+    if (pinza && dedos.size === 2) {
+      const [a, b] = [...dedos.values()], k = pinza.d / (Math.hypot(a[0] - b[0], a[1] - b[1]) || 1), r = cont.getBoundingClientRect(), vb = pinza.vb
+      const e2 = Math.max(vb[2] / r.width, vb[3] / r.height), cx = vb[0] + vb[2] / 2 + (pinza.m[0] - r.left - r.width / 2) * e2, cy = vb[1] + vb[3] / 2 + (pinza.m[1] - r.top - r.height / 2) * e2
+      S.vb = [cx - (cx - vb[0]) * k, cy - (cy - vb[1]) * k, vb[2] * k, vb[3] * k]; render2D(); return
+    }
     if (!arr) return
     const r = cont.getBoundingClientRect(), e2 = Math.max(arr.vb[2] / r.width, arr.vb[3] / r.height)
     if (Math.hypot(e.clientX - arr.x, e.clientY - arr.y) > 3) movido = true
     if (movido) { S.vb = [arr.vb[0] - (e.clientX - arr.x) * e2, arr.vb[1] - (e.clientY - arr.y) * e2, arr.vb[2], arr.vb[3]]; render2D() }
   })
-  window.addEventListener('pointerup', () => { arr = null })
+  const soltar = (e) => { dedos.delete(e.pointerId); if (dedos.size < 2) pinza = null; arr = null }
+  window.addEventListener('pointerup', soltar); window.addEventListener('pointercancel', soltar)
   cont.addEventListener('click', (e) => {
     if (movido) return
     const el = e.target.closest('[data-kind]')
@@ -998,6 +1021,7 @@ const ESTADOS = { verified: ['●', 'VER', 'Verified'], inferred: ['◆', 'INF',
 const chip = (k, nota) => `<span class="st st-${k}" title="${esc(ESTADOS[k][2] + (nota ? ': ' + nota : ''))}"><span aria-hidden="true">${ESTADOS[k][0]}</span>${ESTADOS[k][1]}</span>`
 function inspector() {
   const el = $('inspector'), s = S.sel
+  const hoja = $('insp-split'); if (hoja) { hoja.classList.toggle('hoja-abierta', !!s); if (s && document.documentElement.classList.contains('compacto')) hoja.open = true } // hoja inferior en modo compacto (sin resumen: siempre abierta)
   if (!s) {
     if (SPLIT) { el.innerHTML = '<div class="hint">Select a room, door or window in either view.</div>'; el.style.display = 'block' } else el.style.display = 'none'
     return
@@ -1450,7 +1474,7 @@ function animarIncidente() {
 function svgIncidente2D(fi, ns) {
   const ov = ovVista()
   if (!ov || !S.capas.incident) return ''
-  const fs = Math.max(0.16, 9 * Math.max(S.vb[2] / ($('vista2d').clientWidth || 400), S.vb[3] / ($('vista2d').clientHeight || 300)))
+  const fs = Math.max(0.16, 12 * Math.max(S.vb[2] / ($('vista2d').clientWidth || 400), S.vb[3] / ($('vista2d').clientHeight || 300)))
   let h = `<defs><radialGradient id="incFuego"><stop offset="0" stop-color="${IC.red}" stop-opacity="0.85"/><stop offset="0.6" stop-color="${IC.red}" stop-opacity="0.35"/><stop offset="1" stop-color="${IC.red}" stop-opacity="0"/></radialGradient>` +
     `<radialGradient id="incVerde"><stop offset="0" stop-color="${IC.green}" stop-opacity="0.7"/><stop offset="1" stop-color="${IC.green}" stop-opacity="0"/></radialGradient>` +
     `<pattern id="incRayas" patternUnits="userSpaceOnUse" width="0.35" height="0.35" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="0.35" stroke="${IC.amber}" stroke-width="0.14"/></pattern></defs>`
@@ -1528,6 +1552,7 @@ function asegurarDomIncidente() {
     INC.resaltar = igual ? new Set() : new Set(con.refs); reconstruirIncidente() })
   if (DEBUG) $('inc-debug').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return
+    if (b.dataset.tog) { const d = $('inc-debug'); d.classList.toggle('abierto'); b.setAttribute('aria-expanded', d.classList.contains('abierto')); return }
     if (b.dataset.esc) { const sc = INC.escenarios.find((x) => x.key === b.dataset.esc); INC.escenario = { key: sc.key, i: 0 }; INC.versions = new Map(); INC.actual = null; aplicarIncidente(structuredClone(sc.versions[0])) }
     if (b.dataset.next) { const sc = INC.escenarios.find((x) => x.key === INC.escenario.key); INC.escenario.i = Math.min(sc.versions.length - 1, INC.escenario.i + 1); aplicarIncidente(structuredClone(sc.versions[INC.escenario.i])) }
     if (b.dataset.clear) { INC.actual = null; INC.versions = new Map(); INC.vista = null; INC.escenario = null; reconstruirIncidente() }
@@ -1540,7 +1565,7 @@ function pintarPanelIncidente() {
   const ov = ovVista(), ban = $('inc-banner'), body = $('inc-panel-body')
   if (DEBUG) {
     const sc = INC.escenario && INC.escenarios.find((x) => x.key === INC.escenario.key)
-    $('inc-debug').innerHTML = `<span class="inc-chip">DEBUG</span>` + INC.escenarios.map((x) => `<button data-esc="${x.key}" class="${INC.escenario?.key === x.key ? 'on' : ''}">${esc(x.label)}</button>`).join('') +
+    $('inc-debug').innerHTML = `<button class="inc-chip" data-tog="1" aria-expanded="${$('inc-debug').classList.contains('abierto')}">DEBUG</button>` + INC.escenarios.map((x) => `<button data-esc="${x.key}" class="${INC.escenario?.key === x.key ? 'on' : ''}">${esc(x.label)}</button>`).join('') +
       (sc && sc.versions.length > 1 ? `<button data-next="1" ${INC.escenario.i >= sc.versions.length - 1 ? 'disabled' : ''}>Next call → v${Math.min(sc.versions.length, INC.escenario.i + 2)}</button>` : '') +
       (INC.actual ? '<button data-clear="1">Clear</button>' : '') + (INC.escenarios.length ? '' : '<span class="hint">no scenario fits this house</span>')
   }
@@ -1606,6 +1631,7 @@ async function cargar(id) {
   avisoHud()
   avisarPadre({ type: 'ready', sample: id, floors: plan.floors.length, mode: EMBED ? (SPLIT ? 'split' : MODO) : null })
   prepararIncidente(plan)
+  setTimeout(medirRendimiento, 2200) // los fps se cuentan cada segundo en el bucle; se miran tras 2 s
   window.__casa = { S, THREE, ms: S.ms, id, INC, setFoco, setDetalle, ponerHover, get refs() { return refs }, get P() { return P }, get escG() { return escG }, get explG() { return explG }, // solo para las pruebas automaticas
     medir(n, fx) { const gl = renderer.getContext(), px = new Uint8Array(4), t0 = performance.now(); for (let i = 0; i < n; i++) { if (fx) composer.render(); else renderer.render(escena, camara); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px) } return (performance.now() - t0) / n } }
 }
@@ -1624,6 +1650,13 @@ function sinEscaneo(id, doc) {
   estadoEmbed(''); cargarOblicuas(id)
   avisarPadre({ type: 'ready', sample: id, floors: 0, mode: EMBED ? (SPLIT ? 'split' : MODO) : null, no_scan: true })
   prepararIncidente(null)
+}
+
+function medirRendimiento() {
+  if (!S.plan || SOLO_2D || !S.fps || S.fps >= 30 || S.efectosReducidos) return
+  S.efectosReducidos = true; S.fx = false; S.capas.points = false
+  OP.wallOuterFill = Math.min(OP.wallOuterFill, 0.06); OP.wallInnerFill = 0
+  panelIzq(); aplicarPlantas(); avisoHud()
 }
 
 let LISTA = [] // samples/index.json

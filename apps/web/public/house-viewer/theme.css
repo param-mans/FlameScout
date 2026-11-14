@@ -206,7 +206,9 @@ html.embed.layout-split #inc-banner { top: 10px; }
 #sin-escaneo b { font-size: 15px; letter-spacing: .14em; text-transform: uppercase; color: var(--unverified, var(--textDim)); }
 #inc-debug { position: fixed; left: 8px; bottom: 8px; z-index: 50; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; max-width: 70vw;
   padding: 5px 6px; background: rgba(8, 10, 14, .9); border: 1px solid #f59e0b; }
-#inc-debug .inc-chip { font: 700 10px/1 var(--font); letter-spacing: .16em; color: #111; background: #f59e0b; padding: 3px 6px; }
+#inc-debug .inc-chip { font: 700 12px/1 var(--font); letter-spacing: .16em; color: #111; background: #f59e0b; padding: 3px 6px; border: 0; }
+/* collapsed by default (only the DEBUG toggle) so it never covers the plan; tap DEBUG to show the scenarios */
+#inc-debug:not(.abierto) > :not(.inc-chip) { display: none; }
 #inc-debug button { padding: 1px 6px; }
 
 /* Inspector: seccion plegable "Data quality" y boton "Show on plan" */
@@ -214,3 +216,31 @@ html.embed.layout-split #inc-banner { top: 10px; }
 #inspector .calidad-datos > summary { cursor: pointer; padding: 6px 8px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--textDim); }
 #inspector .ver-salida { margin-top: 4px; }
 #inspector td.relaciones { color: var(--text); font-size: 12px; }
+
+/* ---------------------------------------------------------------- Tactil (iPad) dentro de la UI: objetivos de 44 x 44 px,
+   letra de 12 px como minimo, sin zoom de la pagina por doble toque; los lienzos 3D y 2D gestionan sus gestos */
+html.embed body { touch-action: manipulation; -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+html.embed #vista2d, html.embed #vista3d canvas { touch-action: none; }
+html.embed button, html.embed .plegable > summary, html.embed #inspector .calidad-datos > summary, html.embed select { min-height: 44px; min-width: 44px; font-size: 12px; }
+html.embed #barra-split { gap: 6px; padding: 4px 8px; }
+html.embed .etq, html.embed .hint, html.embed #aviso3d, html.embed #escala, html.embed .leyenda, html.embed .obl-pie, html.embed #inc-banner,
+html.embed #inspector td, html.embed .st, html.embed label.fila, html.embed .ctl-fila { font-size: 12px !important; }
+html.embed label.fila { min-height: 44px; }
+html.embed input[type=checkbox] { width: 20px; height: 20px; }
+html.embed input[type=range] { height: 44px; }
+html.embed #inspector .cerrar { min-height: 44px; min-width: 44px; top: 2px; right: 2px; }
+html.embed #inc-debug button { min-height: 44px; }
+html.embed #inc-banner .inc-vers button { min-height: 44px; min-width: 44px; padding: 0 10px; }
+/* Pestanas Plan / Surroundings: solo en modo compacto (pantalla de 1180 px o menos) */
+#der-tabs { display: none; }
+html.compacto #der-tabs { display: flex; gap: 4px; margin: 8px 8px 0; }
+html.compacto #der-tabs button { flex: 1; }
+html.compacto:not(.der-entorno) #oblicuas { display: none; }
+html.compacto.der-entorno #vista2d, html.compacto.der-entorno #leyenda2d { display: none; }
+html.compacto.der-entorno #oblicuas { flex: 1; }
+/* Inspector como hoja inferior en modo compacto: se abre al tocar una sala, una puerta o una ventana */
+html.embed.layout-split.compacto #insp-split { position: fixed; left: 0; right: 0; bottom: 0; margin: 0; z-index: 30; max-height: 55%; overflow-y: auto;
+  transform: translateY(100%); transition: transform .2s ease; border-top: 1px solid var(--borderHi); background: var(--panel);
+  padding-bottom: env(safe-area-inset-bottom); }
+html.embed.layout-split.compacto #insp-split.hoja-abierta { transform: none; z-index: 60; }
+html.embed.layout-split.compacto #insp-split > summary { display: none; }
