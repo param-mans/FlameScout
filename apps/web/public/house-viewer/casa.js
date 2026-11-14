@@ -693,6 +693,12 @@ function regla() {
 }
 function avisoHud() {
   if (!S.plan) return
+  // MDT (split): sin la franja de modo/FPS; la altura estimada queda como tooltip
+  if (SPLIT) {
+    const txt = `Top floor height ${FLOOR_H} m is an estimate (floor levels derived from door heights).`
+    $('aviso3d').innerHTML = `<span class="aviso" title="${txt}" aria-label="${txt}">ⓘ EST</span>`
+    return
+  }
   $('aviso3d').innerHTML = `${S.detalle ? 'DETAIL' : 'CALM'} · LEVELS FROM DOOR HEIGHTS · TOP FLOOR ${FLOOR_H} M <span class="aviso">ESTIMATE</span> · ${S.fps} FPS`
 }
 
@@ -831,7 +837,6 @@ function montarSplit() {
   const barra = document.createElement('div')
   barra.id = 'barra-split'
   barra.innerHTML = '<span class="etq">Floor</span><span id="pisos-split" class="plantas"></span><span id="planta2d-split" class="hint"></span>' +
-    '<span class="sep"></span><span class="fila-btn" id="color-split"><button data-color="type">Rooms</button><button data-color="evac">Evacuation heat map</button></span>' +
     '<span class="hueco"></span><button data-fit title="Fit the 2D plan">⤢ Fit 2D</button><button id="btn-capas" aria-expanded="false">Layers ▾</button>'
   document.querySelector('main').prepend(barra)
   barra.appendChild($('izq')) // el panel de vista/capas/filtros pasa a ser un menu plegable
@@ -993,6 +998,7 @@ function inspector() {
   el.innerHTML = h; el.style.display = 'block'
 }
 function notas() {
+  if (!$('notas')) return // MDT (split): sin panel de notas
   const ev = S.ev, pisos = S.plan.floors
   const todas = pisos.flatMap((f, fi) => salasDe(f).map((r) => ({ r, fi, f })))
   const lista = (arr) => arr.map(({ r, fi, f }) => { const ru = rutaSala(fi, r); return `<li>${esc(nombreSala(r))} <span class="hint">· ${esc(f.label)} · ${ru ? ru.dist.toFixed(1) + ' m to nearest exit (est.)' : SIN_RUTA}</span></li>` }).join('')
@@ -1013,6 +1019,12 @@ function panelIzq() {
   S.plan.floors.forEach((f) => salasDe(f).forEach((r) => { tipos[tipoKey(r)] = (tipos[tipoKey(r)] || 0) + 1 }))
   const ord = Object.keys(tipos).sort((a, b) => tipos[b] - tipos[a])
   const capa = (k, txt) => `<label class="fila"><input type="checkbox" data-capa="${k}" ${S.capas[k] ? 'checked' : ''}> ${txt}</label>`
+  // MDT (split): menu reducido a escaleras, puertas, ruta y mapa de calor; muros, losas, etiquetas y ventanas siguen visibles sin interruptor
+  if (SPLIT) {
+    $('izq').innerHTML = '<h2>Layers</h2>' + capa('stairs', 'Stairs') + capa('doors', 'Doors') + capa('route', 'Route of the selected room') +
+      `<label class="fila"><input type="checkbox" id="heat" ${S.color === 'evac' ? 'checked' : ''}> Evacuation heat map</label>`
+    return
+  }
   $('izq').innerHTML = '<h2>View</h2>' +
     `<div class="fila-btn"><button data-modo="calm" class="${!S.detalle ? 'on' : ''}">Calm</button><button data-modo="detail" class="${S.detalle ? 'on' : ''}">Detail</button></div>` +
     `<div class="fila-btn"><button data-color="type" class="${S.color === 'type' ? 'on' : ''}">Rooms</button><button data-color="evac" class="${S.color === 'evac' ? 'on' : ''}">Evacuation heat map</button></div>` +
@@ -1046,6 +1058,7 @@ function eventos() {
     const t = e.target
     if (t.dataset.capa) S.capas[t.dataset.capa] = t.checked
     else if (t.dataset.tipo) { t.checked ? S.tipos.add(t.dataset.tipo) : S.tipos.delete(t.dataset.tipo) }
+    else if (t.id === 'heat') { S.color = t.checked ? 'evac' : 'type'; panelIzq(); refrescar(); return }
     else if (t.id === 'fx') { S.fx = t.checked; aplicarPlantas(); avisoHud(); return }
     else if (t.id === 'ocultar') { S.ocultarSup = t.checked; objetivos(); render2D(); return }
     else if (t.id === 'sep' || t.id === 'ctx') return

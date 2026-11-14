@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // Static house viewer from public/house-viewer, embedded in an iframe (same origin).
 // layout "split" -> 3D + 2D plan side by side in one iframe; otherwise mode "floor" (2D) or "scan3d" (3D).
 // The viewer reports "ready" / "error" via postMessage.
-// The sample house is chosen with the temporary picker on top; the choice is kept in ?sample=<id>.
-type Props = { mode?: "floor" | "scan3d"; layout?: "single" | "split"; sampleId?: string };
+// The MDT shows the incident building directly (sampleId); the temporary sample-house picker lives in the
+// Dispatcher view's Demo / Controls section and keeps its choice in ?sample=<id>.
+type Props = { mode?: "floor" | "scan3d"; layout?: "single" | "split"; sampleId: string | null; sampleError?: string | null };
 
 /** House viewer in the MDT by default (true); ?viewer=0 shows the previous Map / Floor 2D / 3D scan tabs. */
 export const HOUSE_VIEWER_DEFAULT = true;
@@ -30,14 +31,34 @@ function readThemeTokens(): Record<string, string> {
 }
 const validId = (id: string | null | undefined): id is string => !!id && /^[a-z0-9-]+$/.test(id);
 
-function setSampleParam(id: string) {
+export const readSampleParam = () => {
+  const id = new URLSearchParams(window.location.search).get("sample");
+  return validId(id) ? id : null;
+};
+
+export function setSampleParam(id: string) {
   const url = new URL(window.location.href);
   url.searchParams.set("sample", id);
   window.history.replaceState(window.history.state, "", url);
 }
 
+/** Sample houses with a Matterport scan (public/house-viewer/samples/index.json), fetched once. */
+export function useSampleHouses() {
+  const [samples, setSamples] = useState<SampleHouse[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch(`${BASE}samples/index.json`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((list: SampleHouse[]) => alive && setSamples(list))
+      .catch(() => alive && setError("Sample list could not be loaded"));
+    return () => { alive = false; };
+  }, []);
+  return { samples, error };
+}
+
 /** Compact temporary picker: chip with the current house, popover with a text search and the list. */
-function SamplePicker({ samples, value, onChange }: { samples: SampleHouse[]; value: string | null; onChange: (id: string) => void }) {
+export function SamplePicker({ samples, value, onChange }: { samples: SampleHouse[]; value: string | null; onChange: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const box = useRef<HTMLDivElement>(null);
@@ -106,30 +127,14 @@ function SamplePicker({ samples, value, onChange }: { samples: SampleHouse[]; va
   );
 }
 
-export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId }: Props) {
+export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId, sampleError }: Props) {
   const frame = useRef<HTMLIFrameElement>(null);
-  const initial = useMemo(() => {
-    const id = sampleId ?? new URLSearchParams(window.location.search).get("sample");
-    return validId(id) ? id : null;
-  }, [sampleId]);
-  const [samples, setSamples] = useState<SampleHouse[] | null>(null);
-  const [listError, setListError] = useState<string | null>(null);
-  const [sample, setSample] = useState<string | null>(initial);
-  // Sample in the iframe URL: fixed once the iframe exists; later choices go by postMessage (no reload).
-  const [frameSample, setFrameSample] = useState<string | null>(initial);
-  const [status, setStatus] = useState<Status>(initial ? { kind: "loading" } : { kind: "idle" });
+  // Sample in the iframe URL: fixed once the iframe exists; later changes go by postMessage (no reload).
+  const [frameSample, setFrameSample] = useState<string | null>(sampleId);
+  const loaded = useRef<string | null>(sampleId);
+  const [status, setStatus] = useState<Status>(sampleId ? { kind: "loading" } : { kind: "idle" });
   const [loadSeq, setLoadSeq] = useState(0);
 
-  useEffect(() => {
-    let alive = true;
-    fetch(`${BASE}samples/index.json`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((list: SampleHouse[]) => alive && setSamples(list))
-      .catch(() => alive && setListError("Sample list could not be loaded"));
-    return () => { alive = false; };
-  }, []);
-
-  const known = !sample || !samples || samples.some((s) => s.id === sample);
   const split = layout === "split";
   const view = split ? "layout=split" : `mode=${mode === "floor" ? "2d" : "3d"}`;
   const src = frameSample ? `${BASE}casa.html?embed=1&sample=${encodeURIComponent(frameSample)}&${view}` : null;
@@ -169,22 +174,25 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId }:
     return () => window.clearTimeout(timer);
   }, [status.kind, loadSeq]);
 
-  const choose = (id: string) => {
-    if (id === sample) return;
-    setSample(id);
-    setSampleParam(id);
+  // The incident building changed (Demo / Controls picker): load it without reloading the iframe when one exists.
+  useEffect(() => {
+    if (sampleId === loaded.current) return;
+    loaded.current = sampleId;
+    if (!sampleId) return setStatus({ kind: "idle" });
     setStatus({ kind: "loading" });
     setLoadSeq((n) => n + 1);
-    if (!frame.current?.contentWindow) setFrameSample(id);
-    else frame.current.contentWindow.postMessage({ type: "loadSample", id }, window.location.origin);
-  };
+    if (!frame.current?.contentWindow) setFrameSample(sampleId);
+    else frame.current.contentWindow.postMessage({ type: "loadSample", id: sampleId }, window.location.origin);
+  }, [sampleId]);
 
   const overlay =
-    status.kind === "idle" || !known ? (
+    sampleError ? (
       <div>
-        <div className="num text-[15px] text-dim">SELECT A SAMPLE HOUSE</div>
-        <div className="mt-1 text-[12px] text-faint">{!known ? `Unknown sample "${sample}". Pick one from the list above.` : "Choose one from the picker above to load its floor plan and 3D model."}</div>
+        <div className="num text-[15px] text-unverified">○ VIEWER UNAVAILABLE</div>
+        <div className="mt-1 text-[12px] text-faint">{sampleError}</div>
       </div>
+    ) : status.kind === "idle" ? (
+      <div className="num text-[13px] text-dim">LOADING BUILDING…</div>
     ) : status.kind === "loading" ? (
       <div className="num text-[13px] text-dim">LOADING {what}…</div>
     ) : status.kind === "error" ? (
@@ -195,26 +203,17 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId }:
     ) : null;
 
   return (
-    <div className="flex h-full w-full flex-col bg-bg">
-      <div className="flex h-8 shrink-0 items-center gap-3 border-b border-line bg-panel px-2.5">
-        {samples ? (
-          <SamplePicker samples={samples} value={known ? sample : null} onChange={choose} />
-        ) : (
-          <span className="label">{listError ?? "Loading sample houses…"}</span>
-        )}
-      </div>
-      <div className="relative min-h-0 flex-1">
-        {src && known && (
-          <iframe
-            ref={frame}
-            src={src}
-            title={split ? "Floor plan and 3D model" : mode === "floor" ? "Floor plan 2D" : "3D scan"}
-            className={`absolute inset-0 h-full w-full border-0 bg-bg ${status.kind === "ready" ? "" : "invisible"}`}
-            onError={() => setStatus({ kind: "error", message: "Viewer could not be loaded" })}
-          />
-        )}
-        {overlay && <div className="absolute inset-0 grid place-items-center text-center">{overlay}</div>}
-      </div>
+    <div className="relative h-full w-full bg-bg">
+      {src && !sampleError && (
+        <iframe
+          ref={frame}
+          src={src}
+          title={split ? "Floor plan and 3D model" : mode === "floor" ? "Floor plan 2D" : "3D scan"}
+          className={`absolute inset-0 h-full w-full border-0 bg-bg ${status.kind === "ready" ? "" : "invisible"}`}
+          onError={() => setStatus({ kind: "error", message: "Viewer could not be loaded" })}
+        />
+      )}
+      {overlay && <div className="absolute inset-0 grid place-items-center text-center">{overlay}</div>}
     </div>
   );
 }

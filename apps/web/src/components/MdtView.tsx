@@ -1,24 +1,16 @@
 import { useMemo, useState } from "react";
-import type { Brief, CallSegment, Contradiction, Fact } from "../types/schemas";
+import { factLabel } from "../labels";
+import type { Brief, Fact } from "../types/schemas";
 import { Inspector, type Selection } from "./Inspector";
 import { SitePlan, type Layers } from "./SitePlan";
-import { Timeline } from "./Timeline";
 import { Btn, KV, Panel, StatusTag, fmt } from "./ui";
 import { BuildingViewer, HOUSE_VIEWER_DEFAULT } from "./viewer/BuildingViewer";
 
 // House viewer mode (HOUSE_VIEWER_DEFAULT or ?viewer=1; ?viewer=0 turns it off): one central "Floor plan + 3D" view
-// instead of the Map / Floor 2D / 3D scan tabs. The house is picked inside the viewer (?sample=<id>).
+// instead of the Map / Floor 2D / 3D scan tabs. It loads the incident building (sampleId) directly; the temporary
+// sample-house picker lives in the Dispatcher view's Demo / Controls section.
 const viewerParam = new URLSearchParams(window.location.search).get("viewer");
 const VIEWER = viewerParam === "1" || (HOUSE_VIEWER_DEFAULT && viewerParam !== "0");
-
-const LABELS: Record<string, string> = {
-  "building.use": "Use",
-  "building.stories": "Stories",
-  "building.year_built": "Year built",
-  "building.area_sqft": "Area sq ft",
-  "building.height_est": "Height",
-  "incident.floor": "Rpt. floor",
-};
 
 type Exposure = { side: string; distance_m: number; band: string };
 
@@ -56,7 +48,7 @@ function Readout({ label, value, sub, tone = "text-ink", onClick }: { label: str
   );
 }
 
-export function MdtView({ brief, segments, contradictions }: { brief: Brief; segments: CallSegment[]; contradictions: Contradiction[] }) {
+export function MdtView({ brief, sampleId, sampleError }: { brief: Brief; sampleId: string | null; sampleError?: string | null }) {
   const [sel, setSel] = useState<Selection | null>(null);
   const [tab, setTab] = useState<"map" | "floor" | "scan3d">("map");
   const [layers, setLayers] = useState<Layers>({ markers: true, exposures: true, route: true });
@@ -115,8 +107,8 @@ export function MdtView({ brief, segments, contradictions }: { brief: Brief; seg
       <div className="grid min-h-0 flex-1 grid-cols-[304px_1fr_340px] gap-px bg-line">
         <Panel title="Size-up" right={`${Object.keys(brief.size_up).length} facts`}>
           {Object.entries(brief.size_up).map(([k, f]) => (
-            <KV key={k} k={LABELS[k] ?? k} v={fmt(f.value)} status={f.status} confidence={f.confidence}
-              selected={sel?.key === `fact:${f.key}`} onClick={() => selectFact(f, "Fact", LABELS[k] ?? k)} />
+            <KV key={k} k={factLabel(k)} v={fmt(f.value)} status={f.status} confidence={f.confidence}
+              selected={sel?.key === `fact:${f.key}`} onClick={() => selectFact(f, "Fact", factLabel(k))} />
           ))}
           <div className="label border-b border-line bg-bg px-2.5 py-1">Hazards</div>
           {brief.hazards.length === 0 && <div className="px-2.5 py-2 text-dim">None identified</div>}
@@ -150,7 +142,16 @@ export function MdtView({ brief, segments, contradictions }: { brief: Brief; seg
           </div>
           <div className="relative min-h-0 flex-1">
             {VIEWER ? (
-              <BuildingViewer layout="split" />
+              noScan ? (
+                <div className="grid h-full place-items-center text-center">
+                  <div>
+                    <div className="num text-[15px] text-unverified">○ NO INTERIOR SCAN ON FILE</div>
+                    <div className="mt-1 text-[12px] text-faint">Interior sections are gaps, not guesses.</div>
+                  </div>
+                </div>
+              ) : (
+                <BuildingViewer layout="split" sampleId={sampleId} sampleError={sampleError} />
+              )
             ) : tab === "map" ? (
               <SitePlan brief={brief} layers={layers} selectedKey={sel?.key ?? null} highlightIds={highlightIds} onSelect={onMapSelect} />
             ) : (
@@ -195,7 +196,6 @@ export function MdtView({ brief, segments, contradictions }: { brief: Brief; seg
         </div>
       </div>
 
-      <Timeline segments={segments} contradictions={contradictions} currentVersion={brief.version} />
       <footer className="flex h-7 items-center gap-3 border-t border-line bg-panel px-3 text-[12px]">
         <span className="label !text-reported">Unknown</span>
         <span className="num">{brief.gaps.length ? brief.gaps.join(" · ") : "none"}</span>

@@ -13,10 +13,10 @@ const STATUS: Record<FactStatus, { glyph: string; code: string; text: string; co
 export const statusText = (s: FactStatus) => STATUS[s].text;
 export const statusColorVar = (s: FactStatus) => `var(--color-${s})`;
 
-export function StatusTag({ status, confidence }: { status: FactStatus; confidence?: number }) {
+export function StatusTag({ status, confidence, title }: { status: FactStatus; confidence?: number; title?: string }) {
   const s = STATUS[status];
   return (
-    <span className={`num inline-flex items-center gap-1 text-[11px] font-semibold ${s.color}`} title={s.text}>
+    <span className={`num inline-flex items-center gap-1 text-[11px] font-semibold ${s.color}`} title={title ?? s.text}>
       <span aria-hidden>{s.glyph}</span>
       {s.code}
       {confidence !== undefined && <span className="text-dim">{Math.round(confidence * 100)}</span>}
@@ -46,12 +46,14 @@ export function Panel({
   );
 }
 
-/** Dense key/value row: label left, mono value right, status at far right. */
+/** Dense key/value row: label left, mono value right, status at far right.
+ *  confidenceOnHover: only the status chip is shown; the confidence moves to the row's tooltip. */
 export function KV({
   k,
   v,
   status,
   confidence,
+  confidenceOnHover,
   selected,
   onClick,
 }: {
@@ -59,19 +61,24 @@ export function KV({
   v: ReactNode;
   status?: FactStatus;
   confidence?: number;
+  confidenceOnHover?: boolean;
   selected?: boolean;
   onClick?: () => void;
 }) {
+  const hover = confidenceOnHover && status
+    ? `${statusText(status)}${confidence !== undefined ? ` · confidence ${Math.round(confidence * 100)}%` : ""}`
+    : undefined;
   return (
     <button
       onClick={onClick}
+      title={hover}
       className={`grid w-full grid-cols-[76px_1fr_auto] items-baseline gap-2 border-b border-line px-2.5 py-1.5 text-left hover:bg-panel-hi ${
         selected ? "bg-panel-hi shadow-[inset_2px_0_0_var(--color-accent)]" : ""
       }`}
     >
       <span className="label !normal-case !tracking-normal">{k}</span>
       <span className="num break-words text-[13px] leading-snug text-ink">{v}</span>
-      {status ? <StatusTag status={status} confidence={confidence} /> : <span />}
+      {status ? <StatusTag status={status} confidence={confidenceOnHover ? undefined : confidence} title={hover} /> : <span />}
     </button>
   );
 }
