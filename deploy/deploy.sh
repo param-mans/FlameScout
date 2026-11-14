@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploy the current main to the Vultr host. Run from the repo root on your laptop:
-#   VULTR_HOST=root@<ip> deploy/deploy.sh            # pull + rebuild
+#   VULTR_HOST=root@<ip> deploy/deploy.sh            # pull + copy data/raw + rebuild
 #   VULTR_HOST=root@<ip> deploy/deploy.sh --sync     # also copy .env and the CoStar index first
 set -euo pipefail
 
@@ -14,6 +14,13 @@ if [ "${1:-}" = "--sync" ]; then
   fi
 fi
 
-ssh "$VULTR_HOST" "cd $APP_DIR && git pull --ff-only && docker compose up -d --build && docker compose ps"
+ssh "$VULTR_HOST" "cd $APP_DIR && git pull --ff-only"
+# data/raw is sponsor data and not in git; the web image copies it (apps/web/server/Dockerfile).
+# Copied after the pull: the pull that untracked it deletes the server's tracked copy.
+if [ -d data/raw ]; then
+  ssh "$VULTR_HOST" "mkdir -p $APP_DIR/data"
+  scp -rq data/raw "$VULTR_HOST:$APP_DIR/data/"
+fi
+ssh "$VULTR_HOST" "cd $APP_DIR && docker compose up -d --build && docker compose ps"
 # Check the API from inside its container (Caddy only answers for SITE_ADDRESS, not 127.0.0.1).
 ssh "$VULTR_HOST" "cd $APP_DIR && sleep 5 && docker compose exec -T api python -c \"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read().decode())\""
