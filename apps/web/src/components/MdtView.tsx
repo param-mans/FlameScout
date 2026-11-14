@@ -5,6 +5,7 @@ import { Inspector, type Selection } from "./Inspector";
 import { SitePlan, type Layers } from "./SitePlan";
 import { Btn, KV, Panel, StatusTag, fmt } from "./ui";
 import { BuildingViewer, HOUSE_VIEWER_DEFAULT } from "./viewer/BuildingViewer";
+import { HouseMdtView } from "../house/HouseMdtView";
 
 // House viewer mode (HOUSE_VIEWER_DEFAULT or ?viewer=1; ?viewer=0 turns it off): one central "Floor plan + 3D" view
 // instead of the Map / Floor 2D / 3D scan tabs. It loads the incident building (sampleId) directly; the temporary
@@ -49,6 +50,7 @@ function Readout({ label, value, sub, tone = "text-ink", onClick }: { label: str
 }
 
 export function MdtView({ brief, sampleId, sampleError }: { brief: Brief; sampleId: string | null; sampleError?: string | null }) {
+  if (VIEWER && sampleId && new URLSearchParams(window.location.search).get("mock") !== "tower") return <HouseMdtView sampleId={sampleId} sampleError={sampleError} />; // house: real data; ?mock=tower keeps the tower mock
   const [sel, setSel] = useState<Selection | null>(null);
   const [tab, setTab] = useState<"map" | "floor" | "scan3d">("map");
   const [layers, setLayers] = useState<Layers>({ markers: true, exposures: true, route: true });
