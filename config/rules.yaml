@@ -1,0 +1,68 @@
+# FlameScout rules engine config (PRD Section 9).
+# Every number here is a CONFIGURABLE PLACEHOLDER for the demo, not an operational
+# standard. This is decision support, not a code-compliance check.
+
+# R-01 height estimate
+floor_height_m: 3.5
+
+# R-02 apparatus reach. Leave aerial_reach_m null -> reach is reported "unknown".
+apparatus:
+  aerial_reach_m: null        # e.g. 30.0 for the department's ladder; unknown until configured
+  setback_m: 6.0              # assumed horizontal setback from building face
+
+# R-03 exposure bands (metres, centroid-to-centroid haversine distance)
+exposure_bands_m:
+  close: 10.0                 # distance < close      -> "close"
+  moderate: 30.0              # distance < moderate   -> "moderate", else "low"
+aerial_search_radius_m: 120
+
+# R-04 occupancy hazard map. Matched (case-insensitive substring) against
+# CoStar building use and tenant category/name (word-prefix match). Heuristic flags -> status "inferred".
+hazard_confidence: 0.6
+hazard_map:
+  - id: cooking
+    label: Cooking / grease fire potential
+    match: [restaurant, commercial kitchen, cafe, bakery, food hall]
+  - id: flammable_liquids
+    label: Flammable liquids
+    match: [auto repair, auto service, garage, body shop, gas station]
+  - id: lithium_ion
+    label: Lithium-ion batteries
+    match: [e-bike, ebike, battery, electronics, scooter, phone repair]
+  - id: chemicals
+    label: Chemicals / aerosols
+    match: [salon, nail, beauty, pool supply]
+  - id: high_piled_storage
+    label: High-piled or dense storage
+    match: [warehouse, storage, distribution]
+  - id: solvents
+    label: Solvents
+    match: [dry clean, laboratory, print shop]
+  - id: high_occupant_load
+    label: High occupant load
+    match: [gym, fitness, assembly, church, theater, theatre, nightclub, event]
+  - id: sleeping_occupants
+    label: Sleeping occupants above
+    match: [residential over commercial, mixed-use residential, apartments, lofts, hotel]
+
+# R-05 egress inventory
+min_stairwells: 2
+expected_marker_kinds: [stair, exit, standpipe, fdc, key_box, roof_access]
+
+# R-06 data staleness (days)
+staleness_days:
+  scan: {fresh: 365, aging: 730}      # < fresh -> fresh, < aging -> aging, else stale
+  costar: {fresh: 180, aging: 365}
+
+# R-07 occupant-load estimate (P2): square feet per person by use keyword
+occupant_load_sqft_per_person:
+  office: 150
+  retail: 60
+  restaurant: 15
+  residential: 200
+  warehouse: 500
+
+# R-09 confidence aggregation
+reported_confidence_cap: 0.6
+record_confidence: 0.9          # CoStar record field -> verified
+no_scan_confidence_cap: 0.7     # cap on considerations when there is no interior scan

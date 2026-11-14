@@ -11,10 +11,12 @@ dependencies = [
   "langsmith",
   "python-dotenv",
   "pyyaml",
+  "httpx",
+  "psycopg[binary]",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "websockets"]
 
 [tool.pytest.ini_options]
 pythonpath = [".", "packages/schemas"]

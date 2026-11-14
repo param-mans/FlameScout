@@ -1,0 +1,24 @@
+{
+  "_fixture": "SYNTHETIC placeholder in FlameScout's normalized adapter shape (services/agents/tools/providers.py). Replace with real toolkit data after the Phase 0 smoke test.",
+  "property_id": "maple_lofts",
+  "name": "Maple Lofts",
+  "aliases": [],
+  "address": "455 Maple Street, Los Angeles, CA 90013",
+  "lat": 34.0402,
+  "lon": -118.2511,
+  "use": "Mixed-use residential over commercial",
+  "stories": 4,
+  "year_built": 1924,
+  "area_sqft": 22000,
+  "as_of": "2026-08-20",
+  "tenants": [
+    {
+      "name": "Volt E-Bikes",
+      "category": "E-bike retail"
+    },
+    {
+      "name": "Maple Dry Cleaners",
+      "category": "Dry cleaner"
+    }
+  ]
+}

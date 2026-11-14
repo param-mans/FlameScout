@@ -9,12 +9,18 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - Tests: `pytest -q`
 - Replay a call script through fusion: `python scripts/run_fusion.py S2`
 - Export JSON Schema for the frontend: `python scripts/export_schemas.py`
+- API: `uvicorn services.api.main:app --reload --port 8000` (docs at /docs, WS at /ws/incidents/{id})
+- Tiger Data schema (once): `python scripts/init_tiger.py`
 
 ## Layout
 - `packages/schemas/flamescout_schemas/` - Pydantic models. The contract between agents, API and UI.
   Change a model -> run export_schemas.py and tell the frontend person.
-- `services/agents/extract.py` - per-utterance fact extraction (KeywordExtractor stub; Gemini TODO).
+- `services/agents/extract.py` - per-utterance fact extraction (Keyword + Gemini, quote-verified).
 - `services/agents/fusion.py` - deterministic merge, contradictions, open questions. No LLM.
+- `services/agents/{locator,dossier,brief,critic,copilot}.py` - plain-function pipeline stages.
+- `services/agents/tools/` - provider adapters (+ fixtures, live fallback), geocode, rules (R-01..R-09), vision.
+- `services/api/` - FastAPI app, IncidentService, JSON workspace store, event bus, metrics/Tiger.
+- `config/rules.yaml` - rule thresholds (placeholders, not operational standards).
 - `data/fixtures/calls/` - scripted calls S1-S4. `data/fixtures/<building_id>/` - dossier fixtures.
 - `workspace/<incident_id>/` - incident files (incident.json, dossier.json, brief_vN.json).
   This is the deepagent filesystem AND what the UI renders. Not committed.

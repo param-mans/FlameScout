@@ -1,0 +1,113 @@
+{
+  "_fixture": "SYNTHETIC placeholder in FlameScout's normalized adapter shape (services/agents/tools/providers.py). Replace with real toolkit data after the Phase 0 smoke test.",
+  "model_id": "fx-harbor-001",
+  "captured_at": "2026-05-10T00:00:00Z",
+  "floorplans": [],
+  "frames": [
+    {
+      "frame_id": "hp-f1",
+      "floor": 1,
+      "uri": "fixture://harbor_plaza_ocean/frames/f1.jpg",
+      "detections": [
+        {
+          "kind": "stair",
+          "label": "Stair 1 (east)",
+          "floor": 1,
+          "scan_position": {
+            "x": 20,
+            "y": 5,
+            "z": 0.0
+          },
+          "confidence": 0.9,
+          "source": "annotation"
+        },
+        {
+          "kind": "stair",
+          "label": "Stair 2 (west)",
+          "floor": 1,
+          "scan_position": {
+            "x": -20,
+            "y": 5,
+            "z": 0.0
+          },
+          "confidence": 0.9,
+          "source": "annotation"
+        },
+        {
+          "kind": "entry",
+          "label": "Ocean Blvd entry",
+          "floor": 1,
+          "scan_position": {
+            "x": 0,
+            "y": 18,
+            "z": 0
+          },
+          "confidence": 0.95,
+          "source": "annotation"
+        }
+      ]
+    },
+    {
+      "frame_id": "hp-f2",
+      "floor": 2,
+      "uri": "fixture://harbor_plaza_ocean/frames/f2.jpg",
+      "detections": [
+        {
+          "kind": "stair",
+          "label": "Stair 1 (east)",
+          "floor": 2,
+          "scan_position": {
+            "x": 20,
+            "y": 5,
+            "z": 3.5
+          },
+          "confidence": 0.9,
+          "source": "annotation"
+        },
+        {
+          "kind": "stair",
+          "label": "Stair 2 (west)",
+          "floor": 2,
+          "scan_position": {
+            "x": -20,
+            "y": 5,
+            "z": 3.5
+          },
+          "confidence": 0.9,
+          "source": "annotation"
+        }
+      ]
+    },
+    {
+      "frame_id": "hp-f3",
+      "floor": 3,
+      "uri": "fixture://harbor_plaza_ocean/frames/f3.jpg",
+      "detections": [
+        {
+          "kind": "stair",
+          "label": "Stair 1 (east)",
+          "floor": 3,
+          "scan_position": {
+            "x": 20,
+            "y": 5,
+            "z": 7.0
+          },
+          "confidence": 0.9,
+          "source": "annotation"
+        },
+        {
+          "kind": "stair",
+          "label": "Stair 2 (west)",
+          "floor": 3,
+          "scan_position": {
+            "x": -20,
+            "y": 5,
+            "z": 7.0
+          },
+          "confidence": 0.9,
+          "source": "annotation"
+        }
+      ]
+    }
+  ]
+}

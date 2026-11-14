@@ -1,0 +1,34 @@
+{
+  "script_id": "S3",
+  "description": "Ambiguous name: 'Harbor Plaza' matches two buildings. Expect >= 2 candidates and no brief before confirmation.",
+  "segments": [
+    {
+      "call_id": "c1",
+      "speaker": "call_taker",
+      "text": "911, what's the address of your emergency?",
+      "t_start": 0.0,
+      "t_end": 2.0
+    },
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "There's smoke coming from the Harbor Plaza, the second floor I think.",
+      "t_start": 2.3,
+      "t_end": 6.4
+    },
+    {
+      "call_id": "c1",
+      "speaker": "call_taker",
+      "text": "Do you know the street address?",
+      "t_start": 6.6,
+      "t_end": 7.8
+    },
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "No, I'm not sure. There's a strong smell of gas too.",
+      "t_start": 8.0,
+      "t_end": 11.2
+    }
+  ]
+}

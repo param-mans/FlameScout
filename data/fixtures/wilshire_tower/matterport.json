@@ -1,0 +1,373 @@
+{
+  "_fixture": "SYNTHETIC placeholder in FlameScout's normalized adapter shape (services/agents/tools/providers.py). Replace with real toolkit data after the Phase 0 smoke test.",
+  "model_id": "fx-wilshire-001",
+  "captured_at": "2025-09-20T00:00:00Z",
+  "floorplans": [
+    {
+      "floor": 1,
+      "uri": "fixture://wilshire_tower/floorplans/f1.png"
+    },
+    {
+      "floor": 2,
+      "uri": "fixture://wilshire_tower/floorplans/f2.png"
+    },
+    {
+      "floor": 3,
+      "uri": "fixture://wilshire_tower/floorplans/f3.png"
+    },
+    {
+      "floor": 4,
+      "uri": "fixture://wilshire_tower/floorplans/f4.png"
+    },
+    {
+      "floor": 5,
+      "uri": "fixture://wilshire_tower/floorplans/f5.png"
+    },
+    {
+      "floor": 6,
+      "uri": "fixture://wilshire_tower/floorplans/f6.png"
+    },
+    {
+      "floor": 7,
+      "uri": "fixture://wilshire_tower/floorplans/f7.png"
+    },
+    {
+      "floor": 8,
+      "uri": "fixture://wilshire_tower/floorplans/f8.png"
+    }
+  ],
+  "frames": [
+    {
+      "frame_id": "wt-f1",
+      "floor": 1,
+      "uri": "fixture://wilshire_tower/frames/f1.jpg",
+      "detections": [
+        {
+          "kind": "stair",
+          "label": "Stair A (northeast)",
+          "floor": 1,
+          "scan_position": {
+            "x": 18.0,
+            "y": 12.0,
+            "z": 0.0
+          },
+          "confidence": 0.92,
+          "source": "annotation"
+        },
+        {
+          "kind": "stair",
+          "label": "Stair B (rear, southwest)",
+          "floor": 1,
+          "scan_position": {
+            "x": -16.5,
+            "y": -10.0,
+            "z": 0.0
+          },
+          "confidence": 0.88,
+          "source": "annotation"
+        },
+        {
+          "kind": "entry",
+          "label": "Main lobby entry (Wilshire Blvd)",
+          "floor": 1,
+          "scan_position": {
+            "x": 0.0,
+            "y": 14.0,
+            "z": 0.0
+          },
+          "confidence": 0.95,
+          "source": "annotation"
+        },
+        {
+          "kind": "exit",
+          "label": "Rear exit to alley",
+          "floor": 1,
+          "scan_position": {
+            "x": -15.0,
+            "y": -14.0,
+            "z": 0.0
+          },
+          "confidence": 0.9,
+          "source": "annotation"
+        },
+        {
+          "kind": "elevator",
+          "label": "Elevator bank (2 cars)",
+          "floor": 1,
+          "scan_position": {
+            "x": 2.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "confidence": 0.93,
+          "source": "annotation"
+        },
+        {
+          "kind": "fdc",
+          "label": "FDC on Wilshire facade",
+          "floor": 1,
+          "scan_position": {
+            "x": 6.0,
+            "y": 15.0,
+            "z": 0.0
+          },
+          "confidence": 0.7,
+          "source": "vision"
+        }
+      ]
+    },
+    {
+      "frame_id": "wt-f2",
+      "floor": 2,
+      "uri": "fixture://wilshire_tower/frames/f2.jpg",
+      "detections": [
+        {
+          "kind": "stair",
+          "label": "Stair A (northeast)",
+          "floor": 2,
+          "scan_position": {
+            "x": 18.0,
+            "y": 12.0,
+            "z": 3.5
+          },
+          "confidence": 0.92,
+          "source": "annotation"
+        },
+        {
+          "kind": "stair",
+          "label": "Stair B (rear, southwest)",
+          "floor": 2,
+          "scan_position": {
+            "x": -16.5,
+            "y": -10.0,
+            "z": 3.5
+          },
+          "confidence": 0.88,
+          "source": "annotation"
+        }
+      ]
+    },
+    {
+      "frame_id": "wt-f3",
+      "floor": 3,
+      "uri": "fixture://wilshire_tower/frames/f3.jpg",
+      "detections": [
+        {
+          "kind": "stair",
+          "label": "Stair A (northeast)",
+          "floor": 3,
+          "scan_position": {
+            "x": 18.0,
+            "y": 12.0,
+            "z": 7.0
+          },
+          "confidence": 0.92,
+          "source": "annotation"
+        },
+        {
+          "kind": "stair",
+          "label": "Stair B (rear, southwest)",
+          "floor": 3,
+          "scan_position": {
+            "x": -16.5,
+            "y": -10.0,
+            "z": 7.0
+          },
+          "confidence": 0.88,
+          "source": "annotation"
+        },
+        {
+          "kind": "standpipe",
+          "label": "Standpipe outlet in Stair A, floor 3",
+          "floor": 3,
+          "scan_position": {
+            "x": 18.5,
+            "y": 12.5,
+            "z": 7.0
+          },
+          "confidence": 0.8,
+          "source": "annotation"
+        }
+      ]
+    },
+    {
+      "frame_id": "wt-f4",
+      "floor": 4,
+      "uri": "fixture://wilshire_tower/frames/f4.jpg",
+      "detections": [
+        {
+          "kind": "stair",
+          "label": "Stair A (northeast)",
+          "floor": 4,
+          "scan_position": {
+            "x": 18.0,
+            "y": 12.0,
+            "z": 10.5
+          },
+          "confidence": 0.92,
+          "source": "annotation"
+        },
+        {
+          "kind": "stair",
+          "label": "Stair B (rear, southwest)",
+          "floor": 4,
+          "scan_position": {
+            "x": -16.5,
+            "y": -10.0,
+            "z": 10.5
+          },
+          "confidence": 0.88,
+          "source": "annotation"
+        },
+        {
+          "kind": "standpipe",
+          "label": "Standpipe outlet in Stair A, floor 4",
+          "floor": 4,
+          "scan_position": {
+            "x": 18.5,
+            "y": 12.5,
+            "z": 10.5
+          },
+          "confidence": 0.8,
+          "source": "annotation"
+        }
+      ]
+    },
+    {
+      "frame_id": "wt-f5",
+      "floor": 5,
+      "uri": "fixture://wilshire_tower/frames/f5.jpg",
+      "detections": [
+        {
+          "kind": "stair",
+          "label": "Stair A (northeast)",
+          "floor": 5,
+          "scan_position": {
+            "x": 18.0,
+            "y": 12.0,
+            "z": 14.0
+          },
+          "confidence": 0.92,
+          "source": "annotation"
+        },
+        {
+          "kind": "stair",
+          "label": "Stair B (rear, southwest)",
+          "floor": 5,
+          "scan_position": {
+            "x": -16.5,
+            "y": -10.0,
+            "z": 14.0
+          },
+          "confidence": 0.88,
+          "source": "annotation"
+        },
+        {
+          "kind": "standpipe",
+          "label": "Standpipe outlet in Stair A, floor 5",
+          "floor": 5,
+          "scan_position": {
+            "x": 18.5,
+            "y": 12.5,
+            "z": 14.0
+          },
+          "confidence": 0.8,
+          "source": "annotation"
+        }
+      ]
+    },
+    {
+      "frame_id": "wt-f6",
+      "floor": 6,
+      "uri": "fixture://wilshire_tower/frames/f6.jpg",
+      "detections": [
+        {
+          "kind": "stair",
+          "label": "Stair A (northeast)",
+          "floor": 6,
+          "scan_position": {
+            "x": 18.0,
+            "y": 12.0,
+            "z": 17.5
+          },
+          "confidence": 0.92,
+          "source": "annotation"
+        },
+        {
+          "kind": "stair",
+          "label": "Stair B (rear, southwest)",
+          "floor": 6,
+          "scan_position": {
+            "x": -16.5,
+            "y": -10.0,
+            "z": 17.5
+          },
+          "confidence": 0.88,
+          "source": "annotation"
+        }
+      ]
+    },
+    {
+      "frame_id": "wt-f7",
+      "floor": 7,
+      "uri": "fixture://wilshire_tower/frames/f7.jpg",
+      "detections": [
+        {
+          "kind": "stair",
+          "label": "Stair A (northeast)",
+          "floor": 7,
+          "scan_position": {
+            "x": 18.0,
+            "y": 12.0,
+            "z": 21.0
+          },
+          "confidence": 0.92,
+          "source": "annotation"
+        },
+        {
+          "kind": "stair",
+          "label": "Stair B (rear, southwest)",
+          "floor": 7,
+          "scan_position": {
+            "x": -16.5,
+            "y": -10.0,
+            "z": 21.0
+          },
+          "confidence": 0.88,
+          "source": "annotation"
+        }
+      ]
+    },
+    {
+      "frame_id": "wt-f8",
+      "floor": 8,
+      "uri": "fixture://wilshire_tower/frames/f8.jpg",
+      "detections": [
+        {
+          "kind": "stair",
+          "label": "Stair A (northeast)",
+          "floor": 8,
+          "scan_position": {
+            "x": 18.0,
+            "y": 12.0,
+            "z": 24.5
+          },
+          "confidence": 0.92,
+          "source": "annotation"
+        },
+        {
+          "kind": "stair",
+          "label": "Stair B (rear, southwest)",
+          "floor": 8,
+          "scan_position": {
+            "x": -16.5,
+            "y": -10.0,
+            "z": 24.5
+          },
+          "confidence": 0.88,
+          "source": "annotation"
+        }
+      ]
+    }
+  ]
+}

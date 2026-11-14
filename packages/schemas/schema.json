@@ -10,6 +10,18 @@
           "title": "Incident Id",
           "type": "string"
         },
+        "building_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Building Id"
+        },
         "version": {
           "title": "Version",
           "type": "integer"
@@ -93,6 +105,14 @@
           "default": {},
           "title": "Evidence",
           "type": "object"
+        },
+        "crew_notes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CrewFeedback"
+          },
+          "title": "Crew Notes",
+          "type": "array"
         },
         "disclaimer": {
           "default": "Advisory only. Verify on arrival.",
@@ -315,6 +335,174 @@
       "title": "ContradictionValue",
       "type": "object"
     },
+    "CopilotSuggestion": {
+      "description": "L1 copilot: a question the dispatcher could ask next (FR-11).",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "incident_id": {
+          "title": "Incident Id",
+          "type": "string"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "question": {
+          "title": "Question",
+          "type": "string"
+        },
+        "reason": {
+          "default": "missing",
+          "enum": [
+            "missing",
+            "contradiction"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "status": {
+          "default": "open",
+          "enum": [
+            "open",
+            "dismissed",
+            "asked"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "incident_id",
+        "field",
+        "question"
+      ],
+      "title": "CopilotSuggestion",
+      "type": "object"
+    },
+    "CrewFeedback": {
+      "description": "Officer marks a fact correct / wrong / outdated (FR-15).",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "incident_id": {
+          "title": "Incident Id",
+          "type": "string"
+        },
+        "building_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Building Id"
+        },
+        "fact_key": {
+          "title": "Fact Key",
+          "type": "string"
+        },
+        "verdict": {
+          "enum": [
+            "correct",
+            "wrong",
+            "outdated"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "role": {
+          "default": "officer",
+          "title": "Role",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "incident_id",
+        "fact_key",
+        "verdict"
+      ],
+      "title": "CrewFeedback",
+      "type": "object"
+    },
+    "Event": {
+      "description": "Envelope for every WebSocket message on /ws/incidents/{id}.",
+      "properties": {
+        "type": {
+          "enum": [
+            "transcript.segment",
+            "incident.updated",
+            "contradiction.raised",
+            "location.candidates",
+            "dossier.progress",
+            "brief.updated",
+            "copilot.suggestion",
+            "metric.tick"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "incident_id": {
+          "title": "Incident Id",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trace Id"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "default": {},
+          "title": "Payload",
+          "type": "object"
+        }
+      },
+      "required": [
+        "type",
+        "incident_id"
+      ],
+      "title": "Event",
+      "type": "object"
+    },
     "Evidence": {
       "properties": {
         "id": {
@@ -527,12 +715,81 @@
           "default": false,
           "title": "Ready To Brief",
           "type": "boolean"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
         }
       },
       "required": [
         "incident_id"
       ],
       "title": "IncidentRecord",
+      "type": "object"
+    },
+    "LocationCandidate": {
+      "description": "A building the locator thinks the callers mean. Dispatcher must confirm one.",
+      "properties": {
+        "building_id": {
+          "title": "Building Id",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "address": {
+          "title": "Address",
+          "type": "string"
+        },
+        "coordinates": {
+          "additionalProperties": true,
+          "default": {},
+          "title": "Coordinates",
+          "type": "object"
+        },
+        "score": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Score",
+          "type": "number"
+        },
+        "match_reasons": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Match Reasons",
+          "type": "array"
+        },
+        "scan_available": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scan Available"
+        }
+      },
+      "required": [
+        "building_id",
+        "address",
+        "score"
+      ],
+      "title": "LocationCandidate",
       "type": "object"
     },
     "Marker": {
