@@ -75,6 +75,31 @@ def test_example_has_no_orientation_fields() -> None:
     assert all("sides" not in r for r in IDX["rooms"].values())
 
 
+
+FAIRDALE_LIKE = {"rooms": {
+    "b1": {"floor_id": "f1", "type": "bedroom", "size_rank": 1, "size_of": 3, "next_to": ["c1", "lv", "bt", "h1"]},
+    "b2": {"floor_id": "f1", "type": "bedroom", "size_rank": 2, "size_of": 3, "next_to": ["c2", "b3", "h1"]},
+    "b3": {"floor_id": "f1", "type": "bedroom", "size_rank": 2, "size_of": 3, "next_to": ["b2", "bt", "c3", "h1"]},
+    "c1": {"floor_id": "f1", "type": "closet"}, "c2": {"floor_id": "f1", "type": "closet"}, "c3": {"floor_id": "f1", "type": "closet"},
+    "lv": {"floor_id": "f1", "type": "living room"}, "bt": {"floor_id": "f1", "type": "bathroom"}, "h1": {"floor_id": "f1", "type": "hallway"},
+}}
+
+
+def test_tied_smallest_is_ambiguous_not_none() -> None:
+    r = resolve_place(FAIRDALE_LIKE, type="bedroom", size="smallest")
+    assert r["status"] == "ambiguous" and r["ids"] == ["b2", "b3"]
+
+
+def test_largest_resolves_even_with_ties_below() -> None:
+    assert resolve_place(FAIRDALE_LIKE, type="bedroom", size="largest")["ids"] == ["b1"]
+
+
+def test_question_ignores_own_and_generic_types_and_offers_another() -> None:
+    r = resolve_place(FAIRDALE_LIKE, type="bedroom")
+    assert r["status"] == "ambiguous"
+    assert r["question"] == "next to the bathroom, next to the living room or another one?"
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

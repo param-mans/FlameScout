@@ -41,7 +41,8 @@ def resolve_place(index: dict, *, floor_id: str | None = None, type: str | None 
         if size == "largest":
             cands = [(i, r) for i, r in cands if r.get("size_rank") == 1]
         elif size == "smallest":
-            cands = [(i, r) for i, r in cands if r.get("size_rank") == r.get("size_of")]
+            worst = max(r.get("size_rank") or 1 for _, r in cands)
+            cands = [(i, r) for i, r in cands if (r.get("size_rank") or 1) == worst]
     ids = sorted(i for i, _ in cands)
     if not ids:
         return {"status": "none", "ids": [], "question": None, "reason": "no room matches"}
@@ -51,16 +52,30 @@ def resolve_place(index: dict, *, floor_id: str | None = None, type: str | None 
             "reason": "%d rooms match" % len(ids)}
 
 
+GENERIC = {"closet", "hallway"}
+
+
 def _types(index: dict, ids: list[str]) -> set[str]:
     return {_norm(index["rooms"][i].get("type")) for i in ids if i in index.get("rooms", {})}
 
 
+def _join(parts: list[str]) -> str:
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " or " + parts[-1]
+
+
 def _question(index: dict, cands: list) -> str:
-    for key, phrase in (("over", "over the"), ("next_to", "next to the")):
-        per = [_types(index, r.get(key) or []) for _, r in cands]
-        union = sorted(set().union(*per)) if per else []
-        if len(union) >= 2 and len({frozenset(p) for p in per}) > 1:
-            return "%s %s or %s %s?" % (phrase, union[0], phrase, union[1])
+    own = {_norm(r.get("type")) for _, r in cands}
+    for key, phrase in (("over", "over the"), ("under", "under the"), ("next_to", "next to the")):
+        per = [_types(index, r.get(key) or []) - own - GENERIC for _, r in cands]
+        if len({frozenset(p) for p in per}) < 2:
+            continue
+        options = sorted(set().union(*per) - set.intersection(*per))[:3]
+        if not options:
+            continue
+        parts = ["%s %s" % (phrase, t) for t in options]
+        if any(not (p & set(options)) for p in per):
+            parts.append("another one")
+        return _join(parts) + "?"
     flags = {bool(r.get("at_stairs")) for _, r in cands}
     if len(flags) > 1:
         return "the one at the stairs or not?"

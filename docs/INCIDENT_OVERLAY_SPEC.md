@@ -25,7 +25,7 @@ plus semantic anchors ("near window w7"). If an id does not exist in the plan, t
 ## What the agent receives (plan index)
 
 The viewer side exports a small index of the scanned building. The agent must use it (tool or context)
-to resolve phrases like "the back bedroom upstairs" into ids.
+to resolve phrases like "the bedroom over the kitchen" into ids.
 
 ```json
 { "floors": ["f1","f2"],
@@ -128,9 +128,14 @@ A test checks that the two indexes are identical. The index has `"version": 2`. 
 
 Rooms whose `polygonQuality` is not `ok` get empty lists and `at_stairs: false`, and they never appear in other rooms'
 lists. Relations do not change when the house is turned 90, 180 or 270 degrees; a test checks this.
+
+### Resolving a place
+
 `packages/schemas/overlay/resolve_place.py` resolves a spoken place to one room only when exactly one room matches.
 Otherwise it returns the candidates and a clarifying question, and the location stays at floor level. See
 `plan_index.example.json` for the format.
+
+Ties never produce an empty answer: if the smallest rooms are tied (ranks use competition ranking, for example 1, 2, 2), size smallest returns all of them as ambiguous. Questions skip the candidate's own type and generic rooms (closet, hallway) and add 'another one' when a candidate matches none of the options.
 
 ## Buildings without a scan
 
