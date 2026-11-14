@@ -34,6 +34,13 @@ const SIN_RUTA = 'no computable route'
 const Q = new URLSearchParams(location.search)
 const EMBED = Q.get('embed') === '1', MODO = Q.get('mode') === '2d' ? '2d' : '3d'
 const DEBUG = Q.get('debug') === '1' // selector de escenarios de incidente de prueba (chip DEBUG)
+const HOST = Q.get('host') === '1'   // dentro de la UI de FlameScout: el panel de consideraciones lo muestra la pagina anfitriona
+// unidades: pies y pies cuadrados primero, metros entre parentesis
+const FT = 3.28084, FT2 = 10.7639
+const pies = (m) => `${Math.round(m * FT)} ft`
+const piesM = (m) => `${Math.round(m * FT)} ft (${(+m).toFixed(1)} m)`
+const areaTxt = (m2) => `${Math.round(m2 * FT2).toLocaleString('en-US')} sq ft (${(+m2).toFixed(1)} m²)`
+const fechaCorta = (iso) => (iso ? new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }) : null)
 const SPLIT = EMBED && Q.get('layout') === 'split' // 3D (izquierda, ~2/3) y 2D a la vez; apilados por debajo de 900 px
 const SOLO_2D = EMBED && !SPLIT && MODO === '2d'
 const ORIGEN = location.origin // solo se aceptan y envian mensajes al mismo origen
@@ -44,7 +51,7 @@ const C = (h) => new THREE.Color(h)
 // ---------------------------------------------------------------- estado
 const S = {
   id: null, plan: null, ev: null, cal: null, fila: null,
-  capas: { walls: true, doors: true, windows: true, slabs: true, stairs: true, points: true, labels: true, route: true, incident: true },
+  capas: { walls: true, doors: true, windows: true, slabs: true, stairs: true, points: true, labels: true, route: true, incident: true, sleeping: true, ignition: false },
   color: 'type', foco: 0, f2d: 0, sep: 0, ctx: FX.ctxDefault, niveles: [], alturas: [], nivelEst: [], escaleras: [], ocultarSup: false, fx: true, detalle: false,
   tipos: new Set(), sel: null, hover: null, vb: null, ms: {}, fps: 0, muros: [],
 }
@@ -81,7 +88,7 @@ const esHover = (fi, r) => !!(S.hover && S.hover.fi === fi && S.hover.id === r.i
 const esSel = (fi, id) => !!(S.sel && S.sel.fi === fi && S.sel.id === id)
 function mulberry(seed) { return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 } }
 const hashStr = (s) => [...s].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) | 0, 7)
-const marcaTxt = (r) => (esDormitorio(r) ? '[SLEEP]' : esIgnicion(r) ? '[IGNITION]' : '')
+const marcaTxt = () => '' // las salas llevan solo su nombre; dormitorios y zonas de ignicion son capas (Sleeping / Ignition areas)
 
 function colorSala(fi, r) {
   if (S.color !== 'evac') return T.slab
@@ -92,7 +99,7 @@ function colorSala(fi, r) {
 function textoEtiqueta(fi, r) {
   if (S.color !== 'evac') return [nombreSala(r), marcaTxt(r)]
   const ruta = rutaSala(fi, r)
-  return [nombreSala(r), ruta ? ruta.dist.toFixed(1) + ' m' : SIN_RUTA]
+  return [nombreSala(r), ruta ? '≈ ' + pies(ruta.dist) : SIN_RUTA]
 }
 
 // ---------------------------------------------------------------- muros: tramos colineales unidos y exterior/interior
@@ -626,8 +633,9 @@ function setFoco(v, f2d = true) {
 function estiloLosas() {
   P.forEach((F) => F.slabs.forEach(({ r, losa, rayas }) => {
     const sel = esSel(F.fi, r.id), hov = esHover(F.fi, r), e = F.ent.find((x) => x.obj === losa)
-    losa.material.color.set(sel ? T.sel : colorSala(F.fi, r))
-    e.base = sel ? OP.slabSel : S.color === 'evac' ? OP.slabHeat : OP.slab
+    const capaDorm = S.color !== 'evac' && S.capas.sleeping && esDormitorio(r), capaIgn = S.color !== 'evac' && S.capas.ignition && esIgnicion(r)
+    losa.material.color.set(sel ? T.sel : capaDorm ? T.outer : capaIgn ? T.stairs : colorSala(F.fi, r))
+    e.base = sel ? OP.slabSel : S.color === 'evac' ? OP.slabHeat : capaDorm || capaIgn ? OP.slab * 2.4 : OP.slab
     if (hov && !sel) { e.base = S.color === 'evac' ? Math.min(0.9, OP.slabHeat + 0.2) : OP.slabHover; losa.material.color.offsetHSL(0, 0, 0.12) }
     if (rayas) F.ent.find((x) => x.obj === rayas).base = S.color === 'evac' ? OP.stairs * 0.5 : OP.stairs
   }))
@@ -694,7 +702,7 @@ function regla() {
   const bruto = 110 * mpp, pot = Math.pow(10, Math.floor(Math.log10(bruto)))
   const paso = [1, 2, 5, 10].map((k) => k * pot).find((v) => v >= bruto * 0.7) || 10 * pot
   el.querySelector('.regla').style.width = Math.round(paso / mpp) + 'px'
-  el.querySelector('span').textContent = (paso >= 1 ? paso : paso.toFixed(1)) + ' m · at view center'
+  el.querySelector('span').textContent = `${Math.round(paso * FT)} ft (${paso >= 1 ? paso : paso.toFixed(1)} m) · at view center`
 }
 function avisoHud() {
   if (!S.plan) return
@@ -704,7 +712,7 @@ function avisoHud() {
     $('aviso3d').innerHTML = `<span class="aviso" title="${txt}" aria-label="${txt}">ⓘ EST</span>`
     return
   }
-  $('aviso3d').innerHTML = `${S.detalle ? 'DETAIL' : 'CALM'} · LEVELS FROM DOOR HEIGHTS · TOP FLOOR ${FLOOR_H} M <span class="aviso">ESTIMATE</span> · ${S.fps} FPS`
+  $('aviso3d').innerHTML = `${S.detalle ? 'DETAIL' : 'CALM'} · LEVELS FROM DOOR HEIGHTS · TOP FLOOR ${pies(FLOOR_H).toUpperCase()} (${FLOOR_H} M) <span class="aviso">ESTIMATE</span> · ${S.fps} FPS`
 }
 
 // ---------------------------------------------------------------- limites
@@ -769,7 +777,11 @@ function render2D() {
     }
     h += `<g data-kind="${esV ? 'window' : 'door'}" data-id="${esc(o.id)}" transform="translate(${o.center[0]} ${-o.center[1]}) rotate(${-o.angleDeg})" ${sel ? 'filter="url(#brillo)"' : ''}><title>${esV ? 'Window' : esSalida(fi, o) ? 'Exterior door (exit)' : 'Door'}</title>${s}</g>`
   })
-  // rotulos: nombre o tipo (+ [SLEEP]/[IGNITION] o la distancia), 70 %, con colisiones (gana la sala mas grande)
+  // capas Sleeping areas (tinte y cama) e Ignition areas (rayado)
+  if (S.capas.sleeping) salas.filter(esDormitorio).forEach((r) => { const c = centroSala(r); h += `<path d="${anillo(r.polygon)}" fill="${T.outer}" fill-opacity="0.13" pointer-events="none"/>` + (c ? `<g transform="translate(${c[0]} ${-c[1] + 0.55})" opacity="0.7" pointer-events="none"><rect x="-0.32" y="-0.12" width="0.64" height="0.24" rx="0.04" fill="none" stroke="${T.outer}" stroke-width="1.2" ${ns}/><rect x="-0.3" y="-0.1" width="0.16" height="0.2" fill="${T.outer}"/></g>` : '') })
+  if (S.capas.ignition) salas.filter(esIgnicion).forEach((r) => { h += `<path d="${anillo(r.polygon)}" fill="url(#rayado)" pointer-events="none"/>` })
+  if (S.salidaVista && S.salidaVista.fi === fi) { const o = f.openings.find((x) => x.id === S.salidaVista.id); if (o) h += `<circle cx="${o.center[0]}" cy="${-o.center[1]}" r="0.55" fill="none" stroke="${T.sel}" stroke-width="2.5" ${ns} filter="url(#brillo)"><animate attributeName="r" values="0.45;0.75;0.45" dur="1.4s" repeatCount="indefinite"/></circle>` }
+  // rotulos: nombre o tipo (o la distancia), 70 %, con colisiones (gana la sala mas grande); al tocar una sala su rotulo aparece
   if (S.capas.labels) {
     const vb = S.vb, escPx = Math.max(vb[2] / (cont.clientWidth || 400), vb[3] / (cont.clientHeight || 300)), fs = Math.max(0.16, 9 * escPx), ocupado = []
     salas.forEach((r) => {
@@ -905,9 +917,9 @@ function zoomPan2D() {
 // ---------------------------------------------------------------- vistas oblicuas (Vexcel) bajo el plano 2D
 // Solo las diagonales N/E/S/W (sin la vista cenital). Origen: API /api/house-viewer/vexcel/<sample> (mismo origen; la sirve
 // el propio servidor de Vite con el plugin apps/web/server/house-data.mjs, que guarda la clave). Nada se guarda en local.
-const OBL = { id: null, meta: null, base: '', dir: 'north', estado: '', error: '' }
-const OBL_DIRS = [['north', 'N'], ['east', 'E'], ['south', 'S'], ['west', 'W']]
-const OBL_ARCHIVO = /^oblique-(north|east|south|west)\.jpg$/
+const OBL = { id: null, meta: null, base: '', dir: 'aerial', estado: '', error: '' }
+const OBL_DIRS = [['aerial', 'Aerial'], ['north', 'N'], ['east', 'E'], ['south', 'S'], ['west', 'W']]
+const OBL_ARCHIVO = /^(?:oblique-(?:north|east|south|west)|aerial)\.jpg$/
 const OBL_API = '/api/house-viewer/vexcel/'
 async function leerOblicuas(url) {
   const r = await fetch(url)
@@ -932,11 +944,14 @@ function pintarOblicuas() {
     const ayuda = /not reachable/.test(OBL.error) ? 'Oblique views are served by the app server (npm run dev or npm run preview).' : OBL.error
     el.innerHTML = `<div class="obl-vacio">No oblique imagery for this sample.<br><span class="hint">${esc(ayuda)}</span></div>`; return
   }
-  const m = OBL.meta, v = m.views[OBL.dir], url = OBL.base + v.file
-  el.innerHTML = '<div class="obl-tabs fila-btn">' + OBL_DIRS.map(([d, t]) => `<button data-obl="${d}" class="${d === OBL.dir ? 'on' : ''}" ${m.views[d] ? '' : 'disabled title="no image"'}>${t}</button>`).join('') +
-    '<span class="hint">camera facing</span></div>' +
-    `<a href="${esc(url)}" target="_blank" rel="noopener"><img class="obl-img" src="${esc(url)}" alt="Oblique aerial view, camera facing ${esc(OBL.dir)}"></a>` +
-    `<div class="obl-pie hint">Capture ${esc(v.captureDate ? String(v.captureDate).slice(0, 10) : 'date unknown')} · ${esc(m.copyright || '© Vexcel Imaging')}<br>Aircraft photos at an angle, not street level. S = camera facing south (shows north-facing facades).</div>`
+  const m = OBL.meta, v = m.views[OBL.dir]
+  const tabs = '<div class="obl-tabs fila-btn">' + OBL_DIRS.map(([d, t]) => `<button data-obl="${d}" class="${d === OBL.dir ? 'on' : ''}">${t}</button>`).join('') + '</div>'
+  if (!v) { el.innerHTML = tabs + '<div class="obl-vacio">No imagery available</div><div class="obl-pie hint">N / E / S / W: direction the camera faces.</div>'; return }
+  const url = OBL.base + v.file, cenital = OBL.dir === 'aerial'
+  el.innerHTML = tabs +
+    `<a href="${esc(url)}" target="_blank" rel="noopener"><img class="obl-img" src="${esc(url)}" alt="${cenital ? 'Straight-down aerial photo' : `Oblique aerial view, camera facing ${esc(OBL.dir)}`}"></a>` +
+    `<div class="obl-pie hint">Captured ${esc(v.captureDate ? fechaCorta(v.captureDate) : 'date not available')} · ${esc(m.copyright || '© Vexcel Imaging')} · ${cenital ? 'straight-down aerial photo' : 'aerial photos at an angle, not street level'}</div>` +
+    '<div class="obl-pie hint">N / E / S / W: direction the camera faces.</div>'
 }
 
 // ---------------------------------------------------------------- leyendas (la misma en 3D y 2D)
@@ -944,11 +959,11 @@ function leyendaHTML(corta) {
   const it = (cls, estilo, t) => `<div class="it"><span class="sw ${cls}" style="${estilo}"></span>${t}</div>`
   const comun = it('', `background:${T.sel};box-shadow:0 0 6px ${T.sel}`, 'selection · route') + it('trazo', '', 'door') + it('disc', '', 'window') + it('rayado', '', 'stairs') + `<div class="it" style="grid-column:1/-1"><span class="sw" style="height:0;border:none;border-top:2px solid ${T.stairs}"></span>stair direction clear · <span class="sw" style="height:0;border:none;border-top:2px dashed ${T.stairs}"></span>estimated</div>`
   if (S.color === 'evac') {
-    return `<div class="tit">Distance to nearest exit (estimate)</div><div class="barra"></div><div class="esc"><span>near exit · 0 m</span><span>${S.ev.maxDist.toFixed(1)} m · far</span></div>` +
+    return `<div class="tit">Distance to nearest exit (estimate)</div><div class="barra"></div><div class="esc"><span>near exit · 0 ft</span><span>${piesM(S.ev.maxDist)} · far</span></div>` +
       `<div class="cols">${it('', `background:${T.noRoute}`, SIN_RUTA)}${comun}</div>`
   }
   return `${corta ? '' : '<div class="tit">Legend</div>'}<div class="cols">${it('', `height:0;border:none;border-top:2px solid ${T.outer}`, 'exterior wall')}${it('', `height:0;border:none;border-top:1px solid ${T.inner}`, 'interior wall')}` +
-    `${it('', `background:${T.slab};opacity:.35`, 'room (same tint)')}${comun}</div><div class="hint" style="margin-top:3px">[SLEEP] bedroom · [IGNITION] kitchen, laundry, garage</div>`
+    `${it('', `background:${T.slab};opacity:.35`, 'room (same tint)')}${S.capas.sleeping ? it('', `background:${T.outer};opacity:.45`, 'sleeping area (bedroom)') : ''}${S.capas.ignition ? it('rayado', '', 'ignition area (kitchen, laundry, garage)') : ''}${comun}</div>`
 }
 function leyendas() { if (!S.ev) return; $('leyenda').innerHTML = leyendaHTML(false); $('leyenda2d').innerHTML = leyendaHTML(true) }
 
@@ -957,9 +972,9 @@ function entidades() {
   const out = []
   S.plan.floors.forEach((f, fi) => {
     if (S.foco !== 'all' && S.foco !== fi) return
-    salasDe(f).filter(visibleSala).sort((a, b) => (b.areaM2 || 0) - (a.areaM2 || 0)).forEach((r) => out.push({ kind: 'room', id: r.id, fi, piso: f.label, tipo: (r.type || 'untyped') + (marcaTxt(r) ? ' ' + marcaTxt(r) : ''), nombre: r.label, tam: r.areaM2 != null ? r.areaM2 + ' m²' : '—', cls: esEscalera(r) ? 'k-stairs' : 'k-room' }))
-    if (S.capas.doors) f.openings.filter((o) => o.type === 'doorway').forEach((o) => out.push({ kind: 'door', id: o.id, fi, piso: f.label, tipo: esSalida(fi, o) ? 'doorway · exit' : 'doorway', tam: `${o.width} × ${o.height ?? '?'} m`, cls: esSalida(fi, o) ? 'k-exit' : 'k-door' }))
-    if (S.capas.windows) f.openings.filter((o) => o.type === 'window').forEach((o) => out.push({ kind: 'window', id: o.id, fi, piso: f.label, tipo: 'window', tam: `${o.width} × ${o.height ?? '?'} m`, cls: 'k-window' }))
+    salasDe(f).filter(visibleSala).sort((a, b) => (b.areaM2 || 0) - (a.areaM2 || 0)).forEach((r) => out.push({ kind: 'room', id: r.id, fi, piso: f.label, tipo: r.type || 'untyped', nombre: r.label, tam: r.areaM2 != null ? areaTxt(r.areaM2) : 'Not available', cls: esEscalera(r) ? 'k-stairs' : 'k-room' }))
+    if (S.capas.doors) f.openings.filter((o) => o.type === 'doorway').forEach((o) => out.push({ kind: 'door', id: o.id, fi, piso: f.label, tipo: esSalida(fi, o) ? 'doorway · exit' : 'doorway', tam: `${pies(o.width)} × ${o.height != null ? pies(o.height) : '?'}`, cls: esSalida(fi, o) ? 'k-exit' : 'k-door' }))
+    if (S.capas.windows) f.openings.filter((o) => o.type === 'window').forEach((o) => out.push({ kind: 'window', id: o.id, fi, piso: f.label, tipo: 'window', tam: `${pies(o.width)} × ${o.height != null ? pies(o.height) : '?'}`, cls: 'k-window' }))
   })
   return out
 }
@@ -982,39 +997,45 @@ function inspector() {
   }
   let h = '<button class="cerrar" id="cerrar-insp">×</button>', t = ''
   const f = piso(s.fi)
+  let dq = '' // seccion plegable "Data quality"
   if (s.kind === 'room') {
-    const r = salaPorId(s.fi, s.id), ruta = rutaSala(s.fi, r), marca = esDormitorio(r) ? 'Sleeping area (bedroom) [SLEEP]' : esIgnicion(r) ? 'Possible ignition area [IGNITION]' : null
+    const r = salaPorId(s.fi, s.id), ruta = rutaSala(s.fi, r)
+    const salidaId = ruta ? ruta.puntos[ruta.puntos.length - 1].salida : null, salida = salidaId ? S.ev.puertas.get(salidaId) : null
+    const descSalida = salida ? `exterior door in the ${esc(nombreSala(salaPorId(salida.fi, salida.conecta[0]) || { type: 'room' }))}` : null
     h += `<h3>${esc(nombreSala(r))}</h3><div class="hint">ROOM · ${esc(f.label.toUpperCase())}</div>`
-    t = fila('Type (detected by AI, can be wrong)', esc(r.type || '—') + (r.typeConfidence != null ? ` (${Math.round(r.typeConfidence * 100)}%)` : '') + chip('inferred', 'AI classification')) + fila('Area', r.areaM2 != null ? r.areaM2 + ' m²' : '—') +
-      fila('Outline', r.polygonQuality === 'ok' ? 'reliable' + chip('verified', 'outline passed validation') : `<span class="aviso">unreliable (no slab drawn)</span> ${esc((r.polygonIssues || []).join(', '))}` + chip('unverified', 'outline failed validation')) +
-      fila('Distance to nearest exit', ruta ? `<b style="color:${T.sel}">${ruta.dist.toFixed(1)} m</b> (estimate)` + chip('inferred', 'straight-line estimate') : `<span style="color:${T.noRoute}">${SIN_RUTA}</span> (no route)` + chip('unverified', 'no route found')) +
-      fila('Exit door', ruta ? esc((ruta.puntos[ruta.puntos.length - 1].salida || '').slice(0, 8)) : '') + fila('Marked as', marca)
+    t = fila('Type', esc(r.type || 'Not available') + ' <span class="hint">detected by AI, can be wrong</span>') + fila('Area', r.areaM2 != null ? areaTxt(r.areaM2) : 'Not available') +
+      fila('Distance to nearest exit', ruta ? `<b style="color:${T.sel}">≈ ${pies(ruta.dist)}</b>, estimate` : `<span style="color:${T.noRoute}">${SIN_RUTA}</span>`) +
+      fila('Nearest exit', descSalida ? `${descSalida}<br><button id="ver-salida" class="ver-salida">Show on plan</button>` : '')
+    dq = fila('Outline', r.polygonQuality === 'ok' ? 'reliable' + chip('verified', 'outline passed validation') : `<span class="aviso">unreliable (no slab drawn)</span> ${esc((r.polygonIssues || []).join(', '))}` + chip('unverified', 'outline failed validation'))
   } else {
     const o = f.openings.find((x) => x.id === s.id), info = S.ev.puertas.get(o.id)
-    const nombre = (id) => { const r = salaPorId(s.fi, id); return r ? esc(nombreSala(r)) : id }
+    const nombre = (id) => { const r = salaPorId(s.fi, id); return r ? esc(nombreSala(r)) : 'an unknown room' }
     h += `<h3>${s.kind === 'door' ? 'Door' : 'Window'}</h3><div class="hint">${esc(o.type.toUpperCase())} · ${esc(f.label.toUpperCase())}</div>`
-    t = fila('Size', `${o.width} × ${o.height ?? '?'} m`) + fila('Sill height (lowerElevation)', o.lowerElevation == null ? '?' : `${o.lowerElevation} m from the model base (${antepecho(o, baseElev(f)).toFixed(2)} m above this floor's level)`) + fila('Wall thickness', o.wallThickness != null ? o.wallThickness + ' m' : 'unknown') + fila('Label', esc(o.label || ''))
-    if (s.kind === 'door') t += fila('Connects', !info ? 'not placed between two known rooms' : info.salida ? `<b>exterior exit</b> from ${nombre(info.conecta[0])}` : info.exteriorUpper ? `${nombre(info.conecta[0])} ↔ outside (terrace/balcony, not counted as an exit)` : info.conecta.map(nombre).join(' ↔ '))
+    t = fila('Size', `${pies(o.width)} × ${o.height != null ? pies(o.height) : 'Not available'} (${o.width} × ${o.height ?? '?'} m)`) +
+      fila('Sill height', o.lowerElevation == null ? 'Not available' : `${piesM(antepecho(o, baseElev(f)))} above this floor's level`)
+    if (s.kind === 'door') t += fila('Connects', !info ? 'not placed between two known rooms' : info.salida ? `exterior door in the ${nombre(info.conecta[0])}` : info.exteriorUpper ? `${nombre(info.conecta[0])} ↔ outside (terrace or balcony, not counted as an exit)` : info.conecta.map(nombre).join(' ↔ '))
+    dq = fila('Wall thickness', o.wallThickness != null ? piesM(o.wallThickness).replace(/^(\d+) ft/, (m, n) => `${(o.wallThickness * FT * 12).toFixed(0)} in`) : 'Not available')
   }
   const c = S.fila
-  const calidad = !c ? '' : c.estado === 'ok'
+  const calidad = !c ? 'Not available' : c.estado === 'ok'
     ? 'OK' + chip('verified', 'passed the house quality check') + (c.etiquetas ? '<br>' + c.etiquetas.split('|').filter(Boolean).map((x) => esc(TAG_TXT[x] || x)).join('<br>') : '')
     : `<span style="color:${T.noRoute}">Discarded</span><br>` + esc(c.motivo)
-  h += `<table>${t}${fila('Source', esc(FUENTE))}${fila('House quality check', calidad)}</table><div class="descargo">${esc(DESCARGO)}</div>`
+  const fuenteTxt = S.scan && S.scan.created ? `Matterport scan · model created ${esc(fechaCorta(S.scan.created))}` : 'Matterport scan · capture date not available'
+  h += `<table>${t}</table><details class="calidad-datos"><summary>Data quality</summary><table>${dq}${fila('House quality check', calidad)}${fila('Source', fuenteTxt)}</table></details><div class="descargo">${esc(DESCARGO)}</div>`
   el.innerHTML = h; el.style.display = 'block'
 }
 function notas() {
   if (!$('notas')) return // MDT (split): sin panel de notas
   const ev = S.ev, pisos = S.plan.floors
   const todas = pisos.flatMap((f, fi) => salasDe(f).map((r) => ({ r, fi, f })))
-  const lista = (arr) => arr.map(({ r, fi, f }) => { const ru = rutaSala(fi, r); return `<li>${esc(nombreSala(r))} <span class="hint">· ${esc(f.label)} · ${ru ? ru.dist.toFixed(1) + ' m to nearest exit (est.)' : SIN_RUTA}</span></li>` }).join('')
+  const lista = (arr) => arr.map(({ r, fi, f }) => { const ru = rutaSala(fi, r); return `<li>${esc(nombreSala(r))} <span class="hint">· ${esc(f.label)} · ${ru ? '≈ ' + pies(ru.dist) + ' to nearest exit (est.)' : SIN_RUTA}</span></li>` }).join('')
   const dorm = todas.filter(({ r }) => esDormitorio(r)), ign = todas.filter(({ r }) => esIgnicion(r))
   let h = '<h2>Notes (no scoring)</h2>'
   if (ev.sinDatosEscaleras) h += '<div class="nota"><b>no staircase data</b> — no staircase was detected in this multi-floor plan, so routes between floors cannot be calculated and upper floors show "${SIN_RUTA}".</div>'
   else if (pisos.length >= 2) h += `<div class="nota">${todas.filter(({ r }) => esEscalera(r)).length} staircase room(s) detected; ${ev.escalerasEnlazadas} link(s) between floors.</div>`
-  h += `<div class="nota"><b>[SLEEP] BEDROOMS (${dorm.length})</b>${dorm.length ? '<ul>' + lista(dorm) + '</ul>' : '<br>No bedrooms detected.<br>'}<b>[IGNITION] POSSIBLE IGNITION AREAS (${ign.length})</b>${ign.length ? '<ul>' + lista(ign) + '</ul>' : '<br>None detected.<br>'}` +
+  h += `<div class="nota"><b>BEDROOMS (${dorm.length})</b>${dorm.length ? '<ul>' + lista(dorm) + '</ul>' : '<br>No bedrooms detected.<br>'}<b>POSSIBLE IGNITION AREAS (${ign.length})</b>${ign.length ? '<ul>' + lista(ign) + '</ul>' : '<br>None detected.<br>'}` +
     '<span class="hint">Suggestion: you may want to check on site whether these rooms have a clear way out and working smoke detection; the plan has no information about either.</span></div>'
-  h += `<div class="nota hint">Exits: ${ev.salidas.length} exterior door(s) on the lowest floor (a door whose other side, 0.3 m away, is outside every known room). Distances are straight lines between room and door centers: an estimate that ignores furniture and the real walking path. Floor height ${FLOOR_H} m is an estimate. Rooms whose only way out is through a patio or an undetected door get no route.</div>`
+  h += `<div class="nota hint">Exits: ${ev.salidas.length} exterior door(s) on the lowest floor (a door whose other side, 0.3 m away, is outside every known room). Distances are straight lines between room and door centers: an estimate that ignores furniture and the real walking path. Floor height ${piesM(FLOOR_H)} is an estimate. Rooms whose only way out is through a patio or an undetected door get no route.</div>`
   h += `<div class="nota">${esc(DESCARGO)}</div>`
   $('notas').innerHTML = h
 }
@@ -1027,7 +1048,7 @@ function panelIzq() {
   const capa = (k, txt) => `<label class="fila"><input type="checkbox" data-capa="${k}" ${S.capas[k] ? 'checked' : ''}> ${txt}</label>`
   // MDT (split): menu reducido a escaleras, puertas, ruta y mapa de calor; muros, losas, etiquetas y ventanas siguen visibles sin interruptor
   if (SPLIT) {
-    $('izq').innerHTML = '<h2>Layers</h2>' + capa('stairs', 'Stairs') + capa('doors', 'Doors') + capa('route', 'Route of the selected room') + capa('incident', 'Incident layer') +
+    $('izq').innerHTML = '<h2>Layers</h2>' + capa('stairs', 'Stairs') + capa('doors', 'Doors') + capa('route', 'Route of the selected room') + capa('sleeping', 'Sleeping areas') + capa('ignition', 'Ignition areas') + capa('incident', 'Incident layer') +
       `<label class="fila"><input type="checkbox" id="heat" ${S.color === 'evac' ? 'checked' : ''}> Evacuation heat map</label>`
     return
   }
@@ -1036,11 +1057,11 @@ function panelIzq() {
     `<div class="fila-btn"><button data-color="type" class="${S.color === 'type' ? 'on' : ''}">Rooms</button><button data-color="evac" class="${S.color === 'evac' ? 'on' : ''}">Evacuation heat map</button></div>` +
     `<label class="fila"><input type="checkbox" id="fx" ${S.fx ? 'checked' : ''}> Effects (glow, floor points)</label>` +
     '<h2>Floors</h2>' +
-    `<div class="ctl-fila"><span>Exploded view</span><span id="sep-v">${S.sep.toFixed(1)} m</span></div><input type="range" id="sep" min="0" max="${FX.explodeMax}" step="0.1" value="${S.sep}">` +
+    `<div class="ctl-fila"><span>Exploded view</span><span id="sep-v">${piesM(S.sep)}</span></div><input type="range" id="sep" min="0" max="${FX.explodeMax}" step="0.1" value="${S.sep}">` +
     `<div class="ctl-fila"><span>Context</span><span id="ctx-v">${Math.round(S.ctx * 100)} %</span></div><input type="range" id="ctx" min="0" max="100" step="5" value="${Math.round(S.ctx * 100)}">` +
     `<label class="fila"><input type="checkbox" id="ocultar" ${S.ocultarSup ? 'checked' : ''}> Hide upper floors</label>` +
-    `<div class="hint">Floors stacked at their real level, derived from door heights; walls reach the next floor's slab (${FX.slabThick} m). Top floor wall height ${FLOOR_H} m — <span class="aviso">estimate</span>.${S.nivelEst.some(Boolean) ? ' <span class="aviso">Level of floor ' + S.nivelEst.map((x, i) => (x ? i + 1 : 0)).filter(Boolean).join(', ') + ' estimated</span> (no consistent door heights).' : ''} No roof.</div>` +
-    '<h2>Layers</h2>' + capa('walls', 'Walls') + capa('doors', 'Doors') + capa('windows', 'Windows') + capa('slabs', 'Rooms') + capa('stairs', '3D stairs') + capa('labels', 'Room labels') + capa('route', 'Route of the selected room') + capa('incident', 'Incident layer') +
+    `<div class="hint">Floors stacked at their real level, derived from door heights; walls reach the next floor's slab (${piesM(FX.slabThick)}). Top floor wall height ${piesM(FLOOR_H)} — <span class="aviso">estimate</span>.${S.nivelEst.some(Boolean) ? ' <span class="aviso">Level of floor ' + S.nivelEst.map((x, i) => (x ? i + 1 : 0)).filter(Boolean).join(', ') + ' estimated</span> (no consistent door heights).' : ''} No roof.</div>` +
+    '<h2>Layers</h2>' + capa('walls', 'Walls') + capa('doors', 'Doors') + capa('windows', 'Windows') + capa('slabs', 'Rooms') + capa('stairs', '3D stairs') + capa('labels', 'Room labels') + capa('route', 'Route of the selected room') + capa('sleeping', 'Sleeping areas') + capa('ignition', 'Ignition areas') + capa('incident', 'Incident layer') +
     '<h2>Room type filter</h2><div class="fila-btn"><button data-tipos="all">All</button><button data-tipos="stairs">Stairs</button><button data-tipos="bed">Bedrooms</button></div>' +
     ord.map((k) => `<label class="fila"><input type="checkbox" data-tipo="${esc(k)}" ${S.tipos.has(k) ? 'checked' : ''}> ${esc(k)} <span class="hint">(${tipos[k]})</span></label>`).join('') +
     '<div id="notas"></div>'
@@ -1049,7 +1070,7 @@ function panelIzq() {
 
 // ---------------------------------------------------------------- seleccion y refresco
 function seleccionar(ent, desdePadre = false) {
-  S.sel = ent
+  S.sel = ent; S.salidaVista = null
   // la seleccion hecha por el usuario se comunica a la pagina que contiene el visor (no la que llega por mensaje)
   if (!desdePadre) avisarPadre({ type: 'select', id: ent ? ent.id : null, kind: ent ? ent.kind : null, floor: ent ? ent.fi + 1 : null })
   if (ent && ent.fi !== focoIdx()) { if (S.foco === 'all') S.f2d = ent.fi; else setFoco(ent.fi) }
@@ -1073,7 +1094,7 @@ function eventos() {
   $('izq').addEventListener('input', (e) => {
     if (e.target.id === 'ctx') { S.ctx = Number(e.target.value) / 100; $('ctx-v').textContent = Math.round(S.ctx * 100) + ' %'; objetivos(); render2D(); return }
     if (e.target.id !== 'sep') return
-    S.sep = Number(e.target.value); $('sep-v').textContent = S.sep.toFixed(1) + ' m'; objetivos()
+    S.sep = Number(e.target.value); $('sep-v').textContent = piesM(S.sep); objetivos()
   })
   $('izq').addEventListener('click', (e) => {
     const t = e.target
@@ -1102,8 +1123,17 @@ function eventos() {
     else if (e.key === 'ArrowDown') { e.preventDefault(); setFoco(S.foco === 'all' ? 'all' : S.foco === 0 ? 'all' : S.foco - 1) }
   })
   $('tabla').addEventListener('click', (e) => { const tr = e.target.closest('tr.fila'); if (tr) seleccionar({ kind: tr.dataset.kind, id: tr.dataset.id, fi: Number(tr.dataset.fi) }) })
-  $('inspector').addEventListener('click', (e) => { if (e.target.id === 'cerrar-insp') seleccionar(null) })
-  $('oblicuas-body').addEventListener('click', (e) => { const b = e.target.closest('[data-obl]'); if (b && !b.disabled) { OBL.dir = b.dataset.obl; pintarOblicuas() } })
+  $('inspector').addEventListener('click', (e) => {
+    if (e.target.id === 'cerrar-insp') return seleccionar(null)
+    if (e.target.id === 'ver-salida' && S.sel && S.sel.kind === 'room') {
+      const ruta = rutaSala(S.sel.fi, salaPorId(S.sel.fi, S.sel.id)), fin = ruta && ruta.puntos[ruta.puntos.length - 1]
+      if (!fin) return
+      S.capas.route = true; S.salidaVista = { id: fin.salida, fi: fin.fi }
+      if (S.foco !== 'all') setFoco(fin.fi); else S.f2d = fin.fi
+      refrescar(); selectoresPlanta()
+    }
+  })
+  $('oblicuas-body').addEventListener('click', (e) => { const b = e.target.closest('[data-obl]'); if (b) { OBL.dir = b.dataset.obl; pintarOblicuas() } })
   $('modelo').addEventListener('change', () => { history.replaceState(null, '', '?sample=' + encodeURIComponent($('modelo').value)); cargar($('modelo').value) })
   window.addEventListener('message', mensaje)
 }
@@ -1117,6 +1147,7 @@ function mensaje(e) {
   const d = e.data
   if (d.type === 'theme') return tema(d.vars)
   if (d.type === 'setIncident') return recibirIncidente(d.overlay)
+  if (d.type === 'highlightRefs') { INC.resaltar = new Set(Array.isArray(d.refs) ? d.refs.filter((x) => typeof x === 'string').slice(0, 50) : []); return reconstruirIncidente() }
   if (d.type === 'loadSample') {
     if (!LISTA.some((x) => x.id === d.id)) return fallo('Unknown sample: ' + String(d.id).slice(0, 40))
     $('modelo').value = d.id
@@ -1229,6 +1260,8 @@ function reconstruirIncidente() {
   }
   if (S.plan) { dibujarIncidente3D(); render2D() }
   pintarPanelIncidente()
+  avisarPadre({ type: 'incidentState', overlay: ov ? structuredClone(ov) : null, version: ov ? ov.version : null, versions: [...INC.versions.keys()],
+    routes: INC.rutas ? INC.rutas.routes : [], noRoute: INC.rutas ? INC.rutas.noRoute : [], plannerMs: INC.rutas ? INC.rutas.ms : null, highlighted: [...INC.resaltar] })
 }
 
 // ---------------------------------------------------------------- 3D
@@ -1382,7 +1415,7 @@ function dibujarIncidente3D() {
       }
     }
     pts.forEach((q, i) => { const sp = rotuloInc([String(i + 1)], b2(q.near), 1); sp.scale.multiplyScalar(0.6); legible(sp, sp.scale.x, sp.scale.y, 14); sp.position.copy(m3(q.p[0], q.p[1], 0.6)); pon(q.fi, sp) })
-    const fin = pts[pts.length - 1], lbl = rotuloInc([`${r.kind.toUpperCase()} ROUTE · ${r.objective_id}${dash ? ' (candidate)' : ''}`, `~${r.length_m_estimate} m estimate${r.passes_near_fire ? ' · passes near fire' : ''}`], r.passes_near_fire ? IC.nearFire : IC.route, dash ? 0.75 : 1)
+    const fin = pts[pts.length - 1], lbl = rotuloInc([`${r.kind.toUpperCase()} ROUTE · ${r.objective_id}${dash ? ' (candidate)' : ''}`, `~${piesM(r.length_m_estimate)} estimate${r.passes_near_fire ? ' · passes near fire' : ''}`], r.passes_near_fire ? IC.nearFire : IC.route, dash ? 0.75 : 1)
     lbl.position.copy(m3(fin.p[0], fin.p[1], 1.9)); pon(fin.fi, lbl)
     for (let k = 0; k < 3; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshBasicMaterial({ color: C(IC.route), depthTest: false, transparent: true, fog: false })); m.renderOrder = 37; grupo.add(m); cuentas.push(m) }
     incRutas.rutas.push({ pts, segs, cuentas })
@@ -1467,7 +1500,7 @@ function svgIncidente2D(fi, ns) {
     }
     pts.forEach((q, i) => { if (q.fi === fi) h += `<circle cx="${q.p[0]}" cy="${-q.p[1]}" r="${fs * 0.75}" fill="#080a0e" stroke="${q.near ? IC.nearFire : IC.route}" stroke-width="1.2" ${ns}/><text x="${q.p[0]}" y="${-q.p[1] + fs * 0.35}" font-size="${fs}" font-family="${T.font}" fill="#fff" text-anchor="middle" pointer-events="none">${i + 1}</text>` })
     const fin = pts[pts.length - 1]
-    if (fin.fi === fi) h += txt(fin.p[0], -fin.p[1] - fs * 1.1, [`${r.kind.toUpperCase()} · ${r.objective_id}${g.dashed ? ' (candidate)' : ''}`, `~${r.length_m_estimate} m estimate${r.passes_near_fire ? ' · near fire' : ''}`], r.passes_near_fire ? IC.nearFire : IC.route, g.dashed ? 0.8 : 1)
+    if (fin.fi === fi) h += txt(fin.p[0], -fin.p[1] - fs * 1.1, [`${r.kind.toUpperCase()} · ${r.objective_id}${g.dashed ? ' (candidate)' : ''}`, `~${piesM(r.length_m_estimate)} estimate${r.passes_near_fire ? ' · near fire' : ''}`], r.passes_near_fire ? IC.nearFire : IC.route, g.dashed ? 0.8 : 1)
   }
   return `<g class="incidente">${h}</g>`
 }
@@ -1477,6 +1510,7 @@ function asegurarDomIncidente() {
   if ($('inc-banner')) return
   const ban = document.createElement('div'); ban.id = 'inc-banner'; ban.className = 'hud'; $('centro').appendChild(ban)
   const det = document.createElement('details'); det.id = 'inc-panel'; det.className = 'plegable'; det.open = true
+  if (HOST) det.style.display = 'none' // la UI anfitriona muestra un unico panel de consideraciones
   det.innerHTML = '<summary>Considerations · incident</summary><div id="inc-panel-body"></div>'
   const der = $('der'), ref = $('oblicuas'); der.insertBefore(det, ref || null)
   if (DEBUG) { const d = document.createElement('div'); d.id = 'inc-debug'; document.body.appendChild(d) }
@@ -1550,7 +1584,7 @@ async function cargar(id) {
   $('calidad').className = 'chip ' + (okCasa ? 'ok' : 'mal'); $('calidad').textContent = S.fila ? (okCasa ? 'quality: ok' : 'quality: discarded') : 'quality: unknown'
   if (!okCasa) return fallo('This sample did not pass the house quality check')
   $('vista3d').style.opacity = 1; $('der').style.opacity = 1; $('vista3d').style.visibility = ''; quitarAvisoSinEscaneo()
-  S.plan = plan; S.modelId = doc.matterportModelId
+  S.plan = plan; S.modelId = doc.matterportModelId; S.scan = doc.scan || null
   cargarOblicuas(id)
   S.f2d = primeraPlanta(plan); S.foco = 'all' // abre con todas las plantas; el 2D muestra la planta mas baja con habitaciones
   S.ev = evacuacion(plan); const t2 = performance.now()

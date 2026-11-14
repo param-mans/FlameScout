@@ -208,3 +208,8 @@ html.embed.layout-split #inc-banner { top: 10px; }
   padding: 5px 6px; background: rgba(8, 10, 14, .9); border: 1px solid #f59e0b; }
 #inc-debug .inc-chip { font: 700 10px/1 var(--font); letter-spacing: .16em; color: #111; background: #f59e0b; padding: 3px 6px; }
 #inc-debug button { padding: 1px 6px; }
+
+/* Inspector: seccion plegable "Data quality" y boton "Show on plan" */
+#inspector .calidad-datos { margin: 6px 0 2px; border: 1px solid var(--border); }
+#inspector .calidad-datos > summary { cursor: pointer; padding: 6px 8px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--textDim); }
+#inspector .ver-salida { margin-top: 4px; }
