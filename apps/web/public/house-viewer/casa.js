@@ -15,6 +15,8 @@ import { OutputPass } from './vendor/three/examples/jsm/postprocessing/OutputPas
 import { FLOOR_H, SALA_MIN, esEscalera, poligonoValido, dibujable, puntoInterior, evacuacion, baseElev, antepecho, dentroSala, centroide } from './evac.js'
 import { T, OP, FX, colorDistancia, aplicarCSS, aplicarTema } from './theme.js'
 import { analizar, emparejar, rectangulo, distContorno } from './escaleras.js'
+import { buildPlanIndex } from './incident/plan-index.js'
+import { validate as validarOverlay } from './incident/validate.js'
 
 aplicarCSS()
 const $ = (id) => document.getElementById(id)
@@ -1095,6 +1097,7 @@ function mensaje(e) {
   if (e.origin !== ORIGEN || e.source !== window.parent || !e.data || typeof e.data !== 'object') return
   const d = e.data
   if (d.type === 'theme') return tema(d.vars)
+  if (d.type === 'setIncident') return recibirIncidente(d.overlay)
   if (d.type === 'loadSample') {
     if (!LISTA.some((x) => x.id === d.id)) return fallo('Unknown sample: ' + String(d.id).slice(0, 40))
     $('modelo').value = d.id
@@ -1131,6 +1134,33 @@ function tema(vars) {
   avisarPadre({ type: 'themeApplied' })
 }
 
+// ---------------------------------------------------------------- capa de incidente: indice del plano y overlays (docs/INCIDENT_OVERLAY_SPEC.md)
+// El indice del plano se genera al cargar (incident/plan-index.js, mismas reglas que scripts/make_plan_index.py) y se envia a
+// la pagina contenedora. setIncident: si el plano aun no ha cargado se guarda el ultimo overlay y se aplica al cargar; las
+// versiones menores que la actual se ignoran (respuesta incidentRejected); se valida con incident/validate.js (port de
+// validate_overlay.py) contra el indice del plano cargado; si es valido se aplica y se guarda para el control de versiones.
+const INC = { index: null, versions: new Map(), actual: null, pendiente: null }
+function prepararIncidente(plan) {
+  INC.versions = new Map(); INC.actual = null
+  try { INC.index = buildPlanIndex(plan) } catch (e) { INC.index = null; avisarPadre({ type: 'planIndex', index: null, error: e.message }); return }
+  avisarPadre({ type: 'planIndex', index: INC.index })
+  if (INC.pendiente) { const ov = INC.pendiente; INC.pendiente = null; aplicarIncidente(ov) }
+}
+function recibirIncidente(ov) {
+  if (!S.plan || !INC.index) { INC.pendiente = ov; return } // plano aun no cargado: se queda el ultimo recibido
+  aplicarIncidente(ov)
+}
+function aplicarIncidente(ov) {
+  const version = ov && typeof ov === 'object' ? ov.version : undefined
+  if (INC.actual && typeof version === 'number' && version < INC.actual.version)
+    return avisarPadre({ type: 'incidentRejected', version, errors: [`version ${version} is older than the current version ${INC.actual.version} (ignored)`] })
+  const errors = ov && typeof ov === 'object' && !Array.isArray(ov) ? validarOverlay(ov, INC.index) : ['overlay must be an object']
+  if (errors.length) return avisarPadre({ type: 'incidentRejected', version, errors })
+  INC.actual = structuredClone(ov)
+  INC.versions.set(version, INC.actual)
+  avisarPadre({ type: 'incidentApplied', version })
+}
+
 // ---------------------------------------------------------------- carga (catalogo samples/index.json + datos en vivo de la API)
 function fallo(msg) {
   $('vista3d').style.opacity = 0.2; $('der').style.opacity = 0.4; $('izq').innerHTML = `<div class="nota">${esc(msg)}</div>`; $('carga').textContent = ''
@@ -1139,6 +1169,7 @@ function fallo(msg) {
 async function cargar(id) {
   const t0 = performance.now()
   S.id = id; S.sel = null; S.hover = null; S.vb = null
+  INC.index = null // mientras carga, un setIncident queda pendiente hasta tener el indice del plano nuevo
   $('carga').textContent = 'Loading…'; $('inspector').style.display = 'none'; estadoEmbed('Loading house from Matterport…')
   let doc
   try {
@@ -1170,7 +1201,8 @@ async function cargar(id) {
   estadoEmbed('')
   avisoHud()
   avisarPadre({ type: 'ready', sample: id, floors: plan.floors.length, mode: EMBED ? (SPLIT ? 'split' : MODO) : null })
-  window.__casa = { S, THREE, ms: S.ms, id, setFoco, setDetalle, ponerHover, get refs() { return refs }, get P() { return P }, get escG() { return escG }, get explG() { return explG }, // solo para las pruebas automaticas
+  prepararIncidente(plan)
+  window.__casa = { S, THREE, ms: S.ms, id, INC, setFoco, setDetalle, ponerHover, get refs() { return refs }, get P() { return P }, get escG() { return escG }, get explG() { return explG }, // solo para las pruebas automaticas
     medir(n, fx) { const gl = renderer.getContext(), px = new Uint8Array(4), t0 = performance.now(); for (let i = 0; i < n; i++) { if (fx) composer.render(); else renderer.render(escena, camara); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px) } return (performance.now() - t0) / n } }
 }
 

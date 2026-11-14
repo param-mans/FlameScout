@@ -138,13 +138,14 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId }:
   // Viewer replies from our own iframe only. On the first "ready" of each iframe document the app theme is sent and
   // the iframe stays hidden until "themeApplied" (or a short fallback), so the default viewer theme never flashes.
   const themed = useRef(false);
+  const planIndex = useRef<unknown>(null); // latest plan index sent by the viewer (for the incident agents)
   const themeTimer = useRef<number | undefined>(undefined);
   useEffect(() => {
     const show = () => { window.clearTimeout(themeTimer.current); setStatus((s) => (s.kind === "loading" ? { kind: "ready" } : s)); };
     const onMessage = (e: MessageEvent) => {
       const win = frame.current?.contentWindow;
       if (e.origin !== window.location.origin || !win || e.source !== win) return;
-      const d = e.data as { type?: string; message?: string } | null;
+      const d = e.data as { type?: string; message?: string; version?: number; errors?: string[]; index?: unknown } | null;
       if (d?.type === "ready") {
         if (themed.current) return show();
         win.postMessage({ type: "theme", vars: readThemeTokens() }, window.location.origin);
@@ -154,6 +155,9 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId }:
         themed.current = true;
         show();
       } else if (d?.type === "error") setStatus({ kind: "error", message: d.message ?? "Viewer error" });
+      // incident layer (docs/INCIDENT_OVERLAY_SPEC.md): the host logs rejected overlays; the plan index is kept for the agents
+      else if (d?.type === "incidentRejected") console.warn("[house-viewer] incident overlay rejected", { version: d.version, errors: d.errors });
+      else if (d?.type === "planIndex") planIndex.current = d.index ?? null;
     };
     window.addEventListener("message", onMessage);
     return () => { window.removeEventListener("message", onMessage); window.clearTimeout(themeTimer.current); };

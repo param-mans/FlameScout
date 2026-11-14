@@ -80,6 +80,13 @@ const lados = (c, anguloDeg) => {
   return [[c[0] + LADO * n[0], c[1] + LADO * n[1]], [c[0] - LADO * n[0], c[1] - LADO * n[1]]]
 }
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1])
+/** Apertura exterior (cualquier tipo): un lado (a LADO m) cae en una sala del grafo y el otro fuera de todo. Misma regla
+ *  que las salidas de evacuacion(), sin limitarla a puertas ni a la planta mas baja. ctx opcional (contexto de la planta). */
+export function aperturaExterior(f, o, ctx = contexto(f)) {
+  const [p1, p2] = lados(o.center, o.angleDeg).map((p) => clasificar(p, ctx))
+  return (p1.tipo === 'sala' && p2.tipo === 'fuera') || (p2.tipo === 'sala' && p1.tipo === 'fuera')
+}
+export const contextoPlanta = contexto
 // Punto y rumbo (grados) a la mitad de una polilinea
 function mitad(pts) {
   const L = pts.slice(1).map((p, i) => dist(pts[i], p)), total = L.reduce((a, b) => a + b, 0)

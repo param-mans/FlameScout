@@ -70,5 +70,59 @@
    "yearBuilt": 1947,
    "homeType": "Detached"
   }
+ },
+ {
+  "id": "209217448",
+  "address": "9660 Fairdale Lane, Houston",
+  "location": {
+   "lat": 29.730995,
+   "lon": -95.538914
+  },
+  "city": "Houston",
+  "market": "Houston",
+  "matterportModelId": "tvaSot6bAt8",
+  "listing": {
+   "beds": 3,
+   "baths": 3,
+   "sqft": 3480,
+   "yearBuilt": 1999,
+   "homeType": "Detached"
+  }
+ },
+ {
+  "id": "214905148",
+  "address": "18107 Fairhope Oak Street, Houston",
+  "location": {
+   "lat": 29.813143,
+   "lon": -95.680383
+  },
+  "city": "Houston",
+  "market": "Houston",
+  "matterportModelId": "Jnn2eWwYXU5",
+  "listing": {
+   "beds": 4,
+   "baths": 2.5,
+   "sqft": 3000,
+   "yearBuilt": 2009,
+   "homeType": "Detached"
+  }
+ },
+ {
+  "id": "199958956",
+  "address": "13722 Playa Lucia Court, Houston",
+  "location": {
+   "lat": 29.962922,
+   "lon": -95.161238
+  },
+  "city": "Houston",
+  "market": "Houston",
+  "matterportModelId": "71svY4RB8jP",
+  "listing": {
+   "beds": 4,
+   "baths": 3.5,
+   "sqft": 3724,
+   "yearBuilt": 2010,
+   "homeType": "Detached"
+  }
  }
 ]

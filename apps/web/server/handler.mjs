@@ -3,7 +3,8 @@
 // Everything comes from the APIs at request time; nothing is written to disk (in-memory cache only, per process).
 //
 //   GET /api/house-viewer/sample/<id>                         -> { id, address, location, matterportModelId, listing,
-//                                                                  quality, stairs, plan }   (plan from the Matterport API)
+//                                                                  quality, stairs, plan }   (plan from the Matterport API,
+//                                                                  plus plan.stairs[] and opening.exterior: plan-extras.mjs)
 //   GET /api/house-viewer/vexcel/<id>                         -> { views: { dir: { file, captureDate } }, ... }
 //   GET /api/house-viewer/vexcel/<id>/oblique-<dir>.jpg       -> JPEG (Vexcel API)
 //
@@ -14,6 +15,7 @@ import fs from "node:fs";
 import { generar, MPError } from "./matterport-plan.mjs";
 import { evaluar } from "./house-quality.mjs";
 import { obliques, VXError } from "./vexcel.mjs";
+import { withPlanExtras } from "./plan-extras.mjs";
 
 export const PREFIX = "/api/house-viewer/";
 const TTL_MS = 6 * 3600 * 1000; // in-memory cache lifetime
@@ -47,7 +49,8 @@ export function createHouseDataHandler({ getEnv, catalogFile }) {
   };
 
   async function sampleDoc(s) {
-    const plan = await memo(`plan:${s.matterportModelId}`, () => generar(s.matterportModelId, matterportAuth()));
+    // plan from the API + extras computed once (stairs[] with stable ids, exterior flag on openings), see plan-extras.mjs
+    const plan = await memo(`plan:${s.matterportModelId}`, () => generar(s.matterportModelId, matterportAuth()).then(withPlanExtras));
     const { quality, stairs } = evaluar(plan, { sqft: s.listing?.sqft ?? null, beds: s.listing?.beds ?? null });
     const { id, address, location, city, market, matterportModelId, listing } = s;
     return { id, address, location: { ...location, city, market }, matterportModelId, listing, quality, stairs, plan };
