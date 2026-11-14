@@ -22,7 +22,7 @@ from flamescout_schemas import (Brief, BuildingDossier, CallSegment, CopilotSugg
                                 CrewFeedback, IncidentRecord, LocationCandidate)
 
 from services.agents.extract import GeminiExtractor, get_extractor
-from services.agents.llm import configured, model_name, provider
+from services.agents.llm import configured, critic_provider, fallback_provider, model_name, provider
 
 from .config import ROOT, Settings
 from .events import EventBus
@@ -114,7 +114,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return {"ok": True, "data_mode": svc.data_mode, "pipeline": settings.pipeline,
                 "extractor": "gemini" if isinstance(get_extractor(), GeminiExtractor) else "keyword",
                 "llm": {"provider": provider(), "fast": configured("fast") and model_name("fast"),
-                        "vision": configured("vision") and model_name("vision")},
+                        "vision": configured("vision") and model_name("vision"),
+                        "fallback": fallback_provider("fast"), "critic": critic_provider()},
                 "tiger": svc.metrics.tiger_enabled, "geocoder": svc.providers.geocoder is not None,
                 "live_fallbacks": svc.providers.misses[-10:]}
 

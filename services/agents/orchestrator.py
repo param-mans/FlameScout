@@ -89,7 +89,7 @@ from .brief import (ConsiderationDraft, apply_memory, build_brief, check_conside
 from .dossier import LAYERS, Layer, LayerData
 from .locator import find_candidates
 from .overlay import OverlayDraft
-from .stalls import MODEL_TIMEOUT_S, StallCounter, StallRetryMiddleware
+from .stalls import MODEL_TIMEOUT_S, FailoverMiddleware, StallCounter, StallRetryMiddleware
 from .workspace import WORKSPACE_ROOT, Workspace, incident_workspace
 
 log = logging.getLogger(__name__)
@@ -368,6 +368,7 @@ class Session:
     stalls: StallCounter = field(default_factory=StallCounter)  # model timeouts and retries, all agents
     leg_stalls: tuple[int, int] = (0, 0)       # (stalls, retries) of the leg that just ran
     start_seconds: float = 0.0                 # start_incident's wall clock, for time-to-brief
+    critic_model: Optional[str] = None         # "provider:model" of the critic, recorded in critique_vN.json
 
     @staticmethod
     def layer_rel(layer: str) -> str:
@@ -726,7 +727,8 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
             s.rejections += len(issues)
         ws.write(s.critique_rel, json.dumps(
             {"brief_id": f"{s.incident_id}_v{s.version}", "verdict": verdict, "issues": issues,
-             "note_flags": [f.model_dump() for f in note_flags], "checked_at": now().isoformat()}, indent=2))
+             "note_flags": [f.model_dump() for f in note_flags], "critic_model": s.critic_model,
+             "checked_at": now().isoformat()}, indent=2))
         for flag in note_flags:  # mark the note itself, so nobody reads the claim without the flag
             rel = f"notes/{flag.layer}_summary.md"
             if (note := ws.read_or_none(rel)) is not None:
@@ -796,7 +798,7 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
 
 # ---------- agent ----------
 
-def _model(thinking: bool = True):
+def _model(thinking: bool = True, prov: Optional[str] = None):
     from .llm import make_chat
 
     # "low" is the lowest thinking level this model accepts ("minimal" is a 400) and default
@@ -806,29 +808,63 @@ def _model(thinking: bool = True):
     # (Gemini only; LLM_PROVIDER=openai uses OPENAI_REASONING_EFFORT, see llm.py.)
     # A call that has not answered in MODEL_TIMEOUT_S is cut off; max_retries=1 means one attempt in
     # the SDK, so the only retry is StallRetryMiddleware's, which logs it with the agent's name.
-    return make_chat("fast", timeout=MODEL_TIMEOUT_S, max_retries=1, thinking="low" if thinking else "none")
+    return make_chat("fast", timeout=MODEL_TIMEOUT_S, max_retries=1, thinking="low" if thinking else "none",
+                     prov=prov)
 
 
-def _layer_subagents(tools: dict[str, BaseTool], quick: Any, stalls: StallCounter) -> list[dict]:
+class _Models:
+    """The models one agent graph uses, and its middleware: StallRetry, plus failover when a second
+    provider is set (LLM_FALLBACK_PROVIDER). The critic runs on CRITIC_PROVIDER when that differs from
+    LLM_PROVIDER, so a different model checks the brief, with LLM_PROVIDER's model as its backup.
+    A model passed in (tests, scripts) is used everywhere, with no failover and no separate critic."""
+
+    def __init__(self, stalls: StallCounter, model: Any = None):
+        self.stalls = stalls
+        if model is not None:
+            self.main = self.quick = self.critic = model
+            self.main_backup = self.quick_backup = self.critic_backup = None
+            self.critic_provider = None
+            return
+        from .llm import critic_provider, fallback_provider, provider
+
+        backup = fallback_provider("fast")
+        self.main, self.quick = _model(), _model(thinking=False)
+        self.main_backup = _model(prov=backup) if backup else None
+        self.quick_backup = _model(thinking=False, prov=backup) if backup else None
+        self.critic_provider = critic_provider()
+        if self.critic_provider != provider():
+            self.critic, self.critic_backup = _model(thinking=False, prov=self.critic_provider), self.quick
+        else:
+            self.critic, self.critic_backup = self.quick, self.quick_backup
+
+    def middleware(self, agent: str, backup: Any) -> list:
+        mw: list = [StallRetryMiddleware(agent, self.stalls)]
+        if backup is not None:
+            mw.append(FailoverMiddleware(agent, backup, self.stalls))  # inside the retry: fail over first
+        return mw
+
+
+def _layer_subagents(tools: dict[str, BaseTool], m: _Models) -> list[dict]:
     """The costar / matterport / vexcel subagents: one pull, one short summary. Two model calls each."""
     return [{"name": layer,
-             "middleware": [StallRetryMiddleware(layer, stalls)],
+             "middleware": m.middleware(layer, m.quick_backup),
              "description": f"Pulls {LAYERS_INFO[layer][0]} for the building and returns a short summary. "
                             "Independent of the other data layers.",
              "system_prompt": LAYER_PROMPT.format(layer=layer, what=LAYERS_INFO[layer][0],
                                                   focus=LAYERS_INFO[layer][1],
                                                   extra=VEXCEL_EXTRA if layer == "vexcel" else ""),
              "tools": [tools[f"pull_{layer}"], *([tools["pull_vexcel_entries"]] if layer == "vexcel" else [])],
-             "model": quick} for layer in LAYERS]
+             "model": m.quick} for layer in LAYERS]
 
 
 def build_prefetcher(s: Session, model: Any = None):
     """A small deep agent that only fans out to the three layer subagents (scripts/prefetch.py)."""
+    m = _Models(s.stalls, model)
     return create_deep_agent(
-        model=model or _model(),
+        model=m.main,
         system_prompt=PREFETCH_PROMPT,
-        middleware=[StallRetryMiddleware("prefetch", s.stalls)],
-        subagents=_layer_subagents(make_tools(s), model or _model(thinking=False), s.stalls),
+        middleware=m.middleware("prefetch", m.main_backup),
+        subagents=_layer_subagents(make_tools(s), m),
         name="flamescout-prefetch",
     )
 
@@ -837,11 +873,17 @@ def build_orchestrator(s: Session, model: Any = None, checkpointer: Any = None):
     tools = make_tools(s)
     # Mechanical work (one tool call, one short summary) and the critic ask for no thinking: at "low"
     # a turn sometimes spent 1000+ reasoning tokens (13 s).
-    quick = model or _model(thinking=False)
+    m = _Models(s.stalls, model)
+    if m.critic_provider:
+        from .llm import model_name, provider
+
+        s.critic_model = f"{m.critic_provider}:{model_name('fast', m.critic_provider)}"
+        if m.critic_provider != provider():
+            log.info("Critic runs on %s; strategy drafts on %s", s.critic_model, provider())
     subagents = [
-        *_layer_subagents(tools, quick, s.stalls),
+        *_layer_subagents(tools, m),
         {"name": "strategy",
-         "middleware": [StallRetryMiddleware("strategy", s.stalls)],
+         "middleware": m.middleware("strategy", m.main_backup),
          "description": "Drafts up to 5 advisory considerations from incident.json and dossier.json and "
                         "writes the brief for the version it is told. Can revise given critic issues.",
          "system_prompt": STRATEGY_PROMPT, "tools": [tools["submit_considerations"]],
@@ -849,23 +891,23 @@ def build_orchestrator(s: Session, model: Any = None, checkpointer: Any = None):
          # it needs (occupancy-hazards, size-up-format) with read_file.
          "skills": ["/skills/"]},
         {"name": "incident_mapper",
-         "middleware": [StallRetryMiddleware("incident_mapper", s.stalls)],
+         "middleware": m.middleware("incident_mapper", m.main_backup),
          "description": "Places what callers reported (occupants, fire, hazards, blocked routes) on the building "
                         "plan by ids, with objectives, and writes the incident overlay for the version it is told.",
          "system_prompt": MAPPER_PROMPT,
          "tools": [tools["get_transcript"], tools["get_plan_index"], tools["submit_overlay"]]},
         {"name": "critic",
-         "middleware": [StallRetryMiddleware("critic", s.stalls)],
+         "middleware": m.middleware("critic", m.critic_backup),
          "description": "Checks a brief file (advisory wording, evidence support; returns pass or revise) "
                         "and, when asked, the layer notes against the layer JSON.",
-         "system_prompt": CRITIC_PROMPT, "tools": [tools["submit_critique"]], "model": quick},
+         "system_prompt": CRITIC_PROMPT, "tools": [tools["submit_critique"]], "model": m.critic},
     ]
     return create_deep_agent(
-        model=model or _model(),
+        model=m.main,
         tools=[tools["confirm_building"], tools["write_copilot_question"], tools["publish_brief"]],
         system_prompt=ORCHESTRATOR_PROMPT,
         middleware=[TodoListMiddleware(),  # write_todos is opt-in in deepagents 0.7
-                    StallRetryMiddleware("orchestrator", s.stalls)],
+                    *m.middleware("orchestrator", m.main_backup)],
         subagents=subagents,
         # Only /workspace/ is persistent (MongoDB or disk); offloaded tool results etc. stay in ephemeral state.
         backend=CompositeBackend(default=StateBackend(), routes={

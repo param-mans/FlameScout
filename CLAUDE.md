@@ -47,7 +47,11 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
   `validate_overlay.py` + ours), version diff. The `incident_mapper` subagent submits; one `overlay_vN.json`
   per brief version. No LLM in this module.
 - `services/agents/stalls.py` - 12 s client timeout on every orchestrator / subagent model call, one retry,
-  each stall and retry logged with the agent name and counted in `RunResult`.
+  each stall and retry logged with the agent name and counted in `RunResult`. `FailoverMiddleware`: a failed
+  call goes once to the backup provider.
+- `services/agents/llm.py` - every chat model. `LLM_PROVIDER=gemini|openai`; `LLM_FALLBACK_PROVIDER` = failover
+  for agents, `structured()` and extraction; `CRITIC_PROVIDER` = the orchestrator's critic on a different model
+  than the drafter (backed by LLM_PROVIDER), recorded as `critic_model` in critique_vN.json. Both unset = one provider.
 - `services/agents/copilot.py` - also holds the orchestrator's dispatcher questions for life-safety
   contradictions (`copilot_questions.json` in the incident workspace; `copilot.json` is the API's status map).
 - `skills/<name>/SKILL.md` - deepagents skills the strategy subagent loads on demand (mounted read-only at

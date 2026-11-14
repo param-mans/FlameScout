@@ -48,6 +48,8 @@ def _offline_by_default(request, monkeypatch, tmp_path):
         monkeypatch.delenv("MONGODB_URI", raising=False)
         for k in ("GEMINI_API_KEY", "GEOCODER", "COSTAR_INDEX"):  # services/api tests: no geocoder, no kit
             monkeypatch.delenv(k, raising=False)
+        for k in ("OPENAI_API_KEY", "LLM_PROVIDER", "LLM_FALLBACK_PROVIDER", "CRITIC_PROVIDER"):
+            monkeypatch.delenv(k, raising=False)  # one provider, no failover, unless a test sets it
     utils.get_env_var.cache_clear()  # langsmith caches env lookups
     db.reset()
     mongo_store.reset()

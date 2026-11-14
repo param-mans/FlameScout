@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from langchain.agents.middleware import AgentMiddleware
+from langgraph.errors import GraphBubbleUp
 
 log = logging.getLogger(__name__)
 
@@ -29,12 +30,19 @@ class StallCounter:
     stalls: int = 0    # model calls that hit the timeout
     retries: int = 0   # retries made (after a stall or a transient API error)
     by_agent: dict[str, int] = field(default_factory=dict)  # agent name -> stalls
+    failovers: int = 0  # calls answered (or attempted) on the backup provider
+    failovers_by_agent: dict[str, int] = field(default_factory=dict)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def stalled(self, agent: str) -> None:
         with self._lock:
             self.stalls += 1
             self.by_agent[agent] = self.by_agent.get(agent, 0) + 1
+
+    def failed_over(self, agent: str) -> None:
+        with self._lock:
+            self.failovers += 1
+            self.failovers_by_agent[agent] = self.failovers_by_agent.get(agent, 0) + 1
 
     def retried(self) -> None:
         with self._lock:
@@ -95,4 +103,30 @@ class StallRetryMiddleware(AgentMiddleware):
                 log.error("Model retry: %s failed on the retry too (%s)", self.agent, str(second)[:80])
             raise
         log.warning("Model retry: %s answered on the retry in %.1f s", self.agent, time.perf_counter() - t1)
+        return response
+
+
+class FailoverMiddleware(AgentMiddleware):
+    """When a model call fails, ask the same question once on the other provider (LLM_FALLBACK_PROVIDER).
+
+    Sits inside StallRetryMiddleware, so a failed primary goes straight to the backup model instead of
+    waiting out a retry on the provider that just failed. Interrupts (GraphBubbleUp) pass through.
+    """
+
+    def __init__(self, agent: str, fallback, counter: StallCounter):
+        super().__init__()
+        self.agent, self.fallback, self.counter = agent, fallback, counter
+
+    def wrap_model_call(self, request, handler):
+        try:
+            return handler(request)
+        except GraphBubbleUp:
+            raise
+        except Exception as first:
+            self.counter.failed_over(self.agent)
+            log.warning("Model failover: %s failed (%s: %s); asking the backup model",
+                        self.agent, classify(first) or "error", str(first)[:80])
+        t0 = time.perf_counter()
+        response = handler(request.override(model=self.fallback))
+        log.warning("Model failover: %s answered on the backup model in %.1f s", self.agent, time.perf_counter() - t0)
         return response

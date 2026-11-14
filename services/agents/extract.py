@@ -150,15 +150,18 @@ class GeminiExtractor:
 
     def _get_chain(self):
         if self._chain is None:
-            from .llm import make_chat
+            from .llm import make_chat, make_fallback_chat
 
-            llm = make_chat(
-                "fast",
-                timeout=max(self.timeout_s, self.MIN_API_DEADLINE_S),
-                max_retries=1,  # = attempts; a network retry can't fit in the budget
-                thinking="low",  # Gemini: default thinking takes ~4.5 s per utterance
-            )
-            self._chain = llm.with_structured_output(ExtractionResult, include_raw=True)
+            kw = dict(timeout=max(self.timeout_s, self.MIN_API_DEADLINE_S),
+                      max_retries=1,  # = attempts; a network retry can't fit in the budget
+                      thinking="low")  # Gemini: default thinking takes ~4.5 s per utterance
+            chain = make_chat("fast", **kw).with_structured_output(ExtractionResult, include_raw=True)
+            # LLM_FALLBACK_PROVIDER: an API error (quota, outage) is retried on the other provider, still
+            # inside the same wall-clock cap. Keywords stay the last resort.
+            if (backup := make_fallback_chat("fast", **kw)) is not None:
+                chain = chain.with_fallbacks(
+                    [backup.with_structured_output(ExtractionResult, include_raw=True)])
+            self._chain = chain
         return self._chain
 
     def _ask(self, chain, text: str) -> list[ExtractedFact]:
