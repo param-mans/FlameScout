@@ -132,3 +132,90 @@ def test_xai_as_critic_and_failover(two_providers):
     m = _Models(StallCounter())
     assert type(m.critic).__name__ == type(m.main_backup).__name__ == "ChatXAI"
     assert m.critic.model_name == "grok-test" and type(m.main).__name__ == "ChatGoogleGenerativeAI"
+
+
+# ---------- circuit breaker ----------
+
+class Model:
+    def __init__(self, model):
+        self.model = model
+
+
+def test_permanent_errors():
+    assert llm.is_permanent(RuntimeError("Error calling model 'x' (Not Found): 404 Not Found."))
+    assert llm.is_permanent(RuntimeError("400 INVALID_ARGUMENT. API key not valid."))
+    assert not llm.is_permanent(RuntimeError("429 RESOURCE_EXHAUSTED. quota"))
+    assert not llm.is_permanent(TimeoutError())
+
+
+def test_breaker_skips_a_dead_model_then_retries_it(monkeypatch):
+    counter = StallCounter()
+    mw = FailoverMiddleware("strategy", Model("grok"), counter)
+    seen = []
+
+    def handler(req):
+        seen.append(req.model.model)
+        if req.model.model == "dne":
+            raise RuntimeError("404 Not Found")
+        return "ok"
+
+    class Req:
+        def __init__(self, model):
+            self.model = model
+
+        def override(self, model):
+            return Req(model)
+
+    dead = Model("dne")
+    assert mw.wrap_model_call(Req(dead), handler) == "ok" and seen == ["dne", "grok"]
+    assert mw.wrap_model_call(Req(dead), handler) == "ok" and seen == ["dne", "grok", "grok"]  # skipped
+    clock = [llm.time.monotonic() + llm.BREAKER_S + 1]
+    monkeypatch.setattr(llm.time, "monotonic", lambda: clock[0])
+    mw.wrap_model_call(Req(dead), handler)
+    assert seen[-2:] == ["dne", "grok"]  # tried again after BREAKER_S
+    assert counter.failovers == 3
+
+
+def test_quota_errors_do_not_open_the_breaker():
+    mw = FailoverMiddleware("critic", Model("grok"), StallCounter())
+    calls = []
+
+    def handler(req):
+        calls.append(req.model.model)
+        if req.model.model == "gemini":
+            raise RuntimeError("429 RESOURCE_EXHAUSTED. quota")
+        return "ok"
+
+    class Req:
+        def __init__(self, model):
+            self.model = model
+
+        def override(self, model):
+            return Req(model)
+
+    mw.wrap_model_call(Req(Model("gemini")), handler)
+    mw.wrap_model_call(Req(Model("gemini")), handler)
+    assert calls == ["gemini", "grok", "gemini", "grok"]
+
+
+def test_structured_skips_a_dead_primary(two_providers):
+    two_providers.setenv("LLM_FALLBACK_PROVIDER", "openai")
+    calls = []
+
+    class Chat:
+        def __init__(self, prov):
+            self.prov = prov
+
+        def with_structured_output(self, schema):
+            return self
+
+        def invoke(self, _messages):
+            calls.append(self.prov)
+            if self.prov == "gemini":
+                raise RuntimeError("404 Not Found")
+            return Answer(ok=True)
+
+    two_providers.setattr(llm, "chat_model", lambda kind, prov=None: Chat(prov))
+    assert llm.structured("fast", Answer, []) == Answer(ok=True)
+    assert llm.structured("fast", Answer, []) == Answer(ok=True)
+    assert calls == ["gemini", "openai", "openai"]  # one 404, no retries on it, then skipped

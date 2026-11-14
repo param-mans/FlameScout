@@ -37,6 +37,7 @@ def _offline_by_default(request, monkeypatch, tmp_path):
     from langsmith import utils
 
     from services.agents import cache, db, memory, mongo_store, overlay
+    from services.agents import llm as llm_mod
 
     monkeypatch.setattr(cache, "CACHE_ROOT", tmp_path / "prefetch_cache")
     monkeypatch.setattr(memory, "MEMORY_ROOT", tmp_path / "building_memory")  # no memory from real runs
@@ -51,6 +52,7 @@ def _offline_by_default(request, monkeypatch, tmp_path):
         for k in ("OPENAI_API_KEY", "XAI_API_KEY", "LLM_PROVIDER", "LLM_FALLBACK_PROVIDER", "CRITIC_PROVIDER"):
             monkeypatch.delenv(k, raising=False)  # one provider, no failover, unless a test sets it
     utils.get_env_var.cache_clear()  # langsmith caches env lookups
+    llm_mod.BREAKER.reset()  # no skipped models carried over from another test
     db.reset()
     mongo_store.reset()
     yield

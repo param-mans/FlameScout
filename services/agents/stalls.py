@@ -111,6 +111,8 @@ class FailoverMiddleware(AgentMiddleware):
 
     Sits inside StallRetryMiddleware, so a failed primary goes straight to the backup model instead of
     waiting out a retry on the provider that just failed. Interrupts (GraphBubbleUp) pass through.
+    A permanent failure (unknown model, bad key) opens llm.BREAKER: for BREAKER_S every agent skips
+    that model and asks the backup directly.
     """
 
     def __init__(self, agent: str, fallback, counter: StallCounter):
@@ -118,14 +120,24 @@ class FailoverMiddleware(AgentMiddleware):
         self.agent, self.fallback, self.counter = agent, fallback, counter
 
     def wrap_model_call(self, request, handler):
+        from .llm import BREAKER, is_permanent
+
+        primary = getattr(request, "model", None)
+        if BREAKER.is_open(primary):
+            self.counter.failed_over(self.agent)
+            log.info("Model failover: %s skips %s (breaker open)", self.agent, getattr(primary, "model", primary))
+            return handler(request.override(model=self.fallback))
         try:
             return handler(request)
         except GraphBubbleUp:
             raise
         except Exception as first:
             self.counter.failed_over(self.agent)
+            if is_permanent(first):
+                BREAKER.trip(primary, first)
             log.warning("Model failover: %s failed (%s: %s); asking the backup model",
-                        self.agent, classify(first) or "error", str(first)[:80])
+                        self.agent, classify(first) or ("permanent" if is_permanent(first) else "error"),
+                        str(first)[:80])
         t0 = time.perf_counter()
         response = handler(request.override(model=self.fallback))
         log.warning("Model failover: %s answered on the backup model in %.1f s", self.agent, time.perf_counter() - t0)

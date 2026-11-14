@@ -24,6 +24,9 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import threading
+import time
 from typing import Any, Literal, Optional, TypeVar
 
 from pydantic import BaseModel
@@ -35,6 +38,63 @@ Thinking = Literal["low", "none", "default"]
 
 
 PROVIDERS = ("gemini", "openai", "xai")
+
+# ---------- circuit breaker ----------
+
+BREAKER_S = 300.0  # how long a model that failed for good is skipped before it is tried again
+_PERMANENT = re.compile(r"\b(401|403|404)\b|NOT_FOUND|PERMISSION_DENIED|UNAUTHENTICATED|API key not valid|"
+                        r"invalid_api_key|model_not_found|does not exist", re.I)
+
+
+def is_permanent(error: BaseException) -> bool:
+    """A failure a retry will not fix: unknown model, bad or missing key, no access. Not quota (429)."""
+    seen: set[int] = set()
+    e: Optional[BaseException] = error
+    while e is not None and id(e) not in seen:
+        seen.add(id(e))
+        if _PERMANENT.search(f"{type(e).__name__} {e}"):
+            return True
+        e = e.__cause__ or e.__context__
+    return False
+
+
+def model_key(model: Any) -> Optional[str]:
+    """"<class>:<model id>" for a chat model or a "<provider>:<model id>" string; None if unknown."""
+    if isinstance(model, str):
+        return model or None
+    mid = getattr(model, "model", None) or getattr(model, "model_name", None)
+    return f"{type(model).__name__}:{str(mid).removeprefix('models/')}" if isinstance(mid, str) else None
+
+
+class Breaker:
+    """Process-wide list of models to skip for BREAKER_S after a permanent failure, so every later call
+    goes straight to the backup instead of paying the failing round trip (or a 12 s timeout) first."""
+
+    def __init__(self) -> None:
+        self._until: dict[str, float] = {}
+        self._lock = threading.Lock()
+
+    def is_open(self, model: Any) -> bool:
+        key = model_key(model)
+        with self._lock:
+            return key is not None and self._until.get(key, 0.0) > time.monotonic()
+
+    def trip(self, model: Any, error: BaseException) -> None:
+        if (key := model_key(model)) is None:
+            return
+        with self._lock:
+            fresh = self._until.get(key, 0.0) <= time.monotonic()
+            self._until[key] = time.monotonic() + BREAKER_S
+        if fresh:
+            log.error("Breaker open: %s failed for good (%s); using the backup for %.0f s",
+                      key, str(error)[:120], BREAKER_S)
+
+    def reset(self) -> None:
+        with self._lock:
+            self._until.clear()
+
+
+BREAKER = Breaker()
 
 
 def _check(var: str, p: str) -> str:
@@ -149,8 +209,13 @@ def chat_model(kind: Kind, prov: Optional[str] = None):
 
 def structured(kind: Kind, schema: type[T], messages: list,
                retries: int = 2) -> Optional[T]:
-    """Retries on LLM_PROVIDER, then (if set) the same number of tries on LLM_FALLBACK_PROVIDER."""
-    for prov in chat_providers(kind):
+    """Retries on LLM_PROVIDER, then (if set) the same number of tries on LLM_FALLBACK_PROVIDER.
+    A provider whose model failed for good (BREAKER) is skipped while a backup is left to try."""
+    provs = chat_providers(kind)
+    for i, prov in enumerate(provs):
+        key = f"{prov}:{model_name(kind, prov)}"
+        if BREAKER.is_open(key) and i < len(provs) - 1:
+            continue
         runnable = chat_model(kind, prov).with_structured_output(schema)
         for attempt in range(retries + 1):
             try:
@@ -158,4 +223,7 @@ def structured(kind: Kind, schema: type[T], messages: list,
                 return out if isinstance(out, schema) else schema.model_validate(out)
             except Exception as e:  # noqa: BLE001 - schema errors and transport errors both retry
                 log.warning("%s %s structured call failed (attempt %d): %s", prov, kind, attempt + 1, e)
+                if is_permanent(e):
+                    BREAKER.trip(key, e)
+                    break
     return None
