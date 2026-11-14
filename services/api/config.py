@@ -17,6 +17,8 @@ class Settings:
     workspace: Path = field(default_factory=lambda: Path(os.getenv("WORKSPACE_DIR", ROOT / "workspace")))
     fixtures: Path = field(default_factory=lambda: Path(os.getenv("FIXTURES_DIR", ROOT / "data" / "fixtures")))
     tiger_url: str | None = field(default_factory=lambda: os.getenv("TIGER_DATABASE_URL") or None)
+    # orchestrator: the deep agent writes the briefs, rules pipeline as fallback. rules: rules only.
+    pipeline: str = field(default_factory=lambda: os.getenv("PIPELINE", "orchestrator").lower())
     cors_origins: list[str] = field(default_factory=lambda: [
         o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()])
 

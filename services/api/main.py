@@ -55,7 +55,12 @@ class SimulateIn(BaseModel):
 
 
 class ConfirmIn(BaseModel):
-    building_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    # null = "none of these": the orchestrator stops, no brief is written
+    building_id: Optional[str] = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+
+
+class ReviewIn(BaseModel):
+    drop: list[str] = []   # consideration ids to leave out; empty = approve as is
 
 
 class ResolveIn(BaseModel):
@@ -65,7 +70,7 @@ class ResolveIn(BaseModel):
 
 class FeedbackIn(BaseModel):
     fact_key: str = Field(min_length=1, max_length=120)
-    verdict: Literal["correct", "wrong", "outdated"]
+    verdict: Literal["wrong", "outdated", "confirmed", "correct"]   # memory.VERDICTS
     note: Optional[str] = Field(default=None, max_length=1000)
 
 
@@ -80,6 +85,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         yield
         for t in tasks:
             t.cancel()
+        svc.shutdown()
 
     app = FastAPI(title="FlameScout API", version="0.1.0", lifespan=lifespan,
                   description="Advisory size-up briefs from simulated dispatch calls. Simulation only.")
@@ -105,7 +111,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     # ---------------- health / admin ----------------
     @app.get("/health")
     def health() -> dict:
-        return {"ok": True, "data_mode": svc.data_mode,
+        return {"ok": True, "data_mode": svc.data_mode, "pipeline": settings.pipeline,
                 "extractor": "gemini" if isinstance(get_extractor(), GeminiExtractor) else "keyword",
                 "gemini": {"fast": gemini_configured("fast"), "vision": gemini_configured("vision")},
                 "tiger": svc.metrics.tiger_enabled, "geocoder": svc.providers.geocoder is not None,
@@ -195,6 +201,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             return {"incident_id": incident_id, "status": "streaming", "segments": len(segs),
                     "ws": f"/ws/incidents/{incident_id}"}
         await _replay(body, incident_id, segs, speed=float("inf"))
+        await asyncio.to_thread(svc.wait, incident_id)   # briefs are written in the background
         rec = svc.get_incident(incident_id)
         return {"incident_id": incident_id, "status": "done", "segments": len(segs),
                 "incident": rec.model_dump(mode="json")}
@@ -204,10 +211,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     def get_candidates(incident_id: str, refresh: bool = False) -> list[LocationCandidate]:
         return svc.locate(incident_id) if refresh else svc.candidates(incident_id)
 
-    @app.post("/api/incidents/{incident_id}/confirm-location", response_model=Brief)
-    def confirm_location(incident_id: str, body: ConfirmIn, r: str = Depends(role)) -> Brief:
-        brief = svc.confirm_location(incident_id, body.building_id)
+    @app.post("/api/incidents/{incident_id}/confirm-location", status_code=202)
+    def confirm_location(incident_id: str, body: ConfirmIn, r: str = Depends(role)) -> dict:
+        """Returns at once. The brief arrives as `brief.updated` on the WebSocket (orchestrator: ~35-40 s),
+        with `status` "briefed" or "awaiting_approval" (then POST /review)."""
+        out = svc.confirm_location(incident_id, body.building_id)
         svc.audit(incident_id, r, "confirm_location", {"building_id": body.building_id})
+        return out
+
+    @app.post("/api/incidents/{incident_id}/review", response_model=Brief)
+    def review(incident_id: str, body: ReviewIn = ReviewIn(), r: str = Depends(role)) -> Brief:
+        """Publish a brief held for low-confidence considerations, optionally without some of them."""
+        brief = svc.review(incident_id, body.drop)
+        svc.audit(incident_id, r, "review_brief", {"drop": body.drop, "version": brief.version})
         return brief
 
     @app.post("/api/incidents/{incident_id}/contradictions/resolve", response_model=IncidentRecord)
@@ -232,8 +248,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return out
 
     @app.get("/api/incidents/{incident_id}/briefs/latest", response_model=Brief)
-    def latest_brief(incident_id: str, r: str = Depends(role)) -> Brief:
-        b = svc.brief(incident_id)
+    def latest_brief(incident_id: str, published_only: bool = False, r: str = Depends(role)) -> Brief:
+        """published_only=true for the crew view: skips a draft awaiting the dispatcher's review."""
+        b = svc.brief(incident_id, published_only=published_only)
         svc.audit(incident_id, r, "view_brief", {"version": b.version})
         return b
 

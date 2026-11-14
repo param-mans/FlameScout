@@ -9,10 +9,20 @@ from .conftest import FIXTURES, load_script
 
 @pytest.fixture
 def client(tmp_path):
+    """The rules pipeline (PIPELINE=rules), on the API's own fixture buildings."""
     app = create_app(Settings(data_mode="fixture", workspace=tmp_path / "ws", fixtures=FIXTURES,
-                              tiger_url=None, cors_origins=["*"]))
+                              tiger_url=None, cors_origins=["*"], pipeline="rules"))
     with TestClient(app) as c:
         yield c
+
+
+def confirm(client, iid: str, building_id) -> dict:
+    """Confirm, wait for the background brief job, return the latest brief (or the error body)."""
+    r = client.post(f"/api/incidents/{iid}/confirm-location", json={"building_id": building_id})
+    if r.status_code != 202:
+        return {"status_code": r.status_code, **r.json()}
+    client.app.state.svc.wait(iid)
+    return client.get(f"/api/incidents/{iid}/briefs/latest").json()
 
 
 def test_health(client):
@@ -41,10 +51,11 @@ def test_s2_end_to_end(client):
     cands = client.get("/api/incidents/inc_s2/candidates").json()
     assert cands[0]["building_id"] == "wilshire_tower" and cands[0]["scan_available"]
 
-    b1 = client.post("/api/incidents/inc_s2/confirm-location", json={"building_id": "wilshire_tower"}).json()
-    assert b1["version"] == 1 and b1["location_confirmed"]
+    b1 = confirm(client, "inc_s2", "wilshire_tower")
+    assert b1["version"] == 1 and b1["location_confirmed"] and b1["published"]
     for s in segs[4:]:
         client.post("/api/incidents/inc_s2/segments", json=s.model_dump())
+    client.app.state.svc.wait("inc_s2")
     briefs = client.get("/api/incidents/inc_s2/briefs").json()
     latest = briefs[-1]
     assert latest["version"] > 1 and latest["size_up"]["incident.floor"]["status"] == "contradicted"
@@ -57,6 +68,7 @@ def test_s2_end_to_end(client):
 
     # dispatcher resolves -> new brief without the contradiction
     client.post("/api/incidents/inc_s2/contradictions/resolve", json={"key": "incident.floor", "value": 4})
+    client.app.state.svc.wait("inc_s2")
     last = client.get("/api/incidents/inc_s2/briefs/latest").json()
     assert last["size_up"]["incident.floor"]["value"] == 4
     assert not any(g.startswith("Unresolved") for g in last["gaps"])
@@ -71,9 +83,9 @@ def test_s3_requires_confirmation(client):
     cands = client.get("/api/incidents/inc_s3/candidates").json()
     assert len(cands) >= 2
     assert client.get("/api/incidents/inc_s3/briefs").json() == []
-    assert client.post("/api/incidents/inc_s3/confirm-location", json={"building_id": "nope"}).status_code == 404
-    b1 = client.post("/api/incidents/inc_s3/confirm-location", json={"building_id": "harbor_plaza_pine"}).json()
-    b2 = client.post("/api/incidents/inc_s3/confirm-location", json={"building_id": "harbor_plaza_ocean"}).json()
+    assert confirm(client, "inc_s3", "nope")["status_code"] == 404
+    b1 = confirm(client, "inc_s3", "harbor_plaza_pine")
+    b2 = confirm(client, "inc_s3", "harbor_plaza_ocean")
     assert b2["version"] == b1["version"] + 1
     assert b2["changes_since_last"][0].startswith("~ building: harbor_plaza_pine -> harbor_plaza_ocean")
 
@@ -131,10 +143,11 @@ def test_websocket_streams_events(client):
 
 
 def test_restart_replays_from_workspace(tmp_path):
-    s = Settings(data_mode="fixture", workspace=tmp_path / "ws", fixtures=FIXTURES, tiger_url=None)
+    s = Settings(data_mode="fixture", workspace=tmp_path / "ws", fixtures=FIXTURES, tiger_url=None, pipeline="rules")
     with TestClient(create_app(s)) as c:
         c.post("/api/calls/simulate", json={"script_id": "S2", "incident_id": "inc_r"})
         c.post("/api/incidents/inc_r/contradictions/resolve", json={"key": "incident.floor", "value": 3})
+        c.app.state.svc.wait("inc_r")
         before = c.get("/api/incidents/inc_r").json()
     with TestClient(create_app(s)) as c:   # fresh process state
         after = c.get("/api/incidents/inc_r").json()

@@ -244,6 +244,7 @@ def build_brief(incident: IncidentRecord, dossier: BuildingDossier,
     brief = Brief(
         brief_id=f"{incident.incident_id}_v{version}",
         incident_id=incident.incident_id,
+        building_id=dossier.building_id,
         version=version,
         location_confirmed=incident.confirmed_building_id == dossier.building_id,
         freshness=_freshness(dossier, prefetched_at),

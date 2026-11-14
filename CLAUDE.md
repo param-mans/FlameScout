@@ -67,8 +67,14 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
   plain-function pipeline used by `services/api/` (rules engine R-01..R-09 in `config/rules.yaml`, provider
   adapters with live fallback, geocode, vision). `tools/costar_kit.py` normalizes the CoStar hackathon kit
   (3,339 Houston/LA properties); with `COSTAR_INDEX` set it serves CoStar in every mode.
-- `services/api/` - FastAPI app (IncidentService, JSON workspace store, event bus, metrics). Still on the
-  rules pipeline above, not yet on the orchestrator / MongoDB workspace / `db.py`.
+- `services/api/` - FastAPI app (IncidentService, event bus, metrics). `PIPELINE=orchestrator` (default):
+  briefs come from the orchestrator (start on candidates, resume on confirm, update on new facts,
+  `POST /api/incidents/{id}/review`); an incident falls back to the rules pipeline above when its building
+  is not an orchestrator candidate or an orchestrator call raises. `PIPELINE=rules`: rules only.
+  Confirm-location returns 202; briefs arrive as `brief.updated` (`pipeline`, `status`, `published`,
+  `needs_review`, `fallback_reason`). Brief work runs on one serial worker per incident.
+  Briefs from both pipelines live in the orchestrator workspace; the API's own files in `workspace/_api/`.
+  Feedback goes through `memory.feedback()` only.
 
 ## Non-negotiable rules
 - Advisory only: considerations say "Consider ...", never orders.
