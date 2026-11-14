@@ -13,7 +13,7 @@ FIXTURES = ROOT / "data" / "fixtures"
 def _offline(monkeypatch):
     """Tests never call Gemini, geocoders or Tiger, even if .env has keys."""
     monkeypatch.setenv("EXTRACTOR", "keyword")
-    for k in ("GEMINI_API_KEY", "TIGER_DATABASE_URL", "GEOCODER"):
+    for k in ("GEMINI_API_KEY", "TIGER_DATABASE_URL", "GEOCODER", "COSTAR_INDEX"):
         monkeypatch.delenv(k, raising=False)
 
 

@@ -20,10 +20,18 @@ detections get one Gemini vision pass (services/agents/tools/vision.py).
 
 Optional keys absent from a record stay absent: the dossier reports them as gaps.
 
-LIVE ADAPTERS: CoStar / Matterport / Vexcel field names and endpoints are not
-confirmed yet (PRD Section 20, Phase 0 smoke test). Until they are, the live
-adapters raise ProviderUnavailable naming what is missing and the
-FallbackProvider serves fixtures. Do NOT fill them in from memory.
+COSTAR KIT: CoStar's real data arrives as a static kit, not an API. When
+COSTAR_INDEX points at the index built by scripts/build_costar_index.py
+(normalization in costar_kit.py), CoStar is served from it in EVERY mode, and
+the synthetic fixture buildings still resolve alongside (scripted calls S1-S4).
+CoStar adds keys beyond the list above: height_ft, year_renovated, sprinkler_type,
+units, num_buildings, elevators, walkup, construction_status, photo_uri,
+as_of_basis, tenants[].floor, tenants_total, matterport_model_ids.
+
+LIVE ADAPTERS: Matterport / Vexcel field names and endpoints are not confirmed
+yet (PRD Section 20, Phase 0 smoke test). Until they are, the live adapters
+raise ProviderUnavailable naming what is missing and the FallbackProvider
+serves fixtures. Do NOT fill them in from memory.
 """
 from __future__ import annotations
 
@@ -118,6 +126,57 @@ class FixtureCoStarProvider:
         p.setdefault("record_uri", self.fx.uri(property_id, "costar"))
         p.setdefault("tenants", [])
         return p
+
+
+class KitCoStarProvider:
+    """Real CoStar records from the normalized kit index (one JSON record per line)."""
+
+    MAX_RESULTS = 10
+
+    def __init__(self, index_path: Path):
+        self.path = index_path
+        self._by_id: Optional[dict[str, dict]] = None
+
+    def _records(self) -> dict[str, dict]:
+        if self._by_id is None:
+            with self.path.open() as f:
+                recs = (json.loads(line) for line in f if line.strip())
+                self._by_id = {r["property_id"]: r for r in recs}
+        return self._by_id
+
+    def has(self, property_id: str) -> bool:
+        return property_id in self._records()
+
+    def search_property(self, query: str) -> list[dict]:
+        out = []
+        for p in self._records().values():
+            score = match_score(query, p.get("name", ""), p.get("address", ""), *p.get("aliases", []))
+            if score >= 0.5:
+                out.append({"property_id": p["property_id"], "name": p.get("name"), "address": p.get("address"),
+                            "lat": p.get("lat"), "lon": p.get("lon"), "score": round(score, 3)})
+        return sorted(out, key=lambda r: -r["score"])[:self.MAX_RESULTS]
+
+    def get_property(self, property_id: str) -> dict:
+        p = self._records().get(property_id)
+        if p is None:
+            raise KeyError(property_id)
+        return {**p, "tenants": list(p.get("tenants", []))}
+
+
+class CombinedCoStarProvider:
+    """Kit records first; synthetic fixture buildings still resolve (demo call scripts)."""
+
+    def __init__(self, kit: KitCoStarProvider, fixture: FixtureCoStarProvider):
+        self.kit, self.fixture = kit, fixture
+
+    def search_property(self, query: str) -> list[dict]:
+        hits = self.kit.search_property(query) + self.fixture.search_property(query)
+        return sorted(hits, key=lambda r: -r["score"])
+
+    def get_property(self, property_id: str) -> dict:
+        if self.kit.has(property_id):
+            return self.kit.get_property(property_id)
+        return self.fixture.get_property(property_id)
 
 
 class FixtureMatterportProvider:
@@ -235,16 +294,32 @@ class Providers:
     misses: list[str] = field(default_factory=list)   # live calls that fell back
 
 
+def costar_kit(env: dict[str, str], root: Optional[Path] = None) -> Optional[KitCoStarProvider]:
+    """The kit index named by COSTAR_INDEX (relative paths resolve against the repo root)."""
+    raw = env.get("COSTAR_INDEX")
+    if not raw:
+        return None
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        p = (root or Path(__file__).resolve().parents[3]) / p
+    if not p.exists():
+        log.warning("COSTAR_INDEX=%s not found - run scripts/build_costar_index.py; using fixtures", raw)
+        return None
+    return KitCoStarProvider(p)
+
+
 def get_providers(mode: str, fixtures_root: Path, env: dict[str, str]) -> Providers:
     fx = (FixtureCoStarProvider(fixtures_root), FixtureMatterportProvider(fixtures_root),
           FixtureVexcelProvider(fixtures_root))
+    kit = costar_kit(env)
+    costar: CoStarProvider = CombinedCoStarProvider(kit, fx[0]) if kit else fx[0]
     if mode != "live":
-        return Providers("fixture", *fx, geocoder=None)
+        return Providers("fixture", costar, fx[1], fx[2], geocoder=None)
     misses: list[str] = []
     rec = misses.append
     return Providers(
         "live",
-        FallbackProvider("costar", LiveCoStarProvider(env.get("COSTAR_API_KEY")), fx[0], rec),
+        costar if kit else FallbackProvider("costar", LiveCoStarProvider(env.get("COSTAR_API_KEY")), fx[0], rec),
         FallbackProvider("matterport", LiveMatterportProvider(env.get("MATTERPORT_API_KEY")), fx[1], rec),
         FallbackProvider("vexcel", LiveVexcelProvider(env.get("VEXCEL_API_KEY")), fx[2], rec),
         geocoder=get_geocoder(env), misses=misses)

@@ -22,10 +22,10 @@ hazard_confidence: 0.6
 hazard_map:
   - id: cooking
     label: Cooking / grease fire potential
-    match: [restaurant, commercial kitchen, cafe, bakery, food hall]
+    match: [restaurant, commercial kitchen, cafe, bakery, food hall, fast food, food service, food processing]
   - id: flammable_liquids
     label: Flammable liquids
-    match: [auto repair, auto service, garage, body shop, gas station]
+    match: [auto repair, auto service, garage, body shop, gas station, service station, truck stop, refinery]
   - id: lithium_ion
     label: Lithium-ion batteries
     match: [e-bike, ebike, battery, electronics, scooter, phone repair]
@@ -40,10 +40,11 @@ hazard_map:
     match: [dry clean, laboratory, print shop]
   - id: high_occupant_load
     label: High occupant load
-    match: [gym, fitness, assembly, church, theater, theatre, nightclub, event]
+    match: [gym, fitness, health club, assembly, church, religious, theater, theatre, nightclub, event, casino, bowling]
   - id: sleeping_occupants
     label: Sleeping occupants above
-    match: [residential over commercial, mixed-use residential, apartments, lofts, hotel]
+    match: [residential over commercial, mixed-use residential, apartments, lofts, hotel, multifamily,
+            hospitality, assisted living, nursing, senior housing, retirement, hospital, correctional]
 
 # R-05 egress inventory
 min_stairwells: 2
@@ -54,13 +55,18 @@ staleness_days:
   scan: {fresh: 365, aging: 730}      # < fresh -> fresh, < aging -> aging, else stale
   costar: {fresh: 180, aging: 365}
 
-# R-07 occupant-load estimate (P2): square feet per person by use keyword
+# R-07 occupant-load estimate (P2): square feet per person by use keyword.
+# First key found in the use text wins, so specific uses come before general ones.
 occupant_load_sqft_per_person:
+  restaurant: 15
+  fast food: 15
   office: 150
   retail: 60
-  restaurant: 15
   residential: 200
+  multifamily: 200
+  hotel: 200
   warehouse: 500
+  industrial: 500
 
 # R-09 confidence aggregation
 reported_confidence_cap: 0.6

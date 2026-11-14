@@ -41,7 +41,19 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 # ---------- R-01 height estimate ----------
-def r01_height(stories: Optional[Fact], cfg: dict) -> Optional[tuple[Fact, Evidence]]:
+FT_TO_M = 0.3048
+
+
+def r01_height(stories: Optional[Fact], cfg: dict,
+               height_ft: Optional[Fact] = None) -> Optional[tuple[Fact, Evidence]]:
+    """Recorded height (CoStar buildingHeightInFeet) wins; else stories x floor height."""
+    if height_ft is not None and isinstance(height_ft.value, (int, float)) and height_ft.value > 0:
+        h = round(float(height_ft.value) * FT_TO_M, 1)
+        ev = rule_evidence("R-01", height_ft.evidence_ids,
+                           {"formula": f"{height_ft.value} ft x {FT_TO_M} m/ft (recorded height)"})
+        return Fact(key="building.height_est_m", value=h, status="verified",
+                    confidence=height_ft.confidence, evidence_ids=[*height_ft.evidence_ids, ev.id],
+                    as_of=height_ft.as_of), ev
     if stories is None or not isinstance(stories.value, (int, float)) or stories.value <= 0:
         return None
     h = round(float(stories.value) * cfg["floor_height_m"], 1)

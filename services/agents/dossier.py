@@ -27,6 +27,11 @@ COSTAR_FIELDS = {
     "name": "building.name", "use": "building.use", "stories": "building.stories",
     "year_built": "building.year_built", "area_sqft": "building.area_sqft",
     "construction": "building.construction", "sprinklered": "building.sprinklered",
+    # CoStar kit extras (absent on synthetic fixtures)
+    "height_ft": "building.height_ft", "year_renovated": "building.year_renovated",
+    "sprinkler_type": "building.sprinkler_type", "units": "building.units",
+    "num_buildings": "building.num_buildings", "elevators": "building.elevators",
+    "walkup": "building.walkup", "construction_status": "building.construction_status",
 }
 MARKER_KINDS = {"entry", "stair", "exit", "elevator", "key_box", "roof_access", "fdc", "standpipe", "other"}
 
@@ -48,7 +53,9 @@ def build_dossier(building_id: str, providers: Providers, cfg: dict,
     as_of = _dt(prop.get("as_of"))
     ev_costar = Evidence(id=f"ev_costar_{building_id}", kind="costar_record", source="costar",
                          uri=prop.get("record_uri"), captured_at=as_of,
-                         locator={"property_id": prop.get("property_id", building_id)})
+                         locator={"property_id": prop.get("property_id", building_id),
+                                  **({"as_of_basis": prop["as_of_basis"]} if prop.get("as_of_basis") else {}),
+                                  **({"photo_uri": prop["photo_uri"]} if prop.get("photo_uri") else {})})
     evidence: dict[str, Evidence] = {ev_costar.id: ev_costar}
     rc = cfg["record_confidence"]
     facts: dict[str, Fact] = {
@@ -56,7 +63,8 @@ def build_dossier(building_id: str, providers: Providers, cfg: dict,
                   evidence_ids=[ev_costar.id], as_of=as_of)
         for f, key in COSTAR_FIELDS.items() if prop.get(f) is not None
     }
-    tenants = [Fact(key="tenant", value={"name": t.get("name"), "category": t.get("category")},
+    tenants = [Fact(key="tenant", value={"name": t.get("name"), "category": t.get("category"),
+                                         **({"floor": t["floor"]} if t.get("floor") is not None else {})},
                     status="verified", confidence=rc, evidence_ids=[ev_costar.id], as_of=as_of)
                for t in prop.get("tenants", []) if t.get("name")]
     progress("costar", {"state": "done", "fields": sorted(facts)})
@@ -74,7 +82,7 @@ def build_dossier(building_id: str, providers: Providers, cfg: dict,
     scan_available = model is not None
 
     # ---- deterministic rules ----
-    if height := rules.r01_height(facts.get("building.stories"), cfg):
+    if height := rules.r01_height(facts.get("building.stories"), cfg, facts.get("building.height_ft")):
         facts[height[0].key], evidence[height[1].id] = height
     reach, ev = rules.r02_reach(facts.get("building.height_est_m"), cfg)
     facts[reach.key], evidence[ev.id] = reach, ev

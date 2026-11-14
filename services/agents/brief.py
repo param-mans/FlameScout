@@ -15,10 +15,12 @@ from flamescout_schemas import (Brief, BuildingDossier, Consideration, CrewFeedb
 from . import critic
 from .tools import rules
 
-BUILDING_KEYS = ["building.name", "building.use", "building.stories", "building.height_est_m",
-                 "building.year_built", "building.area_sqft", "building.construction",
-                 "building.sprinklered", "building.occupant_load_est", "building.aerial_reach",
-                 "egress.inventory"]
+BUILDING_KEYS = ["building.name", "building.use", "building.construction_status",
+                 "building.stories", "building.height_est_m", "building.num_buildings",
+                 "building.units", "building.year_built", "building.year_renovated",
+                 "building.area_sqft", "building.construction", "building.sprinklered",
+                 "building.sprinkler_type", "building.elevators", "building.walkup",
+                 "building.occupant_load_est", "building.aerial_reach", "egress.inventory"]
 INCIDENT_KEYS = ["incident.floor", "incident.visible", "people.reported", "people.trapped",
                  "alarm.sounding", "access.notes", "hazards.reported"]
 EXPECTED_BUILDING = {"building.use": "building use", "building.stories": "stories",

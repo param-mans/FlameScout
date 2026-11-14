@@ -11,6 +11,8 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - Export JSON Schema for the frontend: `python scripts/export_schemas.py`
 - API: `uvicorn services.api.main:app --reload --port 8000` (docs at /docs, WS at /ws/incidents/{id})
 - Tiger Data schema (once): `python scripts/init_tiger.py`
+- Real CoStar data (once): `python scripts/build_costar_index.py ~/Downloads/costar-hackathon-kit`
+  -> `data/costar/properties.jsonl` (gitignored, licensed); set `COSTAR_INDEX` in `.env`.
 
 ## Layout
 - `packages/schemas/flamescout_schemas/` - Pydantic models. The contract between agents, API and UI.
@@ -19,6 +21,8 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - `services/agents/fusion.py` - deterministic merge, contradictions, open questions. No LLM.
 - `services/agents/{locator,dossier,brief,critic,copilot}.py` - plain-function pipeline stages.
 - `services/agents/tools/` - provider adapters (+ fixtures, live fallback), geocode, rules (R-01..R-09), vision.
+  `costar_kit.py` normalizes the CoStar hackathon kit (3,339 Houston/LA properties); with
+  `COSTAR_INDEX` set it serves CoStar in every mode, and the synthetic fixture buildings still resolve.
 - `services/api/` - FastAPI app, IncidentService, JSON workspace store, event bus, metrics/Tiger.
 - `config/rules.yaml` - rule thresholds (placeholders, not operational standards).
 - `data/fixtures/calls/` - scripted calls S1-S4. `data/fixtures/<building_id>/` - dossier fixtures.

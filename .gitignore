@@ -7,3 +7,4 @@ workspace/
 node_modules/
 .next/
 .DS_Store
+data/costar/
