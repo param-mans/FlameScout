@@ -891,8 +891,8 @@ function zoomPan2D() {
 
 // ---------------------------------------------------------------- vistas oblicuas (Vexcel) bajo el plano 2D
 // Solo las diagonales N/E/S/W (sin la vista cenital). Origen, por orden:
-// 1) API: /api/house-viewer/vexcel/<sample> (mismo origen; Vite lo reenvia al servidor de imagenes en :8000, que guarda
-//    la clave de Vexcel y solo devuelve fecha de captura y copyright); 2) copia local en local-imagery/<sample>/ (fuera de git).
+// 1) API: /api/house-viewer/vexcel/<sample> (mismo origen; la sirve el propio servidor de Vite con el plugin
+//    apps/web/vexcel-imagery.mjs, que guarda la clave de Vexcel); 2) copia local en local-imagery/<sample>/ (fuera de git).
 const OBL = { id: null, meta: null, base: '', dir: 'north', estado: '', error: '' }
 const OBL_DIRS = [['north', 'N'], ['east', 'E'], ['south', 'S'], ['west', 'W']]
 const OBL_ARCHIVO = /^oblique-(north|east|south|west)\.jpg$/
@@ -922,7 +922,7 @@ function pintarOblicuas() {
   const el = $('oblicuas-body'); if (!el) return
   if (OBL.estado === 'cargando') { el.innerHTML = '<div class="obl-vacio">Loading oblique views…<br><span class="hint">The first time for a house can take about 10 s.</span></div>'; return }
   if (OBL.estado !== 'ok') {
-    const ayuda = /not reachable/.test(OBL.error) ? 'Start the imagery server: python scripts/imagery_server.py (VEXCEL_API_KEY in .env).' : OBL.error
+    const ayuda = /not reachable/.test(OBL.error) ? 'Oblique views are served by the app server (npm run dev or npm run preview).' : OBL.error
     el.innerHTML = `<div class="obl-vacio">No oblique imagery for this sample.<br><span class="hint">${esc(ayuda)}</span></div>`; return
   }
   const m = OBL.meta, v = m.views[OBL.dir], url = OBL.base + v.file

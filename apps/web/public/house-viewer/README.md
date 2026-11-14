@@ -67,11 +67,12 @@ ids inside `plan` are short ids (`f1`, `r1`, `w1`, `o1`).
 Under the 2D plan the viewer shows the Vexcel oblique aerial views (N / E / S / W = the direction the camera
 faces; the straight-down view is left out on purpose). Sources, in order:
 
-1. **API**: `GET /api/house-viewer/vexcel/<sample>` and `.../<sample>/oblique-<dir>.jpg`, same origin. In
-   `npm run dev`, Vite forwards `/api` to `localhost:8000`, where `python scripts/imagery_server.py` runs.
-   The server takes the coordinates from `samples/index.json` and the key from `VEXCEL_API_KEY` in the
-   repo's `.env`. It calls Vexcel with the key only in the `X-API-KEY` header and caches the images in
-   `data/cache/vexcel/<sample>/` (gitignored). The key never reaches the browser.
+1. **API**: `GET /api/house-viewer/vexcel/<sample>` and `.../<sample>/oblique-<dir>.jpg`, same origin, served
+   by the Vite server itself through the plugin `apps/web/vexcel-imagery.mjs` (`npm run dev` and
+   `npm run preview`; no extra process). It takes the coordinates from `samples/index.json` and the key from
+   `VEXCEL_API_KEY` in the repo's `.env`. It calls Vexcel with the key only in the `X-API-KEY` header and
+   caches the images in `data/cache/vexcel/<sample>/` (gitignored). The key never reaches the browser. A static
+   deploy without the Vite server has no imagery until the backend serves this route.
 2. **Local copy**: `local-imagery/<sample>/` (`oblique-<dir>.jpg` + `meta.json`), kept out of git by its own
    `.gitignore`.
 
