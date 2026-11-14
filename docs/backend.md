@@ -47,7 +47,8 @@ Header `X-Role: dispatcher|officer|admin` (demo role flag, recorded in the audit
 First message is an `incident.updated` snapshot (`"snapshot": true`). Then `Event` envelopes
 `{type, incident_id, ts, trace_id, payload}` with types `transcript.segment`, `incident.updated`,
 `contradiction.raised`, `location.candidates`, `dossier.progress`, `brief.updated` (full brief in
-payload), `copilot.suggestion`, `metric.tick`.
+payload), `copilot.suggestion`, `metric.tick`, `overlay.updated` (`{version, overlay}` right after
+`brief.updated`, only when `overlay_vN.json` exists for that version; docs/INCIDENT_OVERLAY_SPEC.md).
 
 ## Third-party integrations
 

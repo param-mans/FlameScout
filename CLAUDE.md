@@ -82,7 +82,8 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
   `POST /api/incidents/{id}/review`); an incident falls back to the rules pipeline above when its building
   is not an orchestrator candidate or an orchestrator call raises. `PIPELINE=rules`: rules only.
   Confirm-location returns 202; briefs arrive as `brief.updated` (`pipeline`, `status`, `published`,
-  `needs_review`, `fallback_reason`). Brief work runs on one serial worker per incident.
+  `needs_review`, `fallback_reason`), each followed by `overlay.updated` (`version`, `overlay`) when the
+  producer wrote `overlay_vN.json` (docs/INCIDENT_OVERLAY_SPEC.md). Brief work runs on one serial worker per incident.
   Briefs from both pipelines live in the orchestrator workspace; the API's own files in `workspace/_api/`.
   Feedback goes through `memory.feedback()` only.
 

@@ -403,6 +403,7 @@ class IncidentService:
             self.metrics.log_brief(brief)
         self._emit(incident_id, "brief.updated", self._brief_event(
             brief, "orchestrator", r.status, r.needs_review, r.fallback_reason, r.trace_run_id))
+        self._emit_overlay(incident_id, brief.version)
         self._emit(incident_id, "incident.updated", {"incident": rec.model_dump(mode="json")})
         if brief.version == 1:
             row = self.metrics.record(incident_id, "time_to_brief", _ms(t0), cached_dossier=bool(
@@ -417,6 +418,27 @@ class IncidentService:
                 "needs_review": list(needs_review), "fallback_reason": fallback_reason,
                 "pipeline": pipeline, "trace_run_id": trace_run_id,
                 "changes_since_last": brief.changes_since_last, "brief": brief.model_dump(mode="json")}
+
+    def _emit_overlay(self, incident_id: str, version: int) -> None:
+        """overlay.updated right after brief.updated (docs/INCIDENT_OVERLAY_SPEC.md, Transport).
+        The producer writes overlay_vN.json to the incident workspace and validates it against the plan
+        index; this only relays it. No file for this version, or one that is not this incident's
+        version N: nothing is sent, so the viewer keeps the previous overlay."""
+        text = self._agents_ws(incident_id).read_or_none(f"overlay_v{version}.json")
+        if text is None:
+            log.info("no overlay_v%d.json for %s: overlay.updated not sent", version, incident_id)
+            return
+        try:
+            overlay = json.loads(text)
+        except json.JSONDecodeError as e:
+            log.warning("overlay_v%d.json of %s is not JSON (%s): not sent", version, incident_id, e)
+            return
+        meta = overlay if isinstance(overlay, dict) else {}
+        if (meta.get("incident_id"), meta.get("version")) != (incident_id, version):
+            log.warning("overlay_v%d.json of %s does not match the brief (incident %r, version %r): not sent",
+                        version, incident_id, meta.get("incident_id"), meta.get("version"))
+            return
+        self._emit(incident_id, "overlay.updated", {"version": version, "overlay": overlay})
 
     def _drain_updates(self, incident_id: str) -> None:
         """update_incident with every change note queued so far; again if more arrived meanwhile."""
@@ -542,6 +564,7 @@ class IncidentService:
         reason = (self.ws.read_json(self._dir(incident_id) / "pipeline.json").get("reason")
                   if (self._dir(incident_id) / "pipeline.json").exists() else None)
         self._emit(incident_id, "brief.updated", self._brief_event(brief, "rules", "briefed", fallback_reason=reason))
+        self._emit_overlay(incident_id, brief.version)
         return brief
 
     # ---------------- briefs (one store: the orchestrator workspace) ----------------

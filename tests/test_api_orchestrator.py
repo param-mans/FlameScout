@@ -113,3 +113,40 @@ def test_none_of_these(client):
     client.app.state.svc.wait("inc_rj")
     assert events(client, "inc_rj", "dossier.progress")[-1]["status"] == "rejected"
     assert client.get("/api/incidents/inc_rj/briefs/latest").status_code == 404
+
+
+def _overlay(iid: str, version: int) -> str:
+    import json
+    return json.dumps({"incident_id": iid, "model_id": "fx-wilshire-001", "version": version,
+                       "as_of": "2026-11-15T03:12:40Z", "changes_since_last": [], "occupants": [],
+                       "fire": [], "hazards": [], "blocked": [], "contradictions": [], "objectives": [],
+                       "considerations": [], "routes": []})
+
+
+def test_overlay_updated_follows_brief_updated(client):
+    svc = client.app.state.svc
+    client.post("/api/incidents", json={"incident_id": "inc_ov"})
+    post_call(client, "inc_ov", "S2", "c1")
+    svc._agents_ws("inc_ov").write("overlay_v1.json", _overlay("inc_ov", 1))   # the producer's file
+    client.post("/api/incidents/inc_ov/confirm-location", json={"building_id": BUILDING})
+    svc.wait("inc_ov")
+    hist = client.app.state.bus.history("inc_ov")
+    i = next(n for n, e in enumerate(hist) if e.type == "brief.updated")
+    ev = hist[i + 1]
+    assert ev.type == "overlay.updated" and ev.trace_id == hist[i].trace_id
+    assert ev.payload["version"] == hist[i].payload["version"] == ev.payload["overlay"]["version"] == 1
+    assert ev.payload["overlay"]["incident_id"] == "inc_ov"
+
+
+def test_overlay_missing_or_mismatched_is_not_sent(client):
+    svc = client.app.state.svc
+    client.post("/api/incidents", json={"incident_id": "inc_ov2"})
+    ws = svc._agents_ws("inc_ov2")
+    svc._emit_overlay("inc_ov2", 1)                        # no file
+    ws.write("overlay_v2.json", _overlay("inc_ov2", 3))    # wrong version
+    svc._emit_overlay("inc_ov2", 2)
+    ws.write("overlay_v3.json", _overlay("other", 3))      # wrong incident
+    svc._emit_overlay("inc_ov2", 3)
+    ws.write("overlay_v4.json", "{not json")
+    svc._emit_overlay("inc_ov2", 4)
+    assert events(client, "inc_ov2", "overlay.updated") == []
