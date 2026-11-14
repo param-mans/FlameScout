@@ -59,3 +59,7 @@ body { touch-action: manipulation; overscroll-behavior: none; -webkit-text-size-
   .hv-center { order: -1; }
   .hv-side { overflow: visible; }
 }
+
+/* App navigation (Dispatcher / MDT): 44 px touch targets without editing the shared components */
+#root > div > nav { min-height: 44px; height: auto; padding-top: env(safe-area-inset-top); }
+#root > div > nav button { min-height: 44px; min-width: 44px; font-size: 12px; }
