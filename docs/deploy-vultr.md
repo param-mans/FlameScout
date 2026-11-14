@@ -1,9 +1,14 @@
 # Deploying FlameScout on Vultr
 
-One Vultr Cloud Compute instance runs two containers:
+One Vultr Cloud Compute instance runs three containers:
 
 - `api`: FastAPI and the agents, on port 8000 inside the Docker network only.
-- `web`: Caddy. It serves the built Vite UI and forwards `/api`, `/ws`, `/health` and `/docs` to `api`, all from one address. Because the UI and API share an address, there's no CORS setup, and the WebSocket uses `wss://` whenever the site is on HTTPS.
+- `house-data`: Node service on port 8080, inside the Docker network only (`apps/web/server`, no npm
+  dependencies). It serves `/api/house-viewer/*` for the house viewer: floor plans, quality and stairs generated live
+  from the Matterport API, plus Vexcel oblique views. It reads `MATTERPORT_API_KEY`, `MATTERPORT_API_SECRET` and
+  `VEXCEL_API_KEY` from `.env` at runtime and keeps results in memory only.
+- `web`: Caddy. It serves the built Vite UI and forwards `/api/house-viewer/*` to `house-data`, and `/api`, `/ws`,
+  `/health` and `/docs` to `api`, all from one address. Because the UI and API share an address, there's no CORS setup, and the WebSocket uses `wss://` whenever the site is on HTTPS.
 
 The databases stay managed: Postgres on Tiger Data (`TIGER_DATABASE_URL`) and the incident workspace on MongoDB Atlas (`MONGODB_URI`). Secrets and the licensed CoStar index are never built into an image. They're copied to the server and read at runtime.
 

@@ -4,6 +4,12 @@
 {$SITE_ADDRESS::80} {
 	encode gzip
 
+	# house viewer data (live Matterport plans + Vexcel imagery), served by the Node house-data service
+	@housedata path /api/house-viewer/*
+	handle @housedata {
+		reverse_proxy house-data:8080
+	}
+
 	@backend path /api/* /ws/* /health /docs /docs/* /openapi.json /redoc
 	handle @backend {
 		reverse_proxy api:8000
