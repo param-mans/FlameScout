@@ -22,13 +22,15 @@ export function DemoControls<K extends string>({
         <span className="num ml-auto border border-reported/60 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-reported">SIMULATION</span>
       </summary>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-line px-3 py-2">
-        <div className="flex items-center gap-1">
-          {/* Stand-in for live WebSocket data. TODO: replace with the admin fixture toggle (PRD 10). */}
-          <span className="label mr-1">Sim data</span>
-          {briefKeys.map((k) => (
-            <Btn key={k} active={briefKey === k} onClick={() => onBriefKey(k)}>{k}</Btn>
-          ))}
-        </div>
+        {/* Mock briefs only exist while the API is unreachable (or ?mock=1); live briefs come from the orchestrator. */}
+        {briefKeys.length > 0 && (
+          <div className="flex items-center gap-1">
+            <span className="label mr-1">Sim data</span>
+            {briefKeys.map((k) => (
+              <Btn key={k} active={briefKey === k} onClick={() => onBriefKey(k)}>{k}</Btn>
+            ))}
+          </div>
+        )}
         {samples ? (
           <SamplePicker samples={samples} value={sampleId} onChange={onSample} />
         ) : (

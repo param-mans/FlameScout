@@ -257,7 +257,10 @@ class IncidentService:
             self._save(rec, [seg])
             fusion_ms = _ms(t0)
 
-            self._emit(incident_id, "transcript.segment", {"segment": seg.model_dump(), "changes": changes})
+            # What the extractor understood from this line (caller lines only), so the UI can show how it was received.
+            extracted_out = [{"key": f.key, "value": f.value, "quote": f.quote} for f in extracted] if extracted else []
+            self._emit(incident_id, "transcript.segment",
+                       {"segment": seg.model_dump(), "changes": changes, "extracted": extracted_out})
             self._emit(incident_id, "incident.updated", {"incident": rec.model_dump(mode="json")})
             for c in rec.contradictions:
                 if len(c.values) > contra_before.get(c.key, 0) and len(c.values) > 1:
@@ -277,7 +280,7 @@ class IncidentService:
         self.metrics.record(incident_id, "fusion", fusion_ms, changes=len(changes))
         self.metrics.log_segment(incident_id, seg)
         return {"changes": changes, "incident": rec, "fusion_ms": round(fusion_ms, 1),
-                "candidates": candidates}
+                "candidates": candidates, "extracted": extracted_out}
 
     def _queue_update(self, incident_id: str, notes: list[str]) -> None:
         """New facts after confirmation: the next brief version, on the incident's worker."""

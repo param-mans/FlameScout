@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { factLabel } from "../labels";
-import type { Brief, Fact } from "../types/schemas";
+import type { Brief, Fact, Progress } from "../types/schemas";
 import { Inspector, type Selection } from "./Inspector";
+import { PlanList } from "./PlanList";
 import { SitePlan, type Layers } from "./SitePlan";
 import { Btn, KV, Panel, StatusTag, fmt } from "./ui";
 import { BuildingViewer, HOUSE_VIEWER_DEFAULT } from "./viewer/BuildingViewer";
@@ -14,18 +15,21 @@ const VIEWER = viewerParam === "1" || (HOUSE_VIEWER_DEFAULT && viewerParam !== "
 
 type Exposure = { side: string; distance_m: number; band: string };
 
-function TopBar({ brief }: { brief: Brief }) {
+/** What the header says about the incident: the confirmed building and a label built from reported facts only. */
+export interface IncidentInfo { name: string; address: string; label: string }
+
+function TopBar({ brief, info }: { brief: Brief; info: IncidentInfo }) {
   const { scan_age_days, costar_as_of } = brief.freshness;
   const scan = scan_age_days == null ? "NONE" : `${Math.round(scan_age_days / 30)} MO`;
   const cell = "border-l border-line px-3 leading-8";
   return (
     <header className="flex h-8 items-center border-b border-line bg-panel">
-      <div className="px-3 text-[13px] font-semibold">WILSHIRE TOWER</div>
-      <div className="num text-[12px] text-dim">1200 Wilshire Blvd, Los Angeles</div>
+      <div className="px-3 text-[13px] font-semibold uppercase">{info.name}</div>
+      <div className="num text-[12px] text-dim">{info.address}</div>
       <div className={`${cell} num text-[11px] font-semibold ${brief.location_confirmed ? "text-verified" : "text-reported"}`}>
         {brief.location_confirmed ? "● LOCATION CONFIRMED" : "■ AWAITING CONFIRMATION"}
       </div>
-      <div className={`${cell} label`}>Structure fire · smoke reported</div>
+      <div className={`${cell} label`}>{info.label}</div>
       <div className="ml-auto flex">
         <div className={`${cell} num text-[11px] text-dim`}>SCAN {scan}</div>
         <div className={`${cell} num text-[11px] text-dim`}>COSTAR {fmt(costar_as_of).toUpperCase()}</div>
@@ -48,7 +52,40 @@ function Readout({ label, value, sub, tone = "text-ink", onClick }: { label: str
   );
 }
 
-export function MdtView({ brief, sampleId, sampleError }: { brief: Brief; sampleId: string | null; sampleError?: string | null }) {
+interface MdtProps {
+  brief: Brief | null;
+  info: IncidentInfo;
+  sampleId: string | null;
+  sampleError?: string | null;
+  /** Shown while there is no brief yet. */
+  progress?: Progress | null;
+  waiting?: string;
+}
+
+/** Before the first brief: the empty states from PRD section 10, with the orchestrator's plan once it is running. */
+function MdtWaiting({ info, progress, waiting }: { info: IncidentInfo; progress?: Progress | null; waiting?: string }) {
+  return (
+    <div className="flex h-full flex-col">
+      <header className="flex h-8 items-center border-b border-line bg-panel">
+        <div className="px-3 text-[13px] font-semibold uppercase">{info.name}</div>
+        <div className="num text-[12px] text-dim">{info.address}</div>
+      </header>
+      <div className="grid min-h-0 flex-1 place-items-center">
+        <div className="w-[380px] text-center">
+          <div className="num text-[15px] text-dim">{waiting ?? "AWAITING ADDRESS CONFIRMATION"}</div>
+          <div className="mt-1 text-[12px] text-faint">The brief appears here once the dispatcher confirms the building.</div>
+          <div className="mt-4 text-left"><PlanList progress={progress ?? null} /></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function MdtView({ brief, ...rest }: MdtProps) {
+  return brief ? <MdtBrief brief={brief} {...rest} /> : <MdtWaiting info={rest.info} progress={rest.progress} waiting={rest.waiting} />;
+}
+
+function MdtBrief({ brief, info, sampleId, sampleError }: MdtProps & { brief: Brief }) {
   const [sel, setSel] = useState<Selection | null>(null);
   const [tab, setTab] = useState<"map" | "floor" | "scan3d">("map");
   const [layers, setLayers] = useState<Layers>({ markers: true, exposures: true, route: true });
@@ -85,7 +122,7 @@ export function MdtView({ brief, sampleId, sampleError }: { brief: Brief; sample
 
   return (
     <div className="flex h-full flex-col">
-      <TopBar brief={brief} />
+      <TopBar brief={brief} info={info} />
       {brief.changes_since_last.length > 0 && (
         <div className="num flex gap-6 border-b border-accent/40 bg-accent/10 px-3 py-1 text-[12px] text-accent">
           <span className="font-semibold">CHANGED SINCE V{brief.version - 1}</span>

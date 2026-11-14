@@ -31,6 +31,13 @@ export interface CallSegment {
   t_end: number;
 }
 
+/** What the extractor understood from one caller line (transcript.segment `extracted`). */
+export interface ExtractedFact {
+  key: string;
+  value: unknown;
+  quote: string;
+}
+
 export interface ContradictionValue {
   call_id: string;
   value: unknown;
@@ -84,6 +91,9 @@ export interface Consideration {
 export interface Brief {
   brief_id: string;
   incident_id: string;
+  building_id?: string | null;
+  /** false while a low-confidence brief waits for the dispatcher's review. */
+  published?: boolean;
   version: number;
   generated_at: string;
   location_confirmed: boolean;
@@ -99,10 +109,44 @@ export interface Brief {
   disclaimer: string;
 }
 
-// Not in the Python schemas yet: UI-only shape for location candidates (PRD FR-3).
 export interface BuildingCandidate {
   building_id: string;
-  name: string;
+  name?: string | null;
   address: string;
   score: number;
+  coordinates?: { lat?: number; lon?: number };
+  match_reasons?: string[];
+  scan_available?: boolean | null;
+}
+
+export interface CopilotSuggestion {
+  id: string;
+  incident_id: string;
+  field: string;
+  question: string;
+  reason: "missing" | "contradiction";
+  status: "open" | "dismissed" | "asked";
+}
+
+export interface TodoItem {
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+}
+
+/** The orchestrator's plan (dossier.progress events). */
+export interface Progress {
+  incident_id: string;
+  status: "running" | "awaiting_confirmation" | "awaiting_approval" | "done" | "rejected";
+  version: number;
+  todos: TodoItem[];
+}
+
+/** WebSocket envelope on /ws/incidents/{id}. */
+export interface ApiEvent {
+  type: string;
+  incident_id: string;
+  ts: string;
+  trace_id?: string | null;
+  snapshot?: boolean;
+  payload: Record<string, unknown>;
 }
