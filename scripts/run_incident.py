@@ -1,11 +1,16 @@
 """Run one scripted incident end to end, the way the API will drive it.
 
-    python scripts/run_incident.py S2 [--cold]
+    python scripts/run_incident.py S2 [--cold] [--drop-low]
+    python scripts/run_incident.py S4B           (building with no interior scan)
 
   call 1 -> fusion -> start_incident   (agent plans, pauses for the dispatcher)
             simulated dispatcher picks the first candidate -> resume_incident -> brief_v1.json
   call 2 -> fusion change notes -> update_incident (same agent thread)      -> brief_v2.json
   ... one update per further call in the script.
+
+When a brief has a consideration with confidence below 0.5 the agent pauses again before publishing;
+the simulated dispatcher approves it (or drops the low-confidence ones with --drop-low) through
+review_brief. Copilot questions for the dispatcher (copilot_questions.json) are printed as they appear.
 
 Building data prefetched with scripts/prefetch.py (under 24 h old) is reused and the layer subagents
 are skipped; --cold ignores that cache.
@@ -30,9 +35,9 @@ load_dotenv(ROOT / ".env")  # GEMINI_*, LANGSMITH_*, EXTRACTOR - before anything
 
 from flamescout_schemas import Brief, CallSegment, Progress  # noqa: E402
 from services.agents.fusion import FusionEngine  # noqa: E402
-from services.agents import db  # noqa: E402
+from services.agents import copilot, db  # noqa: E402
 from services.agents.orchestrator import (RunResult, flush_traces, resume_incident,  # noqa: E402
-                                          save_incident, start_incident, update_incident)
+                                          review_brief, save_incident, start_incident, update_incident)
 from services.agents.workspace import incident_workspace  # noqa: E402
 
 MARKS = {"completed": "x", "in_progress": "~", "pending": " "}
@@ -43,6 +48,8 @@ logging.getLogger("services.agents.orchestrator").setLevel(logging.INFO)
 parser = argparse.ArgumentParser()
 parser.add_argument("script_id", nargs="?", default="S2")
 parser.add_argument("--cold", action="store_true", help="ignore prefetched building data (data/cache)")
+parser.add_argument("--drop-low", action="store_true",
+                    help="the simulated dispatcher drops low-confidence considerations instead of approving them")
 args = parser.parse_args()
 
 script_id = args.script_id.lower()
@@ -72,11 +79,29 @@ def show_todos(p: Progress) -> None:  # where the API would push to the UI's pro
         print(f"  plan [{p.status}]: " + "  ".join(f"[{MARKS[t.status]}] {t.content}" for t in p.todos))
 
 
+review_seconds: dict[int, float] = {}
+
+
+def reviewed(r: RunResult) -> RunResult:
+    """If the brief is held for low-confidence considerations, play the dispatcher."""
+    if r.status != "awaiting_approval":
+        return r
+    print(f"\npaused for dispatcher (awaiting_approval) after {r.seconds:.1f} s. Low confidence:")
+    for c in r.brief.considerations:
+        if c.id in r.needs_review:
+            print(f"  {c.id} [conf {c.confidence:.2f}] {c.title}")
+    drop = r.needs_review if args.drop_low else []
+    print("dispatcher " + (f"drops: {', '.join(drop)}" if drop else "approves them") + "\n")
+    done = review_brief(incident_id, drop=drop)
+    review_seconds[done.version] = done.seconds
+    return done
+
+
 def report(r: RunResult) -> bool:
     brief = Brief.model_validate_json(ws.read(f"brief_v{r.version}.json"))  # raises if invalid
     print(f"\nbrief {brief.brief_id}: {len(brief.considerations)} consideration(s), "
           f"critic: {(r.critique or {}).get('verdict', 'did not run')}, "
-          f"verifier_rejections: {brief.verifier_rejections}")
+          f"verifier_rejections: {brief.verifier_rejections}, published: {brief.published}")
     for c in brief.considerations:
         mark = " [cross-layer]" if c.cross_layer else ""
         print(f"  {c.rank}. [{c.category}, conf {c.confidence:.2f}]{mark} {c.title}  {c.evidence_ids}")
@@ -84,7 +109,12 @@ def report(r: RunResult) -> bool:
         print(f"  FACTS-ONLY FALLBACK: {r.fallback_reason}")
     if brief.changes_since_last:
         print("changes since last:", *brief.changes_since_last, sep="\n  - ")
-    return (len(brief.considerations) <= 5
+    print("gaps:", *brief.gaps, sep="\n  - ")
+    for flag in (r.critique or {}).get("note_flags", []):
+        print(f"critic flagged a {flag['layer']} note claim: {flag['claim']}")
+    for q in copilot.read_questions(ws):
+        print(f"copilot question [{q.status}]: {q.question}")
+    return (brief.published and len(brief.considerations) <= 5
             and all(c.title.startswith("Consider ") and c.evidence_ids
                     and all(e in brief.evidence for e in c.evidence_ids) for c in brief.considerations))
 
@@ -100,21 +130,27 @@ for c in started.candidates:
 choice = started.candidates[0].building_id
 eng.confirm(choice)
 print(f"dispatcher confirms: {choice}\n")
-v1 = resume_incident(incident_id, choice)
+resumed = resume_incident(incident_id, choice)
+v1 = reviewed(resumed)
 ok = report(v1)
 warm = v1.brief.freshness["prefetched"]
 print("building data:", f"prefetched at {v1.brief.freshness['prefetched_at']}" if warm else "pulled for this incident")
+held = f" + {review_seconds[1]:.1f} s after the dispatcher's review" if 1 in review_seconds else ""
+total = started.seconds + resumed.seconds + review_seconds.get(1, 0.0)
 timings = [f"v1 ({'warm, prefetched' if warm else 'cold'}): {started.seconds:.1f} s to the confirmation pause + "
-           f"{v1.seconds:.1f} s from resume to brief = {started.seconds + v1.seconds:.1f} s"]
+           f"{resumed.seconds:.1f} s from resume to brief{held} = {total:.1f} s"]
 
 # Each later call -> same agent thread, next brief version.
 for call_id in call_ids[1:]:
     notes = replay(call_id)
     if not notes:
         continue
-    update = update_incident(incident_id, notes)
+    updated = update_incident(incident_id, notes)
+    update = reviewed(updated)
     ok = report(update) and ok
-    timings.append(f"v{update.version}: {update.seconds:.1f} s (data layers reused)")
+    held = (f" + {review_seconds[update.version]:.1f} s after the dispatcher's review"
+            if update.version in review_seconds else "")
+    timings.append(f"v{update.version}: {updated.seconds:.1f} s{held} (data layers reused)")
 
 flush_traces()
 print(f"\nworkspace {ws.location}:", *ws.list(), sep="\n  ")

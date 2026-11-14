@@ -1,0 +1,55 @@
+{
+  "property_id": "fake_quarry_depot",
+  "name": "Quarry Road Depot",
+  "address": "48 Quarry Road",
+  "coordinates": {"lat": 34.10, "lon": -118.30},
+  "facts": {
+    "building.name": {
+      "key": "building.name", "value": "Quarry Road Depot", "status": "verified", "confidence": 0.95,
+      "evidence_ids": ["ev_qd_costar_1"], "as_of": "2026-08-15T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "building.use": {
+      "key": "building.use", "value": "Single-storey warehouse with a mezzanine office: storage and distribution",
+      "status": "verified", "confidence": 0.9,
+      "evidence_ids": ["ev_qd_costar_1"], "as_of": "2026-08-15T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "building.stories": {
+      "key": "building.stories", "value": 1, "status": "verified", "confidence": 0.95,
+      "evidence_ids": ["ev_qd_costar_1"], "as_of": "2026-08-15T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "building.year_built": {
+      "key": "building.year_built", "value": 1972, "status": "verified", "confidence": 0.9,
+      "evidence_ids": ["ev_qd_costar_1"], "as_of": "2026-08-15T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "building.sprinklered": {
+      "key": "building.sprinklered", "value": null, "status": "unverified", "confidence": 0.0,
+      "evidence_ids": [], "updated_at": "2026-11-14T00:00:00Z"
+    }
+  },
+  "tenants": [
+    {
+      "key": "tenant.unit_a", "value": "Blue Reef Pool Supply (pool and spa chemicals, wholesale), unit A, east half",
+      "status": "verified", "confidence": 0.85,
+      "evidence_ids": ["ev_qd_costar_2"], "as_of": "2026-08-15T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    {
+      "key": "tenant.unit_b", "value": "Quarry Furniture Storage (warehouse storage), unit B, west half",
+      "status": "verified", "confidence": 0.85,
+      "evidence_ids": ["ev_qd_costar_3"], "as_of": "2026-08-15T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    }
+  ],
+  "evidence": {
+    "ev_qd_costar_1": {"id": "ev_qd_costar_1", "kind": "costar_record", "source": "costar",
+                       "uri": "fixture://fake_quarry_depot/costar/property",
+                       "captured_at": "2026-08-15T00:00:00Z",
+                       "locator": {"note": "synthetic hand-written fixture, not a real CoStar record"}},
+    "ev_qd_costar_2": {"id": "ev_qd_costar_2", "kind": "costar_record", "source": "costar",
+                       "uri": "fixture://fake_quarry_depot/costar/tenant-a",
+                       "captured_at": "2026-08-15T00:00:00Z",
+                       "locator": {"note": "synthetic hand-written fixture, not a real CoStar record"}},
+    "ev_qd_costar_3": {"id": "ev_qd_costar_3", "kind": "costar_record", "source": "costar",
+                       "uri": "fixture://fake_quarry_depot/costar/tenant-b",
+                       "captured_at": "2026-08-15T00:00:00Z",
+                       "locator": {"note": "synthetic hand-written fixture, not a real CoStar record"}}
+  }
+}

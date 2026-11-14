@@ -20,6 +20,7 @@ from flamescout_schemas import (Brief, BuildingDossier, Consideration, Evidence,
 
 MAX_CONSIDERATIONS = 5
 DATA_LAYERS = frozenset({"costar", "matterport", "vexcel"})  # building-data layers; calls are not one
+LOW_CONFIDENCE = 0.5  # considerations below this wait for the dispatcher before the brief is published
 ADVISORY_PREFIX = "Consider "
 UNSCORED_CONFIDENCE = 0.3  # evidence that no scored fact or marker cites
 
@@ -101,7 +102,12 @@ def _gaps(incident: IncidentRecord, dossier: BuildingDossier) -> list[str]:
     gaps += [f"Unverified: {f.key}" for f in [*dossier.facts.values(), *dossier.tenants]
              if f.status == "unverified"]
     if not dossier.scan_available:
-        gaps.append("No interior scan available for this building")
+        gaps.append("No interior scan on file")
+        gaps.append("Interior layout unknown: no stairs, standpipes, elevator or key box locations")
+        if any(m.kind == "entry" for m in dossier.markers):
+            gaps.append("Entries are read from aerial imagery only and are not verified")
+        else:
+            gaps.append("No entries identified")
     gaps += [f"Not yet asked or answered: {q}" for q in incident.open_questions]
     return gaps
 
@@ -207,3 +213,22 @@ def build_brief(incident: IncidentRecord, dossier: BuildingDossier,
     if previous is not None:
         brief.changes_since_last = diff_briefs(previous, brief, incident)
     return brief
+
+
+def low_confidence(brief: Brief) -> list[Consideration]:
+    """Considerations the dispatcher has to approve or drop before the brief is published."""
+    return [c for c in brief.considerations if c.confidence < LOW_CONFIDENCE]
+
+
+def publish(brief: Brief, drop: tuple[str, ...] | list[str] = ()) -> Brief:
+    """The published form of a brief: the dropped considerations removed and the rest re-ranked."""
+    if unknown := [d for d in drop if d not in {c.id for c in brief.considerations}]:
+        raise ValueError(f"Not in {brief.brief_id}: {unknown}")
+    out = brief.model_copy(deep=True)
+    out.considerations = [c for c in out.considerations if c.id not in drop]
+    for rank, c in enumerate(out.considerations, 1):
+        c.rank = rank
+    if drop:
+        out.gaps.append(f"Dispatcher dropped {len(drop)} low-confidence consideration(s): {', '.join(drop)}")
+    out.published = True
+    return out

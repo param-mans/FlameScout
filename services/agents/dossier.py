@@ -33,6 +33,7 @@ class LayerData(BaseModel):
     evidence: dict[str, Evidence] = {}
     address: Optional[str] = None                # costar
     coordinates: Optional[dict] = None           # costar
+    exterior_entries: bool = False               # vexcel: entries read from aerial obliques are included
     scan_available: bool = False                 # matterport
     scan_captured_at: Optional[datetime] = None  # matterport
     matterport_model_id: Optional[str] = None    # matterport
@@ -73,7 +74,8 @@ def _checked(layer: LayerData) -> LayerData:
     return layer
 
 
-def _from_records(layer: Layer, building_id: str, records: list[dict], **extra) -> LayerData:
+def _from_records(layer: Layer, building_id: str, records: list[dict],
+                  marker_keys: tuple[str, ...] = ("markers",), **extra) -> LayerData:
     """Records are {evidence, markers?, exposures?}: everything in a record cites that record's evidence."""
     evidence: dict[str, Evidence] = {}
     markers: list[Marker] = []
@@ -81,7 +83,8 @@ def _from_records(layer: Layer, building_id: str, records: list[dict], **extra) 
     for r in records:
         ev = Evidence.model_validate(r["evidence"])
         evidence[ev.id] = ev
-        markers += [Marker.model_validate({**m, "evidence_ids": [ev.id]}) for m in r.get("markers", [])]
+        markers += [Marker.model_validate({**m, "evidence_ids": [ev.id]})
+                    for key in marker_keys for m in r.get(key, [])]
         exposures += [{**x, "evidence_ids": [ev.id]} for x in r.get("exposures", [])]
     return _checked(LayerData(layer=layer, building_id=building_id, markers=_merge_markers(markers),
                               exposures=exposures, evidence=evidence, **extra))
@@ -107,18 +110,23 @@ def pull_matterport(building_id: str, providers: Optional[Providers] = None) -> 
                          matterport_model_id=None if model_id.startswith("fixture-") else model_id)
 
 
-def pull_vexcel(building_id: str, providers: Optional[Providers] = None) -> LayerData:
+def pull_vexcel(building_id: str, providers: Optional[Providers] = None,
+                exterior_entries: bool = False) -> LayerData:
+    """exterior_entries=True also returns entries read from aerial obliques: low confidence, only
+    worth having when there is no interior scan to take entries from."""
     providers = providers or get_providers()
     at = providers.costar.get_property(building_id)["coordinates"]
+    keys = ("markers", "exterior_entries") if exterior_entries else ("markers",)
     return _from_records("vexcel", building_id,
-                         providers.vexcel.get_aerial(at["lat"], at["lon"], AERIAL_RADIUS_M))
+                         providers.vexcel.get_aerial(at["lat"], at["lon"], AERIAL_RADIUS_M),
+                         marker_keys=keys, exterior_entries=exterior_entries)
 
 
 _PULL = {"costar": pull_costar, "matterport": pull_matterport, "vexcel": pull_vexcel}
 
 
-def pull_layer(layer: Layer, building_id: str, providers: Optional[Providers] = None) -> LayerData:
-    return _PULL[layer](building_id, providers)
+def pull_layer(layer: Layer, building_id: str, providers: Optional[Providers] = None, **options) -> LayerData:
+    return _PULL[layer](building_id, providers, **options)
 
 
 def merge_layers(building_id: str, layers: Iterable[LayerData]) -> BuildingDossier:
@@ -153,7 +161,10 @@ def merge_layers(building_id: str, layers: Iterable[LayerData]) -> BuildingDossi
 def load_dossier(building_id: str, providers: Optional[Providers] = None) -> BuildingDossier:
     """Pull all three layers and merge them, without any agent."""
     providers = providers or get_providers()
-    return merge_layers(building_id, [pull_layer(layer, building_id, providers) for layer in LAYERS])
+    layers = {layer: pull_layer(layer, building_id, providers) for layer in LAYERS}
+    if not layers["matterport"].scan_available:  # no interior scan: take entries from the air instead
+        layers["vexcel"] = pull_vexcel(building_id, providers, exterior_entries=True)
+    return merge_layers(building_id, layers.values())
 
 
 def digest(layer: LayerData) -> str:

@@ -6,9 +6,15 @@ Dismissed / asked state is kept by the caller (service) and passed in.
 """
 from __future__ import annotations
 
-from flamescout_schemas import CopilotSuggestion, IncidentRecord
+import json
+from typing import TYPE_CHECKING, Optional, Sequence
+
+from flamescout_schemas import Contradiction, CopilotSuggestion, IncidentRecord
 
 from .fusion import QUESTIONS
+
+if TYPE_CHECKING:
+    from .workspace import Workspace
 
 
 def suggestion_id(incident_id: str, field: str) -> str:
@@ -37,3 +43,55 @@ def suggestions(rec: IncidentRecord, states: dict[str, str]) -> list[CopilotSugg
         out.append(CopilotSuggestion(id=sid, incident_id=rec.incident_id, field=key, question=q,
                                      status=states.get(sid, "open")))  # type: ignore[arg-type]
     return out
+
+
+# ---------- questions the orchestrator plans: unresolved life-safety contradictions ----------
+#
+# When callers contradict each other on where a crew goes first (the fire floor, whether anyone is
+# trapped), the orchestrator adds a todo and asks the dispatcher. The wording is composed here from
+# the contradiction record, so the values are always the callers' own. The questions are kept in
+# the incident's workspace as a list of CopilotSuggestion. Not in copilot.json: that file is the
+# API's {suggestion_id: status} map.
+
+QUESTIONS_FILE = "copilot_questions.json"
+LIFE_SAFETY_KEYS = ("incident.floor", "people.trapped")
+_TOPIC = {"incident.floor": "floor", "people.trapped": "whether anyone is trapped"}
+_ASK = {"incident.floor": "which floor are the flames or smoke on?",
+        "people.trapped": "is anyone trapped or unaccounted for, and where?"}
+
+
+def _said(value) -> str:
+    return {True: "yes", False: "no"}[value] if isinstance(value, bool) else str(value)
+
+
+def unresolved_life_safety(rec: IncidentRecord) -> list[Contradiction]:
+    return [c for c in rec.contradictions if c.key in LIFE_SAFETY_KEYS and not c.resolved_by_dispatcher]
+
+
+def question_for(c: Contradiction) -> str:
+    values = " vs ".join(_said(v.value) for v in c.values)
+    return f"Callers disagree on {_TOPIC[c.key]} ({values}). Ask: {_ASK[c.key]}"
+
+
+def read_questions(ws: "Workspace") -> list[CopilotSuggestion]:
+    text = ws.read_or_none(QUESTIONS_FILE)
+    return [CopilotSuggestion(**q) for q in json.loads(text)] if text else []
+
+
+def write_questions(ws: "Workspace", rec: IncidentRecord,
+                    keys: Optional[Sequence[str]] = None) -> list[CopilotSuggestion]:
+    """Add or refresh a question for each unresolved life-safety contradiction (optionally only `keys`).
+    Returns the questions written; the file is left alone when there are none."""
+    wanted = [c for c in unresolved_life_safety(rec) if keys is None or c.key in keys]
+    if not wanted:
+        return []
+    by_id = {q.id: q for q in read_questions(ws)}
+    written = []
+    for c in wanted:
+        sid, text = suggestion_id(rec.incident_id, c.key), question_for(c)
+        if sid not in by_id or by_id[sid].question != text:  # same wording: keep its status (asked / dismissed)
+            by_id[sid] = CopilotSuggestion(id=sid, incident_id=rec.incident_id, field=c.key, question=text,
+                                           reason="contradiction")
+        written.append(by_id[sid])
+    ws.write(QUESTIONS_FILE, json.dumps([q.model_dump() for q in by_id.values()], indent=2))
+    return written

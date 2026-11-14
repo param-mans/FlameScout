@@ -76,3 +76,25 @@ def test_digest_keeps_evidence_ids():
 def test_unknown_building_is_an_error():
     with pytest.raises(FileNotFoundError, match="No CoStar fixture"):
         load_dossier("no_such_building")
+
+
+DEPOT = "fake_quarry_depot"
+
+
+def test_unscanned_building_takes_its_entries_from_aerial_imagery():
+    assert not pull_layer("matterport", DEPOT).scan_available
+    plain = pull_layer("vexcel", DEPOT)
+    assert [m.id for m in plain.markers] == ["m_qd_yard"] and not plain.exterior_entries
+    with_entries = pull_layer("vexcel", DEPOT, exterior_entries=True)
+    assert with_entries.exterior_entries
+    assert {m.id: m.confidence for m in with_entries.markers if m.kind == "entry"} == {
+        "m_qd_ext_roller": 0.45, "m_qd_ext_front": 0.4}
+
+    d = load_dossier(DEPOT)  # the no-scan policy in one place
+    assert not d.scan_available and {m.kind for m in d.markers} == {"other", "entry"}
+    assert {e.source for e in d.evidence.values()} == {"costar", "vexcel"}
+
+
+def test_scanned_building_does_not_get_aerial_entries():
+    d = load_dossier(BUILDING)
+    assert d.scan_available and {m.id for m in d.markers if m.kind == "entry"} == {"m_entry_main", "m_entry_rear"}

@@ -23,3 +23,9 @@ def test_matches_by_building_name():
 def test_no_location_or_no_match_gives_no_candidates():
     assert find_candidates(incident("There's smoke everywhere")) == []
     assert find_candidates(incident("Fire at 77 Elm Street")) == []
+
+
+def test_unscanned_depot_is_found_and_street_alone_matches_nothing():
+    [c] = find_candidates(incident("There's a fire at the warehouse at 48 Quarry Road"))
+    assert (c.building_id, c.score) == ("fake_quarry_depot", 1.0)
+    assert find_candidates(incident("Smoke at 9 Mill Street")) == []

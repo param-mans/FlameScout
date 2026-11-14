@@ -13,11 +13,12 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from datetime import timedelta
 
 from flamescout_schemas import Brief, BuildingDossier, CallSegment, Progress, now
-from services.agents import cache, orchestrator
+from services.agents import cache, copilot, orchestrator
 from services.agents.dossier import LAYERS
 from services.agents.fusion import FusionEngine
-from services.agents.orchestrator import (MAX_SUBMISSIONS, Session, make_tools, prefetch_building,
-                                          resume_incident, save_incident, start_incident, update_incident)
+from services.agents.orchestrator import (MAX_SUBMISSIONS, NOTE_HEADER, Session, make_tools,
+                                          prefetch_building, resume_incident, review_brief, save_incident,
+                                          start_incident, update_incident)
 from services.agents.workspace import incident_workspace
 
 CALLS = Path(__file__).resolve().parents[1] / "data" / "fixtures" / "calls"
@@ -26,16 +27,28 @@ GOOD = {"category": "access", "title": "Consider Stair B from the rear alley",
         "rationale": "Stair B discharges to the rear alley, which has vehicle access.",
         "evidence_ids": ["ev_scan_fp_1", "ev_aerial_2"]}  # matterport + vexcel
 SINGLE_LAYER = {**GOOD, "title": "Consider the standpipe in Stair A", "evidence_ids": ["ev_scan_fp_4"]}
+DEPOT = "fake_quarry_depot"  # no interior scan
+ROLLER_DOOR = {"category": "access", "title": "Consider the roller door from the loading yard",
+               "rationale": "A roller door seen from the air opens onto the yard beside the pool-supply unit.",
+               "evidence_ids": ["ev_qd_aerial_2", "ev_qd_costar_2"]}  # vexcel + costar, aerial entry conf 0.4
+POOL_CHEMICALS = {"category": "hazard", "title": "Consider possible pool chemicals in unit A",
+                  "rationale": "A pool and spa chemical wholesaler occupies unit A.", "evidence_ids": ["ev_qd_costar_2"]}
+
+
+def note(layer: str, *replies: str) -> str:
+    """What code saves for a layer subagent's replies: the unverified-notes header, then each reply."""
+    return NOTE_HEADER.format(layer=layer) + "\n\n".join(replies) + "\n"
 
 
 class Incident:
-    """S2 replayed call by call into a fresh workspace (tmp files or mongomock), like scripts/run_incident.py."""
+    """A script replayed call by call into a fresh workspace (tmp files or mongomock), like scripts/run_incident.py."""
 
-    def __init__(self, root):
+    def __init__(self, root, script: str = "s2"):
         self.root = root  # None = MongoDB
-        self.ws = incident_workspace("inc_s2", root)
-        self.segments = [CallSegment(**s) for s in json.loads((CALLS / "s2.json").read_text())["segments"]]
-        self.eng = FusionEngine("inc_s2")
+        self.id = f"inc_{script}"
+        self.ws = incident_workspace(self.id, root)
+        self.segments = [CallSegment(**s) for s in json.loads((CALLS / f"{script}.json").read_text())["segments"]]
+        self.eng = FusionEngine(self.id)
 
     def replay(self, call_id: str) -> list[str]:
         segments = [s for s in self.segments if s.call_id == call_id]
@@ -51,6 +64,14 @@ class Incident:
 @pytest.fixture
 def incident(storage):
     inc = Incident(storage)
+    inc.replay("c1")
+    return inc
+
+
+@pytest.fixture
+def depot(storage):
+    """S4B: one call to the building with no interior scan."""
+    inc = Incident(storage, "s4b")
     inc.replay("c1")
     return inc
 
@@ -154,6 +175,71 @@ def test_regeneration_budget(session, incident):
     assert "budget used up" in tools["submit_considerations"].invoke({"considerations": [GOOD]})
 
 
+def test_copilot_question_tool_needs_a_life_safety_contradiction(session, incident):
+    ask = make_tools(session)["write_copilot_question"]
+    assert ask.invoke({"key": "incident.floor"}).startswith("Error")  # call 1 alone: no contradiction
+    assert not session.ws.exists("copilot_questions.json")
+    incident.replay("c2")
+    reply = ask.invoke({"key": "incident.floor"})
+    assert "Callers disagree on floor (3 vs 4)" in reply
+    [q] = copilot.read_questions(session.ws)
+    assert (q.field, q.status, q.reason) == ("incident.floor", "open", "contradiction")
+    assert q.question == "Callers disagree on floor (3 vs 4). Ask: which floor are the flames or smoke on?"
+    assert ask.invoke({"key": "people.trapped"}).startswith("Error")
+
+
+def test_publish_tool_waits_for_the_critic_and_applies_drops(session, incident):
+    tools = make_tools(session)
+    incident.confirm()
+    assert "does not exist yet" in tools["publish_brief"].invoke({})
+    tools["submit_considerations"].invoke({"considerations": [GOOD, SINGLE_LAYER]})
+    assert "critic has not passed" in tools["publish_brief"].invoke({})
+    tools["submit_critique"].invoke({"verdict": "pass", "issues": []})
+    assert orchestrator._needs_review(session) == []  # nothing below 0.5 here
+    assert "Not in inc_s2_v1" in tools["publish_brief"].invoke({"drop": ["c9"]})
+    assert not orchestrator._brief(session).published
+    assert "Dropped by the dispatcher: c2" in tools["publish_brief"].invoke({"drop": ["c2"]})
+    brief = orchestrator._brief(session)
+    assert brief.published and [(c.id, c.rank) for c in brief.considerations] == [("c1", 1)]
+    assert "already published" in tools["publish_brief"].invoke({})
+
+
+def test_critic_note_flags_are_recorded_and_written_into_the_note(session, incident):
+    tools = make_tools(session)
+    incident.confirm()
+    tools["submit_considerations"].invoke({"considerations": [GOOD]})
+    session.ws.write("notes/matterport_summary.md", note("matterport", "Standpipes on every floor [ev_scan_fp_4]"))
+    out = tools["submit_critique"].invoke({"verdict": "pass", "issues": [], "note_flags": [
+        {"layer": "matterport", "claim": "Standpipes on every floor"}]})
+    assert "1 note claim(s) flagged" in out
+    assert json.loads(session.ws.read("critique_v1.json"))["note_flags"] == [
+        {"layer": "matterport", "claim": "Standpipes on every floor"}]
+    text = session.ws.read("notes/matterport_summary.md")
+    assert text.startswith("> Unverified agent notes")
+    assert text.endswith("> Critic flag, not supported by layers/matterport.json: Standpipes on every floor\n")
+
+
+def test_exterior_entries_are_pulled_only_on_request_or_as_a_safety_net(depot):
+    s = Session(incident_id="inc_s4b", ws=depot.ws, candidates=orchestrator.find_candidates(depot.eng.record))
+    tools = make_tools(s)
+    tools["confirm_building"].invoke({"candidates": [DEPOT], "chosen_building_id": DEPOT})
+    for name in LAYERS:
+        tools[f"pull_{name}"].invoke({})
+    assert "not available" in tools["pull_matterport"].invoke({})
+    assert [m.id for m in orchestrator._dossier(s.ws).markers] == ["m_qd_yard"]  # no entries yet
+    assert "m_qd_ext_roller" in tools["pull_vexcel_entries"].invoke({})
+    assert {m.id for m in orchestrator._dossier(s.ws).markers} == {"m_qd_yard", "m_qd_ext_roller", "m_qd_ext_front"}
+    assert tools["pull_vexcel_entries"].invoke({}).startswith("Already pulled")
+
+    # Safety net: an agent that never re-planned still gets the entries before a brief is built.
+    s.ws.delete("layers/vexcel.json"), s.ws.delete("dossier.json")
+    tools["pull_vexcel"].invoke({})
+    assert [m.id for m in orchestrator._dossier(s.ws).markers] == ["m_qd_yard"]
+    assert tools["submit_considerations"].invoke({"considerations": [ROLLER_DOOR]}).startswith("Accepted")
+    brief = orchestrator._brief(s)
+    assert "No interior scan on file" in brief.gaps and brief.considerations[0].confidence == 0.4
+
+
 # ---------- start / resume / update with a fake model (no API) ----------
 
 def calls(*tool_calls: tuple[str, dict]) -> AIMessage:
@@ -166,6 +252,7 @@ class RuleModel(BaseChatModel):
     the three layer subagents run concurrently, so their model calls interleave."""
     main_script: Any            # iterator of the orchestrator's turns, shared by every bound copy
     drafts: Any                 # one considerations list per strategy run
+    seen: Any                   # agent name -> its system prompt, shared by every bound copy
     tool_names: tuple = ()
 
     @property
@@ -183,32 +270,41 @@ class RuleModel(BaseChatModel):
         if "task" in self.tool_names:  # the orchestrator: its turns are sequential, so a script works
             return next(self.main_script, AIMessage(content="(script exhausted)"))
         called = any(isinstance(m, ToolMessage) for m in messages)
+        asked = " ".join(m.text for m in messages if m.type == "human")
         for layer in LAYERS:
             if f"pull_{layer}" in self.tool_names:  # two calls: pull, then the summary code saves
+                if layer == "vexcel" and "EXTERIOR ENTRIES" in asked:  # the no-scan re-plan
+                    return (AIMessage(content="vexcel exterior entries [ev_x]") if called
+                            else calls(("pull_vexcel_entries", {})))
                 return AIMessage(content=f"{layer} summary line [ev_x]") if called else calls((f"pull_{layer}", {}))
         if called:
             return AIMessage(content="Done.")
         if "submit_considerations" in self.tool_names:
+            self.seen["strategy"] = " ".join(m.text for m in messages if m.type == "system")
             return calls(("submit_considerations", {"considerations": self.drafts.pop(0)}))
         return calls(("submit_critique", {"verdict": "pass", "issues": []}))
 
 
 TODOS = ["Confirm building with dispatcher", "CoStar property record", "Matterport interior scan",
          "Vexcel aerial imagery", "Draft considerations", "Critique brief", "Brief ready",
-         "Redraft considerations (v2)", "Critique brief v2"]
+         "Redraft considerations (v2)", "Critique brief v2", "Ask dispatcher: floor contradiction"]
+# The plan after the no-scan re-plan: interior step renamed, exterior entries inserted.
+DEPOT_TODOS = ["Confirm building with dispatcher", "CoStar property record",
+               "No interior scan on file: interior steps skipped", "Vexcel aerial imagery",
+               "Exterior entries from aerial imagery", "Draft considerations", "Critique brief", "Brief ready"]
 
 
-def todos(*statuses: str) -> tuple[str, dict]:
-    return "write_todos", {"todos": [{"content": n, "status": s} for n, s in zip(TODOS, statuses)]}
+def todos(*statuses: str, names: list[str] = TODOS) -> tuple[str, dict]:
+    return "write_todos", {"todos": [{"content": n, "status": s} for n, s in zip(names, statuses)]}
 
 
-def task(subagent: str) -> tuple[str, dict]:
-    return "task", {"subagent_type": subagent, "description": f"Incident inc_s2: do the {subagent} step."}
+def task(subagent: str, ask: str = "") -> tuple[str, dict]:
+    return "task", {"subagent_type": subagent, "description": f"Incident: do the {subagent} step. {ask}"}
 
 
-def fake_model(*main_turns) -> RuleModel:
-    drafts = [[GOOD, SINGLE_LAYER], [{**GOOD, "title": "Consider Stair B (back stairs) from the alley"}]]
-    return RuleModel(main_script=iter(main_turns), drafts=drafts)
+def fake_model(*main_turns, drafts=None) -> RuleModel:
+    drafts = drafts or [[GOOD, SINGLE_LAYER], [{**GOOD, "title": "Consider Stair B (back stairs) from the alley"}]]
+    return RuleModel(main_script=iter(main_turns), drafts=drafts, seen={})
 
 
 START = [calls(todos("in_progress", *["pending"] * 6)),
@@ -216,12 +312,25 @@ START = [calls(todos("in_progress", *["pending"] * 6)),
 RESUME = [calls(todos("completed", "in_progress", "in_progress", "in_progress", "pending", "pending", "pending"),
                 task("costar"), task("matterport"), task("vexcel")),       # one turn: three in parallel
           calls(task("strategy")), calls(task("critic")),
-          calls(todos(*["completed"] * 7)), AIMessage(content="pass")]
-UPDATE = [calls(todos(*["completed"] * 7, "in_progress", "pending"), task("strategy")),
-          calls(task("critic")), calls(todos(*["completed"] * 9)), AIMessage(content="pass")]
+          calls(todos(*["completed"] * 7), ("publish_brief", {})), AIMessage(content="pass")]
+UPDATE = [calls(todos(*["completed"] * 7, "in_progress", "pending", "completed"),
+                ("write_copilot_question", {"key": "incident.floor"}), task("strategy")),  # floor 3 vs 4
+          calls(task("critic")), calls(todos(*["completed"] * 10), ("publish_brief", {})), AIMessage(content="pass")]
 PREFETCH = [calls(task("costar"), task("matterport"), task("vexcel")), AIMessage(content="done")]
 WARM_RESUME = [calls(todos(*["completed"] * 4, "in_progress", "pending", "pending"), task("strategy")),
-               calls(task("critic")), calls(todos(*["completed"] * 7)), AIMessage(content="pass")]
+               calls(task("critic")), calls(todos(*["completed"] * 7), ("publish_brief", {})),
+               AIMessage(content="pass")]
+# S4, no interior scan: layers, then the re-plan turn, then draft / critique / publish (which pauses).
+DEPOT_START = [calls(todos("in_progress", *["pending"] * 6)),
+               calls(("confirm_building", {"candidates": [DEPOT]}))]
+DEPOT_RESUME = [
+    calls(todos("completed", "in_progress", "in_progress", "in_progress", "pending", "pending", "pending"),
+          task("costar"), task("matterport"), task("vexcel")),
+    calls(todos("completed", "completed", "completed", "completed", "in_progress", "pending", "pending", "pending",
+                names=DEPOT_TODOS),
+          task("vexcel", "No interior scan: pull the EXTERIOR ENTRIES.")),
+    calls(task("strategy")), calls(task("critic"))]
+DEPOT_PUBLISH = [calls(todos(*["completed"] * 8, names=DEPOT_TODOS), ("publish_brief", {})), AIMessage(content="pass")]
 
 
 def test_start_pauses_resume_briefs_update_reuses_thread_and_layers(incident, monkeypatch):
@@ -236,8 +345,8 @@ def test_start_pauses_resume_briefs_update_reuses_thread_and_layers(incident, mo
     monkeypatch.setattr(orchestrator.dossier_mod, "pull_layer", pull_together)
 
     seen: list[Progress] = []
-    started = start_incident("inc_s2", workspace_root=incident.root, on_todos=seen.append,
-                             model=fake_model(*START, *RESUME, *UPDATE))
+    session_model = fake_model(*START, *RESUME, *UPDATE)
+    started = start_incident("inc_s2", workspace_root=incident.root, on_todos=seen.append, model=session_model)
     assert started.status == "awaiting_confirmation" and started.brief is None
     assert [c.building_id for c in started.candidates] == [BUILDING]
     paused = Progress.model_validate_json(incident.ws.read("todos.json"))
@@ -254,9 +363,12 @@ def test_start_pauses_resume_briefs_update_reuses_thread_and_layers(incident, mo
     v1 = resume_incident("inc_s2", BUILDING)
     assert (v1.status, v1.version, v1.fallback_reason) == ("briefed", 1, None)
     assert not barrier.broken and all(incident.ws.exists(f"layers/{name}.json") for name in LAYERS)
-    for name in LAYERS:  # each layer subagent's reply, saved by code
-        assert incident.ws.read(f"notes/{name}_summary.md") == f"{name} summary line [ev_x]\n"
+    for name in LAYERS:  # each layer subagent's reply, saved by code and labelled unverified
+        assert incident.ws.read(f"notes/{name}_summary.md") == note(name, f"{name} summary line [ev_x]")
     assert v1.brief.freshness["prefetched"] is False and v1.brief.freshness["prefetched_at"] is None
+    assert v1.brief.published and v1.needs_review == [] and not incident.ws.exists("copilot_questions.json")
+    strategy_prompt = session_model.seen["strategy"]  # the strategy subagent is offered both skills
+    assert "/skills/occupancy-hazards/SKILL.md" in strategy_prompt and "size-up-format" in strategy_prompt
     assert orchestrator._incident(incident.ws).confirmed_building_id == BUILDING
     assert [c.cross_layer for c in v1.brief.considerations] == [True, False]
     assert v1.critique["verdict"] == "pass" and all(t.status == "completed" for t in v1.todos)
@@ -275,13 +387,81 @@ def test_start_pauses_resume_briefs_update_reuses_thread_and_layers(incident, mo
     assert incident.ws.exists("brief_v1.json") and incident.ws.exists("critique_v2.json")
     assert incident.ws.modified("dossier.json") == dossier_written  # data layers reused
     assert len(session.agent.get_state(session.config).values["messages"]) > messages_after_v1  # same thread
-    assert len(v2.todos) == 9 and seen[-1].status == "done" and seen[-1].version == 2
+    assert len(v2.todos) == 10 and seen[-1].status == "done" and seen[-1].version == 2
+    # The floor contradiction from call 2 reached the dispatcher, as a planned step.
+    assert v2.todos[-1].content == "Ask dispatcher: floor contradiction" and v2.brief.published
+    [question] = copilot.read_questions(incident.ws)
+    assert question.question == "Callers disagree on floor (3 vs 4). Ask: which floor are the flames or smoke on?"
+
+
+def depot_drafts():
+    return [[ROLLER_DOOR, POOL_CHEMICALS]]
+
+
+def start_depot(depot, *publish_turns):
+    start_incident("inc_s4b", workspace_root=depot.root,
+                   model=fake_model(*DEPOT_START, *DEPOT_RESUME, *publish_turns, drafts=depot_drafts()))
+    depot.eng.confirm(DEPOT)
+    save_incident(depot.eng.record, workspace_root=depot.root)
+    return resume_incident("inc_s4b", DEPOT)
+
+
+def test_no_scan_replans_then_pauses_on_a_low_confidence_consideration(depot):
+    held = start_depot(depot, *DEPOT_PUBLISH)
+
+    # Re-plan: interior step renamed, exterior entries pulled from the air by the vexcel subagent.
+    names = [t.content for t in held.todos]
+    assert "No interior scan on file: interior steps skipped" in names and "Matterport interior scan" not in names
+    assert names.index("Exterior entries from aerial imagery") == names.index("Vexcel aerial imagery") + 1
+    dossier = orchestrator._dossier(depot.ws)
+    assert not dossier.scan_available and {"m_qd_ext_roller", "m_qd_ext_front"} <= {m.id for m in dossier.markers}
+    assert depot.ws.read("notes/vexcel_summary.md") == note(
+        "vexcel", "vexcel summary line [ev_x]", "vexcel exterior entries [ev_x]")
+
+    # Low confidence: the brief exists but is not published; the run is paused at publish_brief.
+    assert (held.status, held.needs_review, held.fallback_reason) == ("awaiting_approval", ["c1"], None)
+    draft = Brief.model_validate_json(depot.ws.read("brief_v1.json"))
+    assert not draft.published and [c.confidence for c in draft.considerations] == [0.4, 0.85]
+    assert draft.gaps[:4] == ["Unverified: building.sprinklered", "No interior scan on file",
+                              "Interior layout unknown: no stairs, standpipes, elevator or key box locations",
+                              "Entries are read from aerial imagery only and are not verified"]
+    assert Progress.model_validate_json(depot.ws.read("todos.json")).status == "awaiting_approval"
+    assert held.todos[-1].status != "completed"  # "Brief ready" waits for the dispatcher too
+
+    with pytest.raises(ValueError, match="review_brief first"):
+        update_incident("inc_s4b", ["x"])
+    with pytest.raises(ValueError, match="not considerations of brief v1"):
+        review_brief("inc_s4b", drop=["c9"])
+
+    done = review_brief("inc_s4b", drop=["c1"])
+    published = Brief.model_validate_json(depot.ws.read("brief_v1.json"))
+    assert (done.status, done.needs_review) == ("briefed", []) and published.published
+    assert [(c.title, c.rank) for c in published.considerations] == [(POOL_CHEMICALS["title"], 1)]
+    assert published.gaps[-1] == "Dispatcher dropped 1 low-confidence consideration(s): c1"
+    assert all(t.status == "completed" for t in done.todos)
+    with pytest.raises(ValueError, match="no brief awaiting approval"):
+        review_brief("inc_s4b")
+
+
+def test_dispatcher_can_approve_low_confidence_considerations(depot):
+    assert start_depot(depot, *DEPOT_PUBLISH).status == "awaiting_approval"
+    done = review_brief("inc_s4b")
+    assert done.status == "briefed" and done.brief.published
+    assert [c.id for c in done.brief.considerations] == ["c1", "c2"] and done.brief.considerations[0].cross_layer
+
+
+def test_low_confidence_is_held_even_if_the_agent_never_asks_to_publish(depot):
+    held = start_depot(depot, calls(todos(*["completed"] * 8, names=DEPOT_TODOS)), AIMessage(content="pass"))
+    assert (held.status, held.needs_review) == ("awaiting_approval", ["c1"])
+    assert not Brief.model_validate_json(depot.ws.read("brief_v1.json")).published
+    done = review_brief("inc_s4b", drop=["c1"])  # nothing is paused: code publishes
+    assert done.status == "briefed" and [c.id for c in done.brief.considerations] == ["c2"]
 
 
 def test_prefetch_then_incident_skips_the_layer_phase(incident, monkeypatch):
     fetched = prefetch_building(BUILDING, model=fake_model(*PREFETCH))
     assert fetched.workspace.location == cache.cache_workspace(BUILDING).location and set(fetched.notes) == set(LAYERS)
-    assert fetched.notes["vexcel"] == "vexcel summary line [ev_x]\n"
+    assert fetched.notes["vexcel"] == note("vexcel", "vexcel summary line [ev_x]")
     assert cache.load_fresh(BUILDING).prefetched_at == fetched.prefetched_at
 
     def no_pull(*a, **k):
@@ -295,7 +475,7 @@ def test_prefetch_then_incident_skips_the_layer_phase(incident, monkeypatch):
     assert v1.brief.freshness["prefetched"] is True
     assert v1.brief.freshness["prefetched_at"] == fetched.prefetched_at.isoformat()
     assert [c.cross_layer for c in v1.brief.considerations] == [True, False]
-    assert incident.ws.read("notes/matterport_summary.md") == "matterport summary line [ev_x]\n"
+    assert incident.ws.read("notes/matterport_summary.md") == note("matterport", "matterport summary line [ev_x]")
     assert all(incident.ws.exists(f"layers/{name}.json") for name in LAYERS)
 
 
@@ -338,6 +518,40 @@ def test_a_paused_incident_survives_a_restart_with_tiger(incident, monkeypatch):
     assert rows["inc_s2"]["status"] == "briefed" and rows["inc_s2"]["building_id"] == BUILDING
 
 
+def test_a_brief_awaiting_approval_survives_a_restart_with_tiger(depot, monkeypatch):
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    from services.agents import workspace as workspace_mod
+
+    rows, saver, saved_briefs = {}, InMemorySaver(), []
+    monkeypatch.setenv("TIGER_DATABASE_URL", "postgresql://fake")
+    monkeypatch.setattr(orchestrator.db, "_execute", lambda *a, **k: None)
+    monkeypatch.setattr(orchestrator.db, "checkpointer", lambda: saver)
+    monkeypatch.setattr(orchestrator.db, "save_incident_state",
+                        lambda incident_id, status, candidates, building_id, version, prefetched_at:
+                        rows.__setitem__(incident_id, {"status": status, "candidates": candidates,
+                                                       "building_id": building_id, "version": version,
+                                                       "prefetched_at": prefetched_at}))
+    monkeypatch.setattr(orchestrator.db, "load_incident_state", rows.get)
+    monkeypatch.setattr(orchestrator.db, "save_brief", lambda brief, *a, **k: saved_briefs.append(brief))
+    model = fake_model(*DEPOT_START, *DEPOT_RESUME, *DEPOT_PUBLISH, drafts=depot_drafts())
+    monkeypatch.setattr(orchestrator, "_model", lambda thinking=True: model)
+    if depot.root:
+        monkeypatch.setattr(workspace_mod, "WORKSPACE_ROOT", depot.root)
+
+    start_incident("inc_s4b")
+    depot.eng.confirm(DEPOT)
+    save_incident(depot.eng.record, workspace_root=depot.root)
+    assert resume_incident("inc_s4b", DEPOT).status == "awaiting_approval"
+    assert rows["inc_s4b"]["status"] == "awaiting_approval" and saved_briefs == []  # Tiger: published briefs only
+    orchestrator._SESSIONS.clear()  # the restart
+
+    done = review_brief("inc_s4b", drop=["c1"])
+    assert done.status == "briefed" and [c.id for c in done.brief.considerations] == ["c2"]
+    assert rows["inc_s4b"]["status"] == "briefed" and [b.published for b in saved_briefs] == [True]
+    assert all(t.status == "completed" for t in done.todos)  # the paused agent turn ran after the restart
+
+
 def test_dispatcher_can_reject_every_candidate(incident):
     start_incident("inc_s2", workspace_root=incident.root,
                    model=fake_model(*START, AIMessage(content="No building confirmed.")))
@@ -373,6 +587,9 @@ def test_broken_agent_still_gets_a_facts_only_brief(incident, monkeypatch):
 
     v2 = update_incident("inc_s2", incident.replay("c2"))  # updates degrade the same way
     assert v2.fallback_reason and "Floor contradicted: 3 vs 4 (Call 2)" in v2.brief.changes_since_last
+    assert v2.brief.published  # facts only: nothing for the dispatcher to review
+    # No agent, so nobody planned the copilot question: code still asks the dispatcher.
+    assert [q.field for q in copilot.read_questions(incident.ws)] == ["incident.floor"]
 
 
 # ---------- live ----------

@@ -185,6 +185,7 @@ class Brief(BaseModel):
     verifier_rejections: int = 0         # draft considerations rejected (code checks + critic) for this version
     evidence: dict[str, Evidence] = {}   # so the UI evidence drawer can resolve every id
     crew_notes: list[CrewFeedback] = []  # earlier crew feedback on this building
+    published: bool = False              # false while low-confidence considerations await the dispatcher
     disclaimer: str = "Advisory only. Verify on arrival."
 
 
@@ -206,7 +207,7 @@ class BuildingCandidate(BaseModel):
 class Progress(BaseModel):
     """The orchestrator's write_todos plan, rewritten on every change. UI progress strip."""
     incident_id: str
-    status: Literal["running", "awaiting_confirmation", "done", "rejected"] = "running"
+    status: Literal["running", "awaiting_confirmation", "awaiting_approval", "done", "rejected"] = "running"
     version: int = 1                      # brief version being produced
     candidates: list[BuildingCandidate] = []   # what the dispatcher is choosing between
     todos: list[TodoItem] = []

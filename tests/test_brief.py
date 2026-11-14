@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 
 from flamescout_schemas import Brief, CallSegment
-from services.agents.brief import (ConsiderationDraft, build_brief, check_considerations, merge_evidence,
-                                   rejected_count)
+from services.agents.brief import (ConsiderationDraft, build_brief, check_considerations, low_confidence,
+                                   merge_evidence, publish, rejected_count)
 from services.agents.dossier import load_dossier
 from services.agents.fusion import FusionEngine
 
@@ -134,3 +134,44 @@ def test_cross_layer_rule_needs_two_layers_and_a_draft(incident, dossier):
     assert build_brief(incident, dossier, []).considerations == []  # facts-only fallback stays legal
     costar_only = {k: e for k, e in merge_evidence(incident, dossier).items() if e.source in ("costar", "call")}
     assert check_considerations([draft(category="hazard", evidence_ids=["ev_costar_3"])], costar_only) == []
+
+
+def depot_incident():
+    data = json.loads((CALLS / "s4b.json").read_text())
+    rec = FusionEngine("inc_s4b").ingest_all(CallSegment(**s) for s in data["segments"])
+    rec.confirmed_building_id = "fake_quarry_depot"
+    return rec
+
+
+def test_no_scan_brief_states_the_gaps_and_invents_no_interior():
+    dossier = load_dossier("fake_quarry_depot")
+    brief = build_brief(depot_incident(), dossier, [])
+    assert "No interior scan on file" in brief.gaps
+    assert "Interior layout unknown: no stairs, standpipes, elevator or key box locations" in brief.gaps
+    assert "Entries are read from aerial imagery only and are not verified" in brief.gaps
+    assert brief.freshness["scan_age_days"] is None
+    assert {m.kind for m in brief.markers} == {"other", "entry"}  # nothing interior
+    assert all(e.source in ("costar", "vexcel", "call") for e in brief.evidence.values())
+
+
+def test_low_confidence_and_publish():
+    roller = draft(title="Consider the roller door from the loading yard",
+                   evidence_ids=["ev_qd_aerial_2", "ev_qd_costar_2"])
+    chemicals = draft(category="hazard", title="Consider possible pool chemicals in unit A",
+                      evidence_ids=["ev_qd_costar_2"])
+    brief = build_brief(depot_incident(), load_dossier("fake_quarry_depot"), [roller, chemicals])
+    assert [c.confidence for c in brief.considerations] == [0.4, 0.85] and not brief.published
+    assert [c.id for c in low_confidence(brief)] == ["c1"]  # strictly below 0.5
+
+    kept = publish(brief)
+    assert kept.published and len(kept.considerations) == 2 and not brief.published  # a copy
+    dropped = publish(brief, ["c1"])
+    assert [(c.id, c.rank) for c in dropped.considerations] == [("c2", 1)]
+    assert dropped.gaps[-1] == "Dispatcher dropped 1 low-confidence consideration(s): c1"
+    with pytest.raises(ValueError, match="Not in inc_s4b_v1"):
+        publish(brief, ["c7"])
+
+
+def test_confidence_of_exactly_half_is_not_low(incident, dossier):
+    brief = build_brief(incident, dossier, [draft(evidence_ids=["ev_scan_fp_1", "ev_aerial_1"])])  # roof 0.5
+    assert brief.considerations[0].confidence == 0.5 and low_confidence(brief) == []

@@ -9,7 +9,8 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - Tests: `pytest -q` (offline). Live API tests: `RUN_LIVE=1 pytest -q -m live`
 - Replay a call script through fusion: `python scripts/run_fusion.py S2`
 - Run an incident end to end (call 1 -> dispatcher confirms -> brief v1, call 2 -> brief v2): `python scripts/run_incident.py S2`
-  (`--cold` ignores prefetched building data)
+  (`--cold` ignores prefetched building data). `S4B` is a building with no interior scan: re-plan, and a
+  low-confidence review that `--drop-low` answers by dropping instead of approving.
 - Prefetch a building's data layers for the next 24 h: `python scripts/prefetch.py fake_wilshire_tower`
 - Export JSON Schema for the frontend: `python scripts/export_schemas.py`
 - API: `uvicorn services.api.main:app --reload --port 8000` (docs at /docs, WS at /ws/incidents/{id})
@@ -27,13 +28,19 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
   incident id); subagents costar, matterport, vexcel (delegated in one turn, run in parallel),
   strategy, critic. `start_incident` pauses at the `confirm_building`
   interrupt, `resume_incident` takes the dispatcher's choice, `update_incident` writes the next brief
-  version. JSON artifacts are written only by its tools; the model may write only `notes/*.md`.
+  version, `review_brief` answers the `publish_brief` interrupt (a consideration below 0.5 confidence).
+  The plan in write_todos changes with the situation (no interior scan, life-safety contradiction).
+  JSON artifacts are written only by its tools; the model may write only `notes/*.md`.
   API guide: `docs/agents-api.md`.
 - `services/agents/providers.py` - PRD 7.4 adapter Protocols, fixture implementations, live stubs
   (`DATA_MODE=live` logs "not configured" and serves fixtures).
 - `services/agents/locator.py` - candidate buildings for an incident via the CoStar adapter. No LLM.
 - `services/agents/brief.py` - deterministic Brief assembly, consideration checks (incl. at least one
   cross-layer consideration), `changes_since_last` diff. No LLM.
+- `services/agents/copilot.py` - also holds the orchestrator's dispatcher questions for life-safety
+  contradictions (`copilot_questions.json` in the incident workspace; `copilot.json` is the API's status map).
+- `skills/<name>/SKILL.md` - deepagents skills the strategy subagent loads on demand (mounted read-only at
+  `/skills/`): `occupancy-hazards`, `size-up-format`.
 - `services/agents/dossier.py` - pulls the costar / matterport / vexcel layers through the adapters and
   merges them into a BuildingDossier. No LLM.
 - `services/agents/cache.py` - prefetch cache (24 h): MongoDB namespace `["cache", <building_id>]`, or
@@ -44,9 +51,11 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - `services/agents/db.py` - Postgres on Tiger Data (`TIGER_DATABASE_URL`): incidents, facts, call_segments
   and pipeline_events (hypertables), briefs, `time_to_brief` view, and the LangGraph `PostgresSaver`
   (incidents survive a restart). Best-effort writes; every function is a no-op when the URL is unset.
-- `data/fixtures/calls/` - scripted calls S1-S4. `data/fixtures/<building_id>/{costar,matterport,vexcel}.json`
+- `data/fixtures/calls/` - scripted calls S1-S4, plus S4B (no-scan building in the orchestrator's layer
+  format, `fake_quarry_depot`; S4's `maple_lofts` exists only in the services/api fixture format).
+  `data/fixtures/<building_id>/{costar,matterport,vexcel}.json`
   - per-layer fixtures, our own normalized fields only.
-- Incident workspace (MongoDB, or `workspace/<incident_id>/`): incident.json, candidates.json, layers/*.json,
+- Incident workspace (MongoDB, or `workspace/<incident_id>/`): incident.json, candidates.json, copilot_questions.json, layers/*.json,
   dossier.json, brief_vN.json, critique_vN.json, todos.json = the orchestrator's plan + status for the UI
   progress strip, notes/*.md. This is the deepagent filesystem AND what the UI renders. Not committed.
 - `services/agents/{rules_dossier,rules_brief,critic,copilot}.py`, `services/agents/tools/` - the earlier
@@ -90,4 +99,3 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 ## TODO (later)
 - Implement the live CoStar / Matterport / Vexcel adapters in `providers.py` once real API access and
   field names are confirmed (today `DATA_MODE=live` serves fixtures).
-- Add an `interrupt_on` gate before publishing a brief that has low-confidence considerations.

@@ -1,0 +1,37 @@
+{
+  "center": {"lat": 34.10, "lon": -118.30},
+  "aerials": [
+    {
+      "evidence": {"id": "ev_qd_aerial_1", "kind": "aerial_crop", "source": "vexcel",
+                   "uri": "fixture://fake_quarry_depot/aerial/overhead",
+                   "captured_at": "2026-04-02T00:00:00Z",
+                   "locator": {"view": "overhead", "note": "synthetic hand-written fixture, not real aerial imagery"}},
+      "markers": [
+        {"id": "m_qd_yard", "kind": "other",
+         "label": "Gated loading yard along the east side, vehicle gate onto Quarry Road",
+         "floor": 1, "status": "inferred", "confidence": 0.65}
+      ],
+      "exposures": [
+        {"id": "x_qd_west", "label": "2-storey office building to the west", "side": "west",
+         "distance_m": 3.0, "status": "inferred", "confidence": 0.6}
+      ]
+    },
+    {
+      "evidence": {"id": "ev_qd_aerial_2", "kind": "aerial_crop", "source": "vexcel",
+                   "uri": "fixture://fake_quarry_depot/aerial/oblique-east",
+                   "captured_at": "2026-04-02T00:00:00Z",
+                   "locator": {"view": "oblique, looking west at the east wall",
+                               "note": "synthetic hand-written fixture, not real aerial imagery"}},
+      "markers": [],
+      "exposures": [],
+      "exterior_entries": [
+        {"id": "m_qd_ext_roller", "kind": "entry",
+         "label": "Roller shutter door, east wall, opening onto the loading yard (seen from the air, not verified)",
+         "floor": 1, "status": "inferred", "confidence": 0.45},
+        {"id": "m_qd_ext_front", "kind": "entry",
+         "label": "Pedestrian door, south wall facing Quarry Road (seen from the air, not verified)",
+         "floor": 1, "status": "inferred", "confidence": 0.4}
+      ]
+    }
+  ]
+}

@@ -87,7 +87,7 @@ class FixtureCoStarProvider(_FixtureFiles):
 
     def search_property(self, query: str) -> list[dict]:
         """Properties whose name or address shares a word with the query."""
-        wanted = tokens(query)
+        wanted = tokens(query) - set(_SUFFIXES.values())  # "street" alone is not a match
         return [{k: p[k] for k in ("property_id", "name", "address", "coordinates")}
                 for p in self._all() if wanted & (tokens(p["name"]) | tokens(p["address"]))]
 

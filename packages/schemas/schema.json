@@ -119,6 +119,11 @@
           "title": "Crew Notes",
           "type": "array"
         },
+        "published": {
+          "default": false,
+          "title": "Published",
+          "type": "boolean"
+        },
         "disclaimer": {
           "default": "Advisory only. Verify on arrival.",
           "title": "Disclaimer",
@@ -944,6 +949,7 @@
           "enum": [
             "running",
             "awaiting_confirmation",
+            "awaiting_approval",
             "done",
             "rejected"
           ],
