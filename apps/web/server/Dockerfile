@@ -8,6 +8,8 @@ COPY apps/web/package.json ./package.json
 COPY apps/web/server ./server
 COPY apps/web/public/house-viewer/escaleras.js apps/web/public/house-viewer/evac.js ./public/house-viewer/
 COPY apps/web/public/house-viewer/samples/index.json ./public/house-viewer/samples/index.json
+# stored raw Matterport responses of the star buildings: served when no Matterport credentials are configured
+COPY data/raw ./data/raw
 ENV HOUSE_DATA_PORT=8080 NODE_ENV=production
 EXPOSE 8080
 USER node

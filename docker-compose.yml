@@ -18,6 +18,8 @@ services:
       context: .
       dockerfile: apps/web/server/Dockerfile
     env_file: .env                         # VEXCEL_API_KEY, MATTERPORT_API_KEY, MATTERPORT_API_SECRET at runtime
+    environment:
+      HOUSE_DATA_TRUST_PROXY: "1"          # behind Caddy: rate limit by the client IP in X-Forwarded-For
     expose:
       - "8080"
     restart: unless-stopped

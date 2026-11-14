@@ -11,10 +11,11 @@ export function houseData() {
   return {
     name: "flamescout-house-data",
     configResolved(config) {
-      const env = loadEnv(config.mode, path.resolve(config.root, "..", ".."), ["VEXCEL_", "MATTERPORT_"]);
+      const env = loadEnv(config.mode, path.resolve(config.root, "..", ".."), ["VEXCEL_", "MATTERPORT_", "MP_"]);
       handle = createHouseDataHandler({
         getEnv: (k) => process.env[k] || env[k],
         catalogFile: path.join(config.publicDir, "house-viewer", "samples", "index.json"),
+        storedDir: path.resolve(config.root, "..", "..", "data", "raw"),
       });
     },
     // middlewares added here run before Vite's own (including the /api proxy to :8000)

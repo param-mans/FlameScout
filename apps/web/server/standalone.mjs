@@ -13,6 +13,8 @@ const port = Number(process.env.HOUSE_DATA_PORT || 8080);
 const handle = createHouseDataHandler({
   getEnv: (k) => process.env[k],
   catalogFile: process.env.HOUSE_CATALOG || path.join(here, "..", "public", "house-viewer", "samples", "index.json"),
+  storedDir: process.env.HOUSE_DATA_RAW || path.join(here, "..", "data", "raw"),
+  trustProxy: process.env.HOUSE_DATA_TRUST_PROXY === "1", // behind Caddy: client IP = last X-Forwarded-For hop
 });
 
 http.createServer((req, res) => {
@@ -22,5 +24,6 @@ http.createServer((req, res) => {
   handle(req, res, () => { res.statusCode = 404; res.setHeader("Content-Type", "application/json"); res.end('{"error":"not found"}'); });
 }).listen(port, () => {
   const has = (k) => (process.env[k] ? "set" : "MISSING");
-  console.log(`house-data on :${port} (VEXCEL_API_KEY ${has("VEXCEL_API_KEY")}, MATTERPORT_API_KEY ${has("MATTERPORT_API_KEY")}, MATTERPORT_API_SECRET ${has("MATTERPORT_API_SECRET")})`);
+  const mp = (process.env.MATTERPORT_API_KEY || process.env.MP_ID) && (process.env.MATTERPORT_API_SECRET || process.env.MP_SECRET || String(process.env.MATTERPORT_API_KEY).includes(":"));
+  console.log(`house-data on :${port} (VEXCEL_API_KEY ${has("VEXCEL_API_KEY")}, Matterport token ${mp ? "set" : "MISSING: stored plans only"})`);
 });
