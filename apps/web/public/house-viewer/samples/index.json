@@ -124,5 +124,19 @@
    "yearBuilt": 2010,
    "homeType": "Detached"
   }
+ },
+ {
+  "id": "23296",
+  "address": "9700 Tanner Rd, Houston",
+  "location": {
+   "lat": 29.850575,
+   "lon": -95.533213
+  },
+  "city": "Houston",
+  "market": "Houston",
+  "matterportModelId": null,
+  "no_scan": true,
+  "listing": null,
+  "name": "Northwest Trade Center"
  }
 ]

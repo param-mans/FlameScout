@@ -66,6 +66,10 @@ export function createHouseDataHandler({ getEnv, catalogFile, storedDir = null, 
     throw new MPError("Matterport API token is not set and no stored plan exists for this sample", 503);
   }
   async function sampleDoc(s) {
+    if (!s.matterportModelId) { // building without an interior scan: no plan, never a guessed one
+      const { id, address, location, city, market, listing } = s;
+      return { id, address, location: location ? { ...location, city, market } : null, matterportModelId: null, listing: listing ?? null, no_scan: true, plan: null, quality: null, stairs: null };
+    }
     // plan (live API, or the stored raw response without credentials) + extras computed once (plan-extras.mjs)
     const { plan, source } = await memo(`plan:${s.id}`, () => loadPlan(s));
     const { quality, stairs } = evaluar(plan, { sqft: s.listing?.sqft ?? null, beds: s.listing?.beds ?? null });

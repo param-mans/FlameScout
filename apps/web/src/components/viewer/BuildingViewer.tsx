@@ -11,10 +11,10 @@ type Props = { mode?: "floor" | "scan3d"; layout?: "single" | "split"; sampleId:
 export const HOUSE_VIEWER_DEFAULT = true;
 type Status = { kind: "idle" } | { kind: "loading" } | { kind: "ready" } | { kind: "error"; message: string };
 export type SampleHouse = {
-  id: string; address: string; city?: string; matterportModelId: string; location?: { lat: number; lon: number };
+  id: string; address: string; city?: string; matterportModelId: string | null; no_scan?: boolean; location?: { lat: number; lon: number };
   listing?: { beds?: number; baths?: number; sqft?: number; yearBuilt?: number; homeType?: string };
 };
-const facts = (s: SampleHouse) => [s.listing?.beds != null && `${s.listing.beds} bd`, s.listing?.sqft && `${s.listing.sqft.toLocaleString("en-US")} sq ft`].filter(Boolean).join(" · ");
+const facts = (s: SampleHouse) => [s.no_scan && "no interior scan", s.listing?.beds != null && `${s.listing.beds} bd`, s.listing?.sqft && `${s.listing.sqft.toLocaleString("en-US")} sq ft`].filter(Boolean).join(" · ");
 
 const BASE = `${import.meta.env.BASE_URL}house-viewer/`;
 const TIMEOUT_MS = 15000;
@@ -137,7 +137,12 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId, s
 
   const split = layout === "split";
   const view = split ? "layout=split" : `mode=${mode === "floor" ? "2d" : "3d"}`;
-  const src = frameSample ? `${BASE}casa.html?embed=1&sample=${encodeURIComponent(frameSample)}&${view}` : null;
+  // ?debug=1 (and the optional scenario / v) on the page is forwarded to the viewer (incident scenario selector)
+  const page = new URLSearchParams(window.location.search);
+  const debug = page.get("debug") === "1"
+    ? "&debug=1" + ["scenario", "v"].filter((k) => /^[A-Za-z0-9]{1,8}$/.test(page.get(k) ?? "")).map((k) => `&${k}=${page.get(k)}`).join("")
+    : "";
+  const src = frameSample ? `${BASE}casa.html?embed=1&sample=${encodeURIComponent(frameSample)}&${view}${debug}` : null;
   const what = split ? "FLOOR PLAN + 3D" : mode === "floor" ? "FLOOR PLAN" : "3D SCAN";
 
   // Viewer replies from our own iframe only. On the first "ready" of each iframe document the app theme is sent and
