@@ -19,3 +19,7 @@ dev = ["pytest"]
 [tool.pytest.ini_options]
 pythonpath = [".", "packages/schemas"]
 testpaths = ["tests"]
+
+[tool.setuptools]
+# Install dependencies only; code is imported via pythonpath (pytest) and sys.path (scripts).
+packages = []
