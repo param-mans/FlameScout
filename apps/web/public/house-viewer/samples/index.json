@@ -1,0 +1,26 @@
+[
+ {
+  "id": "sample-a",
+  "title": "Sample A · 2 floors · 19 rooms",
+  "floors": 2,
+  "rooms": 19
+ },
+ {
+  "id": "sample-b",
+  "title": "Sample B · 2 floors · 27 rooms",
+  "floors": 2,
+  "rooms": 27
+ },
+ {
+  "id": "sample-c",
+  "title": "Sample C · 1 floor · 17 rooms",
+  "floors": 1,
+  "rooms": 17
+ },
+ {
+  "id": "sample-d",
+  "title": "Sample D · 1 floor · 15 rooms",
+  "floors": 1,
+  "rooms": 15
+ }
+]

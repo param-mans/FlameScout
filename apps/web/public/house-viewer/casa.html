@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>House viewer</title>
+  <link rel="icon" href="data:,">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Modo embed (?embed=1): se marca antes de cargar estilos y modulos (theme.js lee las variables CSS al importarse) -->
+  <script>
+    (function () {
+      var q = new URLSearchParams(location.search)
+      if (q.get('embed') === '1') {
+        document.documentElement.classList.add('embed')
+        document.documentElement.classList.add(q.get('mode') === '2d' ? 'modo-2d' : 'modo-3d')
+      }
+    })()
+  </script>
+  <link rel="stylesheet" href="theme.css">
+  <!-- Three.js r160 copiado en vendor/three (licencia MIT en vendor/three/LICENSE), importado con rutas relativas: sin CDN ni llamadas externas -->
+</head>
+<body>
+  <header>
+    <h1>House <b>3D</b> · Evacuation</h1>
+    <select id="modelo" title="Sample houses"></select>
+    <span id="calidad" class="chip"></span>
+    <span id="carga" class="hint"></span>
+  </header>
+
+  <main>
+    <!-- Izquierda: vista, plantas, capas y filtros -->
+    <aside id="izq"></aside>
+
+    <!-- Centro: 3D -->
+    <section id="centro">
+      <div id="vista3d"></div>
+      <div id="plantas3d" class="hud plantas"></div>
+      <div id="minipisos" class="hud" title="Floors (click to focus)"></div>
+      <div id="aviso3d" class="hud"></div>
+      <div id="escala" class="hud"><div class="regla"></div><span></span></div>
+      <div id="leyenda" class="hud leyenda"></div>
+      <div id="inspector" class="hud"></div>
+    </section>
+
+    <!-- Derecha: plano 2D, leyenda y tabla de entidades -->
+    <aside id="der">
+      <div id="tabs2d" class="plantas"></div>
+      <div id="vista2d"></div>
+      <div id="leyenda2d" class="leyenda"></div>
+      <div id="tabla"></div>
+    </aside>
+  </main>
+  <div id="estado-embed" class="hud"></div>
+
+  <script type="module" src="casa.js"></script>
+</body>
+</html>

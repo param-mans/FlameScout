@@ -1,0 +1,117 @@
+/* Estilo compartido de casa.html (centro de mando oscuro). Los colores salen de theme.js (variables --xxx). */
+:root { --font: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; } /* el resto de --variables las vuelca theme.js (monocromo) */
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; color: var(--text); font: 12px/1.45 var(--font);
+  background: radial-gradient(ellipse at 55% 40%, var(--bg1) 0%, var(--bg0) 70%); background-attachment: fixed; }
+::selection { background: var(--borderHi); }
+::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; } ::-webkit-scrollbar-track { background: transparent; }
+
+/* Cabecera */
+header { display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
+header h1 { font-size: 12px; margin: 0; letter-spacing: .22em; text-transform: uppercase; font-weight: 600; color: var(--text); }
+header h1 b { color: var(--outer); font-weight: 600; }
+header a.back { color: var(--textDim); text-decoration: none; letter-spacing: .12em; text-transform: uppercase; font-size: 11px; }
+header a.back:hover { color: var(--outer); }
+select, button, input { font: inherit; color: var(--text); }
+select, .ctl { background: var(--bg1); border: 1px solid var(--border); border-radius: 3px; padding: 3px 6px; }
+header select { max-width: 170px; }
+.hint { color: var(--textDim); font-size: 11px; }
+.chip { padding: 2px 8px; border: 1px solid var(--border); border-radius: 2px; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; }
+.chip.ok { color: var(--outer); border-color: var(--borderHi); }
+.chip.mal { color: var(--noRoute); border-color: var(--noRoute); }
+
+/* Rejilla de tres paneles */
+main { display: grid; grid-template-columns: 280px minmax(0, 1fr) 460px; height: calc(100% - 44px); }
+aside, section { min-width: 0; min-height: 0; }
+#izq { border-right: 1px solid var(--border); overflow-y: auto; padding: 12px 14px; background: var(--panel); }
+#der { border-left: 1px solid var(--border); display: flex; flex-direction: column; background: var(--panel); }
+#centro { position: relative; overflow: hidden; }
+#vista3d { position: absolute; inset: 0; }
+#vista3d canvas { display: block; }
+
+h2 { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .2em; color: var(--textDim); margin: 16px 0 7px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+h2:first-child { margin-top: 0; }
+label.fila { display: flex; align-items: center; gap: 7px; margin: 3px 0; cursor: pointer; color: var(--text); }
+input[type=checkbox] { accent-color: var(--inner); width: 12px; height: 12px; margin: 0; }
+input[type=range] { accent-color: var(--inner); width: 100%; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 1px; border: 1px solid var(--border); flex: none; }
+.sw.linea { height: 2px; border: none; }
+button { background: var(--bg1); border: 1px solid var(--border); border-radius: 2px; padding: 3px 8px; cursor: pointer; letter-spacing: .08em; }
+button:hover { border-color: var(--borderHi); color: var(--outer); }
+button.on { border-color: var(--outer); color: var(--outer); background: var(--border); }
+.fila-btn { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+.nota { border: 1px solid var(--border); border-radius: 2px; padding: 8px; margin: 6px 0; background: var(--bg1); font-size: 11px; }
+.nota b { color: var(--outer); letter-spacing: .08em; }
+.nota ul { margin: 4px 0 6px; padding-left: 16px; }
+.aviso { color: var(--door); text-decoration: underline dotted var(--textDim); text-underline-offset: 3px; }
+.ctl-fila { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0 2px; }
+
+/* Superposiciones del 3D */
+.hud { position: absolute; background: var(--panel); border: 1px solid var(--border); border-radius: 2px; padding: 7px 9px; backdrop-filter: blur(3px); }
+#plantas3d { left: 10px; top: 10px; display: flex; align-items: center; gap: 4px; padding: 5px 7px; }
+.plantas button { min-width: 30px; padding: 2px 7px; }
+.etq { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--textDim); margin-right: 4px; }
+#aviso3d { right: 10px; top: 10px; font-size: 10px; letter-spacing: .08em; color: var(--textDim); text-align: right; }
+#escala { left: 12px; bottom: 12px; padding: 5px 8px 4px; font-size: 10px; letter-spacing: .1em; color: var(--textDim); }
+#escala .regla { height: 6px; border: 1px solid var(--inner); border-top: none; margin-bottom: 3px; }
+#leyenda { right: 10px; bottom: 10px; font-size: 10px; max-width: 250px; }
+.leyenda .tit { letter-spacing: .2em; text-transform: uppercase; color: var(--textDim); margin-bottom: 4px; }
+.leyenda .barra { width: 200px; height: 6px; margin: 4px 0 2px; background: var(--escala); border-radius: 1px; }
+.leyenda .esc { display: flex; justify-content: space-between; color: var(--textDim); }
+.leyenda .it { display: flex; align-items: center; gap: 6px; margin: 2px 0; color: var(--text); }
+.leyenda .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+
+/* Inspector */
+#inspector { left: 10px; bottom: 54px; width: 330px; max-height: 58%; overflow-y: auto; display: none; padding: 10px 11px; border-color: var(--borderHi); }
+#inspector h3 { margin: 0 0 2px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--sel); }
+#inspector table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+#inspector td { padding: 3px 4px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 11px; }
+#inspector td:first-child { color: var(--textDim); width: 40%; letter-spacing: .04em; }
+#inspector .descargo { margin-top: 6px; padding: 6px; border: 1px dashed var(--borderHi); color: var(--door); font-size: 10.5px; letter-spacing: .04em; }
+#inspector .cerrar { position: absolute; top: 6px; right: 7px; padding: 0 6px; }
+
+/* Panel derecho: plano 2D, leyenda y tabla */
+#tabs2d { display: flex; align-items: center; gap: 4px; padding: 9px 10px 0; flex-wrap: wrap; }
+#vista2d { position: relative; height: 44%; min-height: 220px; margin: 8px 10px 0; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; cursor: grab; touch-action: none;
+  background: radial-gradient(ellipse at 50% 45%, var(--bg1) 0%, var(--bg0) 75%); }
+#vista2d svg { width: 100%; height: 100%; display: block; }
+#vista2d text { pointer-events: none; }
+#leyenda2d { margin: 6px 10px 0; padding: 6px 8px; border: 1px solid var(--border); background: var(--bg1); font-size: 10px; }
+#tabla { flex: 1; min-height: 0; overflow: auto; margin: 8px 10px 10px; border: 1px solid var(--border); }
+#tabla table { width: 100%; border-collapse: collapse; font-size: 11px; }
+#tabla th { position: sticky; top: 0; background: var(--bg1); text-align: left; padding: 5px 6px; color: var(--textDim); font-weight: 500; font-size: 10px; letter-spacing: .16em; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+#tabla td { padding: 3px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+#tabla tr.fila { cursor: pointer; }
+#tabla tr.fila:hover { background: var(--border); }
+#tabla tr.sel { background: var(--border); box-shadow: inset 2px 0 0 var(--sel); }
+#tabla tr.sel td { color: var(--sel); }
+.k-room { color: var(--inner); } .k-door { color: var(--door); } .k-window { color: var(--window); } .k-stairs { color: var(--stairs); } .k-exit { color: var(--outer); }
+.sw.trazo { height: 0; border: none; border-top: 2px solid var(--door); } .sw.disc { height: 0; border: none; border-top: 2px dashed var(--window); }
+.sw.rayado { background: repeating-linear-gradient(45deg, var(--stairs) 0 1px, transparent 1px 4px); }
+.tag { font-size: 9px; letter-spacing: .14em; color: var(--textDim); border: 1px solid var(--border); padding: 0 3px; margin-left: 4px; }
+
+/* Mini selector de plantas (barras apiladas) */
+#minipisos { right: 10px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 3px; padding: 6px; }
+#minipisos button { width: 52px; height: 18px; padding: 0; font-size: 10px; letter-spacing: .12em; text-align: center; }
+#minipisos button.barra { border-color: var(--border); color: var(--textDim); }
+#minipisos button.barra.on { border-color: var(--outer); color: var(--outer); background: var(--border); box-shadow: 0 0 6px var(--borderHi); }
+
+/* Aviso de carga / error (solo modo embed) */
+#estado-embed { display: none; }
+
+/* ---------------------------------------------------------------- Modo embed (?embed=1): una sola vista a pantalla completa
+   ?mode=3d: solo la vista 3D con sus superposiciones. ?mode=2d: solo el plano 2D con su selector de plantas. */
+html.embed body { background: var(--bg0); }
+html.embed header, html.embed #izq, html.embed #tabla, html.embed #leyenda2d { display: none; }
+html.embed main { display: block; height: 100%; }
+html.embed.modo-3d #der { display: none; }
+html.embed.modo-3d #centro { position: absolute; inset: 0; }
+html.embed.modo-2d #centro { position: absolute; width: 1px; height: 1px; left: -10px; top: -10px; visibility: hidden; }
+html.embed.modo-2d #der { position: absolute; inset: 0; border: none; background: var(--bg0); }
+html.embed.modo-2d #vista2d { flex: 1; height: auto; margin: 8px 10px 10px; }
+html.embed.modo-2d #inspector { position: absolute; left: 20px; bottom: 20px; z-index: 2; visibility: visible; }
+html.embed #leyenda { max-width: 230px; opacity: .92; }
+html.embed #estado-embed { display: block; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; max-width: 80%; color: var(--textDim);
+  letter-spacing: .12em; text-transform: uppercase; font-size: 11px; z-index: 5; }
+html.embed #estado-embed:empty { display: none; }
+@media (max-width: 640px) { html.embed #leyenda, html.embed #escala { display: none; } }
