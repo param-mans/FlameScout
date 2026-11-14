@@ -75,6 +75,7 @@ Into the viewer (the page posts to the iframe's `contentWindow`):
 { type: 'highlight', id: 'r3' }                   // room, door or window id; id: null clears
 { type: 'setLayer', layer: 'heatmap', on: true }  // walls | doors | windows | slabs | stairs | labels | route | heatmap
 { type: 'loadSample', id: 'sample-c' }            // load another house without reloading the page
+{ type: 'theme', vars: { '--color-bg': '#0a0d11', '--font-mono': '…' } } // app design tokens, see Theme
 ```
 
 Out of the viewer:
@@ -83,14 +84,28 @@ Out of the viewer:
 { type: 'ready', sample: 'sample-a', floors: 2, mode: '3d' }
 { type: 'select', id: 'r3', kind: 'room', floor: 1 }   // user click in 2D or 3D; id: null when cleared
 { type: 'error', message: 'Unknown sample: x' }
+{ type: 'themeApplied' }                                // reply to 'theme'
 ```
 
 ## Theme
 
-`theme.js` reads optional CSS variables on `:root` and falls back to its defaults when one is missing:
+Without a theme message the viewer uses its own monochrome theme. The default can be tuned with
+optional CSS variables on `:root`: `--hv-hue` (palette hue, default 205) and `--hv-<key>` for any
+color key of `T` in `theme.js`.
 
-- `--hv-hue`: hue of the monochrome palette (default 205).
-- `--hv-<key>`: any color key of `T` in `theme.js`, e.g. `--hv-bg0`, `--hv-outer`, `--hv-sel`.
+`BuildingViewer` (apps/web) reads the app's design tokens (`--color-bg`, `--color-panel`,
+`--color-panel-hi`, `--color-line`, `--color-line-hi`, `--color-ink`, `--color-dim`, `--color-faint`,
+`--color-accent`, `--color-verified`, `--color-inferred`, `--color-unverified`, `--font-mono`,
+`--font-sans`). It sends them with `{type:'theme', vars}` on the first `ready` and keeps the iframe
+hidden until `themeApplied` arrives. The viewer then:
+
+- uses a flat background equal to the column, and the app's panels, borders and fonts;
+- styles buttons like the app chips (accent when active);
+- shows status chips (● VER, ◆ INF, ○ UNV) in the app's status colors;
+- takes the hue of `--color-accent` as the palette hue, so walls, slabs, doors and heat map keep
+  their monochrome hierarchy.
+
+Unknown keys and values containing `; { } < >` are ignored.
 
 ## Limits
 

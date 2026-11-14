@@ -146,3 +146,31 @@ html.embed.layout-split #izq.abierto { display: block; }
   html.embed.layout-split #vista2d { flex-basis: 200px; min-height: 200px; }
   html.embed.layout-split #aviso3d { display: none; }
 }
+
+/* Chips de estado del dato (forma + codigo + color, como en la app). Sin tema de la app: colores del monocromo */
+.st { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font: 600 11px/1 var(--font); white-space: nowrap; vertical-align: baseline; }
+.st-verified { color: var(--verified); } .st-inferred { color: var(--inferred); } .st-unverified { color: var(--unverified); }
+
+/* ---------------------------------------------------------------- Tema de la app (postMessage 'theme')
+   Fondo plano igual al de la columna, paneles, bordes y tipografia de la app; botones como sus chips. Sin esquinas ni sombras. */
+html.tema-app body { background: var(--bg0); font-family: var(--fontUi); }
+html.tema-app .hud, html.tema-app .plegable, html.tema-app #leyenda2d, html.tema-app #vista2d, html.tema-app #izq, html.tema-app .nota,
+html.tema-app select, html.tema-app .ctl, html.tema-app button, html.tema-app .chip { border-radius: 0; }
+html.tema-app .hud { background: var(--panel); border-color: var(--border); backdrop-filter: none; }
+html.tema-app #vista2d { background: var(--bg0); border-color: var(--border); }
+html.tema-app .plegable, html.tema-app #leyenda2d, html.tema-app .nota { background: var(--panel); border-color: var(--border); }
+html.tema-app #barra-split { background: var(--panel); border-color: var(--border); }
+html.tema-app #der { border-color: var(--border); }
+html.tema-app.layout-split #izq { background: var(--panel); border-color: var(--borderHi); }
+html.tema-app button { font: 600 11px/1.45 var(--fontUi); text-transform: uppercase; letter-spacing: .05em; padding: 2px 8px;
+  background: transparent; border: 1px solid var(--borderHi); color: var(--textDim); box-shadow: none; }
+html.tema-app button:hover { background: var(--panelHi); color: var(--text); border-color: var(--borderHi); }
+html.tema-app button.on, html.tema-app #minipisos button.barra.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); box-shadow: none; }
+html.tema-app .etq, html.tema-app h2, html.tema-app .plegable > summary, html.tema-app .leyenda .tit, html.tema-app #tabla th {
+  font-family: var(--fontUi); font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--textDim); }
+html.tema-app .plegable[open] > summary { color: var(--text); }
+html.tema-app .hint, html.tema-app #aviso3d, html.tema-app #escala, html.tema-app #tabla td, html.tema-app #inspector td, html.tema-app .leyenda { font-family: var(--font); }
+html.tema-app label.fila, html.tema-app .ctl-fila { font-family: var(--fontUi); font-size: 12px; }
+html.tema-app #inspector h3 { font-family: var(--fontUi); letter-spacing: .06em; }
+html.tema-app input[type=checkbox], html.tema-app input[type=range] { accent-color: var(--accent); }
+html.tema-app :focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }

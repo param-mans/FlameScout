@@ -13,6 +13,17 @@ export type SampleHouse = { id: string; address: string; title: string; floors: 
 
 const BASE = `${import.meta.env.BASE_URL}house-viewer/`;
 const TIMEOUT_MS = 15000;
+const THEME_WAIT_MS = 1500;
+
+// Design tokens of the app (src/index.css @theme) sent to the viewer so it looks like part of the UI.
+const THEME_TOKENS = [
+  "--color-bg", "--color-panel", "--color-panel-hi", "--color-line", "--color-line-hi", "--color-ink", "--color-dim", "--color-faint",
+  "--color-accent", "--color-verified", "--color-inferred", "--color-unverified", "--font-mono", "--font-sans",
+];
+function readThemeTokens(): Record<string, string> {
+  const css = getComputedStyle(document.documentElement);
+  return Object.fromEntries(THEME_TOKENS.map((k) => [k, css.getPropertyValue(k).trim()]).filter(([, v]) => v));
+}
 const validId = (id: string | null | undefined): id is string => !!id && /^[a-z0-9-]+$/.test(id);
 
 function setSampleParam(id: string) {
@@ -120,16 +131,28 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId }:
   const src = frameSample ? `${BASE}casa.html?embed=1&sample=${encodeURIComponent(frameSample)}&${view}` : null;
   const what = split ? "FLOOR PLAN + 3D" : mode === "floor" ? "FLOOR PLAN" : "3D SCAN";
 
-  // Viewer replies: "ready" or "error" from our own iframe only.
+  // Viewer replies from our own iframe only. On the first "ready" of each iframe document the app theme is sent and
+  // the iframe stays hidden until "themeApplied" (or a short fallback), so the default viewer theme never flashes.
+  const themed = useRef(false);
+  const themeTimer = useRef<number | undefined>(undefined);
   useEffect(() => {
+    const show = () => { window.clearTimeout(themeTimer.current); setStatus((s) => (s.kind === "loading" ? { kind: "ready" } : s)); };
     const onMessage = (e: MessageEvent) => {
-      if (e.origin !== window.location.origin || e.source !== frame.current?.contentWindow) return;
+      const win = frame.current?.contentWindow;
+      if (e.origin !== window.location.origin || !win || e.source !== win) return;
       const d = e.data as { type?: string; message?: string } | null;
-      if (d?.type === "ready") setStatus({ kind: "ready" });
-      else if (d?.type === "error") setStatus({ kind: "error", message: d.message ?? "Viewer error" });
+      if (d?.type === "ready") {
+        if (themed.current) return show();
+        win.postMessage({ type: "theme", vars: readThemeTokens() }, window.location.origin);
+        window.clearTimeout(themeTimer.current);
+        themeTimer.current = window.setTimeout(show, THEME_WAIT_MS);
+      } else if (d?.type === "themeApplied") {
+        themed.current = true;
+        show();
+      } else if (d?.type === "error") setStatus({ kind: "error", message: d.message ?? "Viewer error" });
     };
     window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+    return () => { window.removeEventListener("message", onMessage); window.clearTimeout(themeTimer.current); };
   }, []);
 
   useEffect(() => {

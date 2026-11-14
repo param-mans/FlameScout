@@ -13,7 +13,7 @@ import { RenderPass } from './vendor/three/examples/jsm/postprocessing/RenderPas
 import { UnrealBloomPass } from './vendor/three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from './vendor/three/examples/jsm/postprocessing/OutputPass.js'
 import { FLOOR_H, SALA_MIN, esEscalera, poligonoValido, dibujable, puntoInterior, evacuacion, baseElev, antepecho, dentroSala, centroide } from './evac.js'
-import { T, OP, FX, colorDistancia, aplicarCSS } from './theme.js'
+import { T, OP, FX, colorDistancia, aplicarCSS, aplicarTema } from './theme.js'
 import { analizar, emparejar, rectangulo, distContorno } from './escaleras.js'
 
 aplicarCSS()
@@ -922,6 +922,8 @@ function tabla() {
 
 // ---------------------------------------------------------------- inspector y notas
 const fila = (k, v) => (v == null || v === '' ? '' : `<tr><td>${esc(k)}</td><td>${v}</td></tr>`)
+const ESTADOS = { verified: ['●', 'VER', 'Verified'], inferred: ['◆', 'INF', 'Inferred'], unverified: ['○', 'UNV', 'Unverified'] }
+const chip = (k, nota) => `<span class="st st-${k}" title="${esc(ESTADOS[k][2] + (nota ? ': ' + nota : ''))}"><span aria-hidden="true">${ESTADOS[k][0]}</span>${ESTADOS[k][1]}</span>`
 function inspector() {
   const el = $('inspector'), s = S.sel
   if (!s) {
@@ -933,9 +935,9 @@ function inspector() {
   if (s.kind === 'room') {
     const r = salaPorId(s.fi, s.id), ruta = rutaSala(s.fi, r), marca = esDormitorio(r) ? 'Sleeping area (bedroom) [SLEEP]' : esIgnicion(r) ? 'Possible ignition area [IGNITION]' : null
     h += `<h3>${esc(nombreSala(r))}</h3><div class="hint">ROOM · ${esc(f.label.toUpperCase())}</div>`
-    t = fila('Type (detected by AI, can be wrong)', esc(r.type || '—') + (r.typeConfidence != null ? ` (${Math.round(r.typeConfidence * 100)}%)` : '')) + fila('Area', r.areaM2 != null ? r.areaM2 + ' m²' : '—') +
-      fila('Outline', r.polygonQuality === 'ok' ? 'reliable' : `<span class="aviso">unreliable (no slab drawn)</span> ${esc((r.polygonIssues || []).join(', '))}`) +
-      fila('Distance to nearest exit', ruta ? `<b style="color:${T.sel}">${ruta.dist.toFixed(1)} m</b> (estimate)` : `<span style="color:${T.noRoute}">${SIN_RUTA}</span> (no route)`) +
+    t = fila('Type (detected by AI, can be wrong)', esc(r.type || '—') + (r.typeConfidence != null ? ` (${Math.round(r.typeConfidence * 100)}%)` : '') + chip('inferred', 'AI classification')) + fila('Area', r.areaM2 != null ? r.areaM2 + ' m²' : '—') +
+      fila('Outline', r.polygonQuality === 'ok' ? 'reliable' + chip('verified', 'outline passed validation') : `<span class="aviso">unreliable (no slab drawn)</span> ${esc((r.polygonIssues || []).join(', '))}` + chip('unverified', 'outline failed validation')) +
+      fila('Distance to nearest exit', ruta ? `<b style="color:${T.sel}">${ruta.dist.toFixed(1)} m</b> (estimate)` + chip('inferred', 'straight-line estimate') : `<span style="color:${T.noRoute}">${SIN_RUTA}</span> (no route)` + chip('unverified', 'no route found')) +
       fila('Exit door', ruta ? esc((ruta.puntos[ruta.puntos.length - 1].salida || '').slice(0, 8)) : '') + fila('Marked as', marca)
   } else {
     const o = f.openings.find((x) => x.id === s.id), info = S.ev.puertas.get(o.id)
@@ -946,7 +948,7 @@ function inspector() {
   }
   const c = S.fila
   const calidad = !c ? '' : c.estado === 'ok'
-    ? 'OK' + (c.etiquetas ? '<br>' + c.etiquetas.split('|').filter(Boolean).map((x) => esc(TAG_TXT[x] || x)).join('<br>') : '')
+    ? 'OK' + chip('verified', 'passed the house quality check') + (c.etiquetas ? '<br>' + c.etiquetas.split('|').filter(Boolean).map((x) => esc(TAG_TXT[x] || x)).join('<br>') : '')
     : `<span style="color:${T.noRoute}">Discarded</span><br>` + esc(c.motivo)
   h += `<table>${t}${fila('Source', esc(FUENTE))}${fila('House quality check', calidad)}</table><div class="descargo">${esc(DESCARGO)}</div>`
   el.innerHTML = h; el.style.display = 'block'
@@ -1054,6 +1056,7 @@ function eventos() {
 function mensaje(e) {
   if (e.origin !== ORIGEN || e.source !== window.parent || !e.data || typeof e.data !== 'object') return
   const d = e.data
+  if (d.type === 'theme') return tema(d.vars)
   if (d.type === 'loadSample') {
     if (!LISTA.some((x) => x.id === d.id)) return fallo('Unknown sample: ' + String(d.id).slice(0, 40))
     $('modelo').value = d.id
@@ -1075,6 +1078,19 @@ function mensaje(e) {
     if (d.layer === 'heatmap') { S.color = d.on ? 'evac' : 'type'; panelIzq(); refrescar() }
     else if (d.layer in S.capas) { S.capas[d.layer] = d.on; panelIzq(); refrescar() }
   }
+}
+
+// {type:'theme', vars:{'--color-bg': ..., '--font-mono': ...}}: tokens de diseno de la app (ver TOKENS en theme.js).
+// Se aplica una vez por juego de tokens; se reconstruye el 3D y el 2D con los colores nuevos y se responde 'themeApplied'.
+let temaClave = ''
+function tema(vars) {
+  const clave = JSON.stringify(vars || {})
+  if (clave !== temaClave && aplicarTema(vars)) {
+    temaClave = clave
+    if (escena) { escena.background = fondoRadial(); escena.fog.color.set(T.bg0); if (bloom) rotSucio = true }
+    if (S.plan) { const cam = camara.position.clone(), obj = controles.target.clone(); construir3D(); camara.position.copy(cam); controles.target.copy(obj); panelIzq(); selectoresPlanta(); refrescar(); avisoHud() }
+  }
+  avisarPadre({ type: 'themeApplied' })
 }
 
 // ---------------------------------------------------------------- carga (solo archivos estaticos de samples/)
