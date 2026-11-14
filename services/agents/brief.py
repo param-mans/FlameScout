@@ -23,9 +23,14 @@ from .memory import CrewRecord
 MAX_CONSIDERATIONS = 5
 DATA_LAYERS = frozenset({"costar", "matterport", "vexcel"})  # building-data layers; calls are not one
 LOW_CONFIDENCE = 0.5  # considerations below this wait for the dispatcher before the brief is published
+# Window findings from the plan (e.g. a bedroom with no window opening) are not used yet: a missing
+# opening in a scan is not evidence of a missing window (data/raw/FIELD_NOTES.md).
+WINDOWLESS = re.compile(r"windowless|\bno windows?\b|without (?:a |any )?windows?\b|lacks? (?:a |any )?windows?\b",
+                        re.I)
 ADVISORY_PREFIX = "Consider "
 UNSCORED_CONFIDENCE = 0.3  # evidence that no scored fact or marker cites
 CREW_CONFIDENCE = 0.6      # a crew's report from an earlier incident: same cap as a caller's report
+SPAN_CONFIDENCE = 0.5      # a transcript span cited directly: one caller's report (fusion's BASE_CONF)
 
 
 class ConsiderationDraft(BaseModel):
@@ -34,6 +39,8 @@ class ConsiderationDraft(BaseModel):
     title: str = Field(description='Advisory wording. Must start with "Consider ".')
     rationale: str = Field(description="One or two sentences, using only facts from the files.")
     evidence_ids: list[str] = Field(description="Evidence ids that support this, copied exactly.")
+    refs: list[str] = Field(default=[], description="Ids from the incident overlay of this version that this "
+                                                    "is about (occupants, fire, hazards, groups, objectives).")
 
 
 def crew_evidence(memory: Sequence[CrewRecord]) -> dict[str, Evidence]:
@@ -64,7 +71,7 @@ def apply_memory(dossier: BuildingDossier, memory: Sequence[CrewRecord]) -> Buil
 
 
 def _draft_errors(d: ConsiderationDraft, evidence: dict[str, Evidence],
-                  wrong: Sequence[CrewRecord] = ()) -> list[str]:
+                  wrong: Sequence[CrewRecord] = (), overlay_ids: Optional[set[str]] = None) -> list[str]:
     errors: list[str] = []
     text = f"{d.title} {d.rationale}".lower()
     for r in wrong:  # a marker the crew marked wrong must not come back as advice
@@ -80,6 +87,10 @@ def _draft_errors(d: ConsiderationDraft, evidence: dict[str, Evidence],
         errors.append("no evidence_ids; drop it or cite evidence")
     if unknown := [e for e in d.evidence_ids if e not in evidence]:
         errors.append(f"unknown evidence ids {unknown}")
+    if WINDOWLESS.search(text):
+        errors.append("window findings from the plan are not used yet; leave them out")
+    if overlay_ids is not None and (bad := [r for r in d.refs if r not in overlay_ids]):
+        errors.append(f"refs {bad} are not ids in this version's incident overlay")
     return errors
 
 
@@ -96,14 +107,15 @@ def _lacks_cross_layer(drafts: list[ConsiderationDraft], evidence: dict[str, Evi
 
 
 def check_considerations(drafts: list[ConsiderationDraft], evidence: dict[str, Evidence],
-                         wrong: Sequence[CrewRecord] = ()) -> list[str]:
+                         wrong: Sequence[CrewRecord] = (), overlay_ids: Optional[set[str]] = None) -> list[str]:
     """Why these drafts cannot go in a Brief. Empty list = acceptable.
-    `wrong`: markers a crew marked wrong (wrong_markers(memory)); no draft may name them."""
+    `wrong`: markers a crew marked wrong (wrong_markers(memory)); no draft may name them.
+    `overlay_ids`: ids of this version's incident overlay; refs must be among them (None: not checked)."""
     errors: list[str] = []
     if len(drafts) > MAX_CONSIDERATIONS:
         errors.append(f"{len(drafts)} considerations; the maximum is {MAX_CONSIDERATIONS}")
     for i, d in enumerate(drafts, 1):
-        errors += [f"#{i}: {e}" for e in _draft_errors(d, evidence, wrong)]
+        errors += [f"#{i}: {e}" for e in _draft_errors(d, evidence, wrong, overlay_ids)]
     if _lacks_cross_layer(drafts, evidence):
         errors.append("no consideration combines data layers: at least one must cite evidence from two "
                       'different sources among costar, matterport and vexcel (the "source" of each evidence '
@@ -112,9 +124,9 @@ def check_considerations(drafts: list[ConsiderationDraft], evidence: dict[str, E
 
 
 def rejected_count(drafts: list[ConsiderationDraft], evidence: dict[str, Evidence],
-                   wrong: Sequence[CrewRecord] = ()) -> int:
+                   wrong: Sequence[CrewRecord] = (), overlay_ids: Optional[set[str]] = None) -> int:
     """How many drafts the checks refuse: each faulty one, any beyond the maximum, or 1 for a set-level miss."""
-    faulty = sum(1 for d in drafts if _draft_errors(d, evidence, wrong))
+    faulty = sum(1 for d in drafts if _draft_errors(d, evidence, wrong, overlay_ids))
     return max(faulty, len(drafts) - MAX_CONSIDERATIONS, int(_lacks_cross_layer(drafts, evidence)))
 
 
@@ -214,18 +226,21 @@ def build_brief(incident: IncidentRecord, dossier: BuildingDossier,
                 drafts: list[ConsiderationDraft], version: int = 1,
                 extra_gaps: tuple[str, ...] = (), previous: Optional[Brief] = None,
                 verifier_rejections: int = 0, prefetched_at: Optional[datetime] = None,
-                memory: Sequence[CrewRecord] = ()) -> Brief:
-    """`memory`: the building's crew reports (memory.building_memory), newest per item."""
+                memory: Sequence[CrewRecord] = (), extra_evidence: Optional[dict[str, Evidence]] = None,
+                overlay_ids: Optional[set[str]] = None) -> Brief:
+    """`memory`: the building's crew reports (memory.building_memory), newest per item.
+    `extra_evidence`: transcript spans the incident overlay of this version cites (overlay.span_evidence).
+    `overlay_ids`: that overlay's ids, which considerations may name in refs."""
     dossier = apply_memory(dossier, memory)
-    evidence = merge_evidence(incident, dossier, memory)
-    if errors := check_considerations(drafts, evidence, wrong_markers(memory)):
+    evidence = {**(extra_evidence or {}), **merge_evidence(incident, dossier, memory)}
+    if errors := check_considerations(drafts, evidence, wrong_markers(memory), overlay_ids):
         raise ValueError("; ".join(errors))
 
-    conf = _evidence_confidence(incident, dossier, memory)
+    conf = {**{e: SPAN_CONFIDENCE for e in (extra_evidence or {})}, **_evidence_confidence(incident, dossier, memory)}
     considerations = [
         Consideration(id=f"c{i}", rank=i, category=d.category, title=d.title.strip(),
                       rationale=d.rationale.strip(), evidence_ids=list(dict.fromkeys(d.evidence_ids)),
-                      cross_layer=is_cross_layer(d.evidence_ids, evidence),
+                      cross_layer=is_cross_layer(d.evidence_ids, evidence), refs=list(dict.fromkeys(d.refs)),
                       confidence=min((conf[e] for e in d.evidence_ids if e in conf),
                                      default=UNSCORED_CONFIDENCE))
         for i, d in enumerate(drafts, 1)

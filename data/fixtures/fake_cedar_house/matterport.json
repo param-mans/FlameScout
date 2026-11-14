@@ -1,0 +1,21 @@
+{
+  "model": {"model_id": "fixture-fake_cedar_house", "captured_at": "2026-05-10T00:00:00Z"},
+  "floorplans": [
+    {
+      "floor": 1,
+      "evidence": {"id": "ev_ch_scan_fp_1", "kind": "scan_floorplan", "source": "matterport",
+                   "uri": "fixture://fake_cedar_house/scan/floorplan-1",
+                   "captured_at": "2026-05-10T00:00:00Z",
+                   "locator": {"floor": 1, "note": "synthetic hand-written fixture, not a real scan"}},
+      "markers": [
+        {"id": "m_ch_front_door", "kind": "entry", "label": "Front door into the entrance hall (south)",
+         "floor": 1, "status": "inferred", "confidence": 0.8},
+        {"id": "m_ch_stairs", "kind": "stair", "label": "Single staircase from the hall to the upstairs landing",
+         "status": "inferred", "confidence": 0.75},
+        {"id": "m_ch_garage_door", "kind": "entry", "label": "Garage door to the driveway, garage connects to the kitchen",
+         "floor": 1, "status": "inferred", "confidence": 0.7}
+      ]
+    }
+  ],
+  "frames": []
+}

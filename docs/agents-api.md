@@ -113,11 +113,13 @@ The dispatcher's answer. Maps to `POST /api/incidents/{id}/confirm-location`.
   - `dossier.json`: the three layers merged in code
   - If the building was prefetched less than 24 h ago, the layers and notes are copied from
     the prefetch cache instead and the three subagents do not run.
+  - `overlay_v1.json`: the incident overlay for the 3D viewer (see "Incident overlay" below), by an
+    `incident_mapper` subagent running in parallel with the three layer subagents
   - `brief_v1.json`, `critique_v1.json`, `notes/strategy_reasoning.md`
   - `copilot_questions.json` if callers contradict each other on the floor or on trapped occupants (see below)
   - `todos.json`: ends with `status="done"`, or `"awaiting_approval"`
-- Takes roughly 35-40 s cold, 25-30 s when the building was prefetched, 40-50 s for a building with
-  no interior scan (one extra planning step). A stalled model call adds up to about 12 s before its retry.
+- Takes roughly 40-55 s cold, less when the building was prefetched, up to about 60 s for a building
+  with no interior scan (one extra planning step). A stalled model call adds up to about 12 s before its retry.
 
 The plan in `todos.json` depends on the situation. For a building with no interior scan the
 "Matterport interior scan" todo becomes "No interior scan on file: interior steps skipped", an
@@ -141,10 +143,11 @@ returns; call `save_incident(...)` first, then this. Skip the call when `notes` 
 - Returns `status="briefed"` or `"awaiting_approval"`, `version=N`, `brief` with `changes_since_last`
   filled in by a deterministic diff against the previous version, e.g.
   `"Floor contradicted: 3 vs 4 (Call 2)"`.
-- Writes `brief_vN.json`, `critique_vN.json`, `notes/strategy_reasoning_vN.md`, `todos.json`, and
+- Writes `overlay_vN.json` (the mapper runs first: the strategy reads the new overlay),
+  `brief_vN.json`, `critique_vN.json`, `notes/strategy_reasoning_vN.md`, `todos.json`, and
   `copilot_questions.json` when the new information contains a life-safety contradiction.
   Earlier versions stay in the workspace.
-- Takes roughly 26-35 s.
+- Takes roughly 40-45 s (the overlay update adds one subagent step, about 15 s).
 
 ## `review_brief(incident_id, drop=()) -> RunResult`
 
@@ -239,6 +242,45 @@ same schema `/api/incidents/{id}/copilot` returns):
 - After the dispatcher resolves it (`FusionEngine.resolve(key, value)` + `save_incident`), the
   question is not asked again, but the old entry stays in the file: filter on `status`.
 
+## Incident overlay: `overlay_vN.json` and `overlay.updated`
+
+The contract is Bruno's `docs/INCIDENT_OVERLAY_SPEC.md`; the model is `IncidentOverlay` in
+`packages/schemas` (in `schema.json`). One overlay per brief version, **`overlay.version` equals the
+brief version**, written to the workspace as `overlay_vN.json` and returned as `RunResult.overlay`.
+
+**For the WebSocket:** after `brief.updated`, emit
+`overlay.updated` with `{incident_id, ts, trace_id, version, overlay}`, where `overlay` is
+`json.loads(open_workspace(incident_id).read(f"overlay_v{version}.json"))` (or
+`RunResult.overlay.model_dump(mode="json", exclude_none=True)`, the same thing). `"overlay.updated"` is
+in `EventType`. Send it for every brief version, including facts-only briefs. The web app forwards it
+to the viewer iframe with `postMessage({type: 'setIncident', overlay}, viewerOrigin)`.
+
+- **What is in it:** occupants, fire, hazards and blocked elements the callers reported, placed on plan
+  ids at the precision the words support (room / anchor / floor / unknown), contradiction groups
+  (never resolved by the agent), objectives (rescue / recon, with priority), a few considerations, and
+  `changes_since_last` (a code diff against the previous version). `routes` is always `[]`: Bruno's
+  planner in the viewer fills them.
+- **Evidence:** every `evidence_ids` entry is a transcript span id `"<call_id>:<t_start>-<t_end>"`
+  (e.g. `"c1:42.0-51.5"`). Each one also appears in the brief of the same version, in `brief.evidence`
+  (kind `transcript_span`, with the caller's words in `locator.text`), so the evidence drawer resolves it.
+- **Brief considerations point at it:** `Consideration.refs` lists overlay ids (occupant, fire, hazard
+  ids, contradiction group ids, objective ids) of the same version. Clicking a brief consideration can
+  highlight those in the viewer.
+- **Checked before it is written:** Bruno's `validate_overlay.py` plus ours: evidence must be caller
+  spans, no `verified` from a caller, contradiction candidates come from different calls, a room
+  location only when the words name that kind of room and the plan has only one such room on that
+  floor, plan ids only. Rejected submissions go back to the mapper (two more tries);
+  `RunResult.overlay_rejections` counts them.
+- **If the mapper fails** (out of tries, or the run fails), the overlay of that version is valid but
+  empty, with `changes_since_last: ["Overlay not available: <reason>"]`. The viewer keeps its version
+  in step and shows nothing new.
+- **Plan index:** read from `data/raw/<building_id>/derived/plan_index.json` (sponsor data, gitignored,
+  never committed). Missing means no interior scan: only `floor` (with `floor_reported`) and `unknown`
+  locations, no routes. That is the case for every fixture building today, scanned or not, except
+  when you copy a plan index in.
+- **Transcript:** `save_incident(record, new_segments)` now also appends the segments to
+  `transcript.json` in the workspace; that is what the mapper cites. Always pass the new segments.
+
 ## `RunResult`
 
 | Field | Meaning |
@@ -256,6 +298,8 @@ same schema `/api/incidents/{id}/copilot` returns):
 | `trace_run_id` | LangSmith run id of this call; `None` when tracing is off |
 | `model_stalls` | model calls in this call that got no answer within the 12 s client timeout |
 | `model_retries` | retries made in this call (each stall or transient API error is retried once) |
+| `overlay` | the `IncidentOverlay` of this version (`overlay_vN.json`); `None` while there is no brief |
+| `overlay_rejections` | incident-mapper submissions refused by the checks for this version |
 
 In the `Brief`: `considerations` (0-5, each "Consider ...", with `evidence_ids` that resolve in
 `evidence`), `changes_since_last`, `gaps`, and `verifier_rejections` (how many draft considerations
@@ -272,6 +316,8 @@ commentary for debugging and the demo, not as data.
 
 The strategy subagent loads two skills on demand from `skills/` (`occupancy-hazards`,
 `size-up-format`); edit those `SKILL.md` files to change the hazard table or the house style.
+
+Each consideration also has `refs`: ids in the incident overlay of the same version (see above).
 
 Each consideration has `cross_layer: bool`: true when its evidence comes from two or more of the
 CoStar / Matterport / Vexcel layers (`evidence[id].source`). Every brief with considerations has at

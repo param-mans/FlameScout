@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -35,10 +36,11 @@ def _offline_by_default(request, monkeypatch, tmp_path):
     never changes a test's path."""
     from langsmith import utils
 
-    from services.agents import cache, db, memory, mongo_store
+    from services.agents import cache, db, memory, mongo_store, overlay
 
     monkeypatch.setattr(cache, "CACHE_ROOT", tmp_path / "prefetch_cache")
     monkeypatch.setattr(memory, "MEMORY_ROOT", tmp_path / "building_memory")  # no memory from real runs
+    monkeypatch.setattr(overlay, "PLAN_INDEX_ROOT", tmp_path / "plan_indexes")  # no real data/raw: no-scan
     if "live" not in request.keywords:
         monkeypatch.setenv("EXTRACTOR", "keyword")
         monkeypatch.setenv("LANGSMITH_TRACING", "false")
@@ -84,3 +86,17 @@ def make_cache():
         return cache.stamp(building_id, at)
 
     return _make
+
+
+OVERLAY_EXAMPLES = Path(__file__).resolve().parents[1] / "packages" / "schemas" / "overlay"
+
+
+@pytest.fixture
+def cedar_plan_index():
+    """Bruno's plan_index.example.json as the plan index of the fixture house fake_cedar_house (S5)."""
+    from services.agents import overlay
+
+    target = overlay.PLAN_INDEX_ROOT / "fake_cedar_house" / "derived" / "plan_index.json"
+    target.parent.mkdir(parents=True)
+    shutil.copy(OVERLAY_EXAMPLES / "plan_index.example.json", target)
+    return json.loads(target.read_text())

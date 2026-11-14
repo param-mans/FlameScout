@@ -23,6 +23,9 @@ Subagents and the tools that write the JSON artifacts:
               (delegated in ONE orchestrator turn, so the three run concurrently; each makes two
                model calls: pull, then a short summary that code saves as notes/<layer>_summary.md;
                when the third layer lands, code merges them into dossier.json)
+  incident_mapper  get_transcript(), get_plan_index(), submit_overlay()  -> overlay_vN.json
+              (the incident overlay for the 3D viewer, docs/INCIDENT_OVERLAY_SPEC.md; runs in
+               parallel with the layer subagents, and first on an update)
   strategy    submit_considerations()   -> brief_vN.json  + notes/strategy_reasoning*.md
               (skills loaded on demand from /skills/: occupancy-hazards, size-up-format)
   critic      submit_critique()         -> critique_vN.json (pass | revise, plus flags on
@@ -73,16 +76,19 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 from pydantic import BaseModel
 
-from flamescout_schemas import (Brief, BuildingCandidate, BuildingDossier, CallSegment, IncidentRecord,
+from flamescout_schemas import (Brief, BuildingCandidate, BuildingDossier, CallSegment, IncidentOverlay,
+                                IncidentRecord,
                                 Progress, TodoItem, now)
 
 from . import cache, copilot, db
+from . import overlay as overlay_mod
 from . import memory as memory_mod
 from . import dossier as dossier_mod
 from .brief import (ConsiderationDraft, apply_memory, build_brief, check_considerations, low_confidence,
                     merge_evidence, publish, rejected_count, wrong_markers)
 from .dossier import LAYERS, Layer, LayerData
 from .locator import find_candidates
+from .overlay import OverlayDraft
 from .stalls import MODEL_TIMEOUT_S, StallCounter, StallRetryMiddleware
 from .workspace import WORKSPACE_ROOT, Workspace, incident_workspace
 
@@ -91,6 +97,7 @@ log = logging.getLogger(__name__)
 WORKSPACE = WORKSPACE_ROOT
 INCIDENT, DOSSIER, CANDIDATES, TODOS = "incident.json", "dossier.json", "candidates.json", "todos.json"
 MAX_SUBMISSIONS = 3  # per brief version: first draft + 2 regenerations (PRD FR-6)
+MAX_OVERLAY_SUBMISSIONS = 3  # per overlay version: first submission + 2 retries
 SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"  # mounted read-only at /skills/
 NOTE_HEADER = ("> Unverified agent notes, written by the {layer} subagent. Not checked against the data: "
                "the source of truth is layers/{layer}.json.\n\n")
@@ -105,19 +112,21 @@ Subagents cannot see this conversation, so every task description must be self-c
 A. FIRST BRIEF. The user message starts with "New incident".
 1. First turn, two tool calls together:
    - read_file("/workspace/incident.json", limit=1000)
-   - write_todos with seven todos: "Confirm building with dispatcher" (in_progress), "CoStar property
-     record", "Matterport interior scan", "Vexcel aerial imagery", "Draft considerations",
-     "Critique brief", "Brief ready" (all pending)
+   - write_todos with eight todos: "Confirm building with dispatcher" (in_progress), "CoStar property
+     record", "Matterport interior scan", "Vexcel aerial imagery", "Map reports onto the plan",
+     "Draft considerations", "Critique brief", "Brief ready" (all pending)
 2. Next turn, one tool call only: confirm_building(candidates=[the candidate building ids from the
    user message, in the same order]). The run pauses until the dispatcher answers. If the dispatcher
    rejects the candidates, reply "No building confirmed." and do nothing else.
-3. If confirm_building answered that the building data was PREFETCHED, skip this step: the data is
-   already in the workspace, so never call the costar or matterport subagents, and treat the
-   three data todos as completed.
-   Otherwise, next turn, FOUR tool calls together, never one at a time: write_todos (confirm completed,
-   the three data todos in_progress) and task(subagent_type="costar"), task(subagent_type="matterport"),
-   task(subagent_type="vexcel"), each asked to pull its data layer for this incident. Calling all
-   three in the same turn makes them run in parallel.
+3. Next turn, the fan-out: all of these tool calls together, never one at a time (calling them in the
+   same turn makes them run in parallel):
+   - write_todos (confirm completed; "Map reports onto the plan" and the data todos in_progress)
+   - task(subagent_type="incident_mapper"): ask it to map what the callers reported onto the plan,
+     for overlay version 1
+   - task(subagent_type="costar"), task(subagent_type="matterport"), task(subagent_type="vexcel"), each
+     asked to pull its data layer for this incident. If confirm_building answered that the building
+     data was PREFETCHED, leave these three out (the data is already in the workspace) and treat the
+     three data todos as completed.
 4. RE-PLAN when there is NO INTERIOR SCAN (the matterport subagent or confirm_building said so). Only
    then, one turn, two tool calls together:
    - write_todos: the three data todos completed, with "Matterport interior scan" renamed to
@@ -126,8 +135,9 @@ A. FIRST BRIEF. The user message starts with "New incident".
    - task(subagent_type="vexcel"): ask it for the EXTERIOR ENTRIES, because there is no interior scan.
    With an interior scan, skip this step.
 5. Next turn, together: write_todos (data todos completed, draft in_progress) and
-   task(subagent_type="strategy"): ask it to draft brief version 1. Tell it about any unresolved
-   contradiction between callers that you saw in incident.json, and if there is no interior scan.
+   task(subagent_type="strategy"): ask it to draft brief version 1, with the incident overlay at
+   /workspace/overlay_v1.json. Tell it about any unresolved contradiction between callers that you
+   saw in incident.json, and if there is no interior scan.
    LIFE-SAFETY CONTRADICTION: if incident.json has an unresolved contradiction on incident.floor or
    people.trapped, in this same turn also call write_copilot_question(key=<that key>) and include a
    todo "Ask dispatcher: <floor or trapped> contradiction" (completed) in write_todos.
@@ -146,16 +156,20 @@ B. UPDATE. The user message starts with "Update": new information arrived after 
 and the message says which brief version N to produce. The building and its dossier have not changed,
 so redo only what the new information affects: never call confirm_building or the costar,
 matterport or vexcel subagents.
-1. One turn, together: write_todos (keep every earlier todo as it is, add "Redraft considerations
-   (vN)" in_progress and "Critique brief vN" pending) and task(subagent_type="strategy"): ask it to
-   draft brief version N, quoting the new information word for word.
+1. One turn, two tool calls together: write_todos (keep every earlier todo as it is, add "Update
+   incident overlay (vN)" in_progress, "Redraft considerations (vN)" and "Critique brief vN" pending)
+   and task(subagent_type="incident_mapper"): ask it to update the overlay to version N, quoting the
+   new information word for word.
+2. Next turn, together: write_todos (overlay completed, redraft in_progress) and
+   task(subagent_type="strategy"): ask it to draft brief version N with the incident overlay at
+   /workspace/overlay_vN.json, quoting the new information word for word.
    LIFE-SAFETY CONTRADICTION: if the new information has a contradiction (a line starting with "!")
    on incident.floor or people.trapped, in this same turn also call write_copilot_question(key=<that
    key>) and add a todo "Ask dispatcher: <floor or trapped> contradiction" (completed).
-2. Next turn, two tool calls together: write_todos (redraft completed, critique in_progress) and
+3. Next turn, two tool calls together: write_todos (redraft completed, critique in_progress) and
    task(subagent_type="critic"): ask it to check /workspace/brief_vN.json only (not the notes).
-3. Only if the verdict is "revise": same revision loop as A7.
-4. Last tool turn, two tool calls together: write_todos with everything completed, and
+4. Only if the verdict is "revise": same revision loop as A7.
+5. Last tool turn, two tool calls together: write_todos with everything completed, and
    publish_brief(). Then reply with one line: the critic's verdict.
 
 Apart from the one read_file in A1, never call read_file, ls, glob or grep: do not re-check the
@@ -180,6 +194,47 @@ together: task(subagent_type="costar"), task(subagent_type="matterport"), task(s
 asked to pull its data layer for the building in the user message. Then reply "done". Never call them \
 one at a time, and call nothing else."""
 
+MAPPER_PROMPT = """You place what callers reported onto the building plan, for the incident overlay the \
+crew's 3D viewer draws. Your task says which overlay version N you produce. Use exactly three turns:
+1. One turn, together: get_transcript(), get_plan_index(), and for N > 1
+   read_file("/workspace/overlay_v<N-1>.json", limit=2000).
+2. submit_overlay with everything the callers reported. If it answers "Rejected", fix exactly what it
+   lists and submit again (it accepts at most two more tries).
+3. Reply with one sentence: what you mapped and what stays unlocated.
+
+What to submit:
+- occupants (count, or count_range [min, max] when unsure; "someone" is 1), fire (kind smoke, fire or
+  heat), hazards (kind gas, chemical, battery, electrical, structural or other), blocked (ref_id of a
+  door, stairs or room reported impassable). Each with: id (short, e.g. occ-1, fire-1, haz-1),
+  status "reported" (never "verified"), confidence 0-1, evidence_ids (span ids from get_transcript,
+  caller lines only), note (the caller's words, short), and location.
+- location: the most precise level the caller's words support, never more:
+  - room: the words name a kind of room AND the plan index has exactly one room of that kind on that
+    floor (one kitchen) -> {"kind": "room", "room_id": ...}
+  - anchor: a room as above, plus the words place it at one of its windows, doors or stairs, or a
+    side -> {"kind": "anchor", "anchor": {"room_id", "position", "ref_id"}}; ref_id is an opening id
+    for near_door / near_window, a stairs id for near_stairs
+  - floor: only the floor is known ("upstairs" in a two-storey building is 2, ground floor is 1), or the
+    room is ambiguous (two bedrooms upstairs and nothing in the index tells them apart)
+    -> {"kind": "floor", "floor_reported": n}
+  - unknown: nothing locates it -> {"kind": "unknown"}
+  Never guess a room to look precise. Ids only from get_plan_index; never coordinates.
+- If get_plan_index says there is NO INTERIOR SCAN: only floor and unknown locations, and no room,
+  opening or stairs ids anywhere.
+- Callers disagree (different calls give different locations or counts for the same people or the same
+  fire): one entity per caller, each with status "contradicted" and the same group_id, plus one
+  contradictions entry {"group_id", "key" (e.g. "occupants.location"), "resolved_by_dispatcher": false}.
+  Never pick a winner. One caller correcting themselves is not a contradiction.
+- objectives: "rescue" for reported occupants (target kind occupant, occupant_group, room or floor),
+  "recon" for hazards and unclear reports; priority 1 first; rationale; evidence_ids. A floor target
+  is {"kind": "floor", "floor_reported": n}, with ref_id only if it is a floor id from get_plan_index.
+- considerations (optional, at most 3): text starts with "Consider" and is advisory; rationale;
+  confidence; evidence_ids; refs = ids in this overlay. No directive words (must, immediately, ordered,
+  guaranteed, 100%). Nothing about windows the plan does or does not show.
+- Leave out routes, reported_at and version: code adds them.
+- For N > 1: keep the id of every entity that is still the same report; new reports get new ids.
+Never state anything the callers did not say."""
+
 LAYERS_INFO = {
     "costar": ("the CoStar property record", "use, stories, tenants, tenant-related hazards"),
     "matterport": ("the Matterport interior scan", "entrances, stairs, elevator, key box, FDC, standpipes"),
@@ -190,8 +245,9 @@ STRATEGY_PROMPT = """You draft advisory considerations for the first-arriving fi
 which brief version N you are drafting. Use exactly three turns:
 1. One turn, all tool calls together: read_file("/workspace/incident.json", limit=1000),
    read_file("/workspace/dossier.json", limit=1000), and read_file(<path>, limit=1000) for the SKILL.md
-   of every skill in your skills list that applies to this draft, and the crew memory file if your
-   task names one (a /memories/... path). Do not spend an extra turn on skills or memory.
+   of every skill in your skills list that applies to this draft, the crew memory file if your
+   task names one (a /memories/... path), and the incident overlay your task names
+   (/workspace/overlay_v<N>.json). Do not spend an extra turn on skills, memory or the overlay.
 2. One turn, two tool calls together:
    - write_file: at most 60 words on what you prioritised and why, what you left out, and anything
      unresolved. Path: /workspace/notes/strategy_reasoning.md for version 1,
@@ -221,7 +277,12 @@ Rules for every consideration:
 - Files under /workspace/notes/ are unverified agent notes. Never take a fact from them.
 - Crew memory lists what crews reported at this building at earlier incidents. Say "a crew reported"
   and cite the evidence id given on that line. Never recommend an item a crew marked wrong, and do
-  not name it: the checks reject any consideration that does."""
+  not name it: the checks reject any consideration that does.
+- The incident overlay places what callers reported on the building plan. When a consideration is
+  about one of its entries, put that id in refs (occupant, fire, hazard or blocked ids, contradiction
+  group ids, objective ids): ids from that file only. Its evidence ids (like "c1:12.0-20.5") are
+  transcript spans and may be cited too.
+- Say nothing about windows the plan does or does not show."""
 
 CRITIC_PROMPT = """You are the critic for a fire-crew advisory brief. Use exactly three turns:
 1. read_file(<the brief path given in your task>, limit=3000). If your task also asks you to check the
@@ -275,6 +336,8 @@ class RunResult:
     seconds: float                       # wall clock of this call
     trace_run_id: Optional[str]          # LangSmith run id of this call, None when tracing is off
     needs_review: list[str] = field(default_factory=list)  # low-confidence consideration ids (awaiting_approval)
+    overlay: Optional[IncidentOverlay] = None  # overlay_vN.json of this version (None before a brief)
+    overlay_rejections: int = 0          # mapper submissions refused for this version
     model_stalls: int = 0                # model calls in this call that hit the 12 s timeout
     model_retries: int = 0               # retries made in this call (each stall is retried once)
 
@@ -290,6 +353,8 @@ class Session:
     version: int = 1
     accepted: int = 0      # accepted submissions for the current version
     rejections: int = 0    # draft considerations rejected for the current version
+    overlay_attempts: int = 0    # mapper submissions for the current version
+    overlay_rejections: int = 0  # of which refused
     agent: Any = None
     error: Optional[str] = None
     todos: list[TodoItem] = field(default_factory=list)
@@ -455,13 +520,45 @@ def _ensure_exterior_entries(s: Session) -> None:
         s.ws.write(DOSSIER, _merged(s, building_id, layers).model_dump_json(indent=2))
 
 
+def _overlay_context(s: Session) -> tuple[dict, set[str]]:
+    """This version's overlay, as the brief needs it: the transcript spans it cites, and its ids."""
+    ov = overlay_mod.read(s.ws, s.version)
+    return overlay_mod.span_evidence(overlay_mod.cited_spans(ov, overlay_mod.transcript(s.ws))), \
+        overlay_mod.overlay_ids(ov)
+
+
+def _model_id(s: Session) -> str:
+    """The overlay's model_id: the building's Matterport model id, else its building id."""
+    building_id = _building_id(s)
+    try:
+        model = dossier_mod.get_providers().matterport.find_model({"property_id": building_id})
+    except Exception:  # noqa: BLE001 - only a label for the viewer
+        model = None
+    return (model or {}).get("model_id") or building_id or s.incident_id
+
+
+def _write_overlay(s: Session, ov: IncidentOverlay) -> None:
+    s.ws.write(overlay_mod.overlay_rel(s.version), overlay_mod.dump(ov))
+
+
+def _ensure_overlay(s: Session) -> None:
+    """Every brief version has an overlay of the same version: the fallback when the mapper gave none."""
+    if s.ws.exists(overlay_mod.overlay_rel(s.version)):
+        return
+    reason = (f"the incident mapper's {s.overlay_rejections} submission(s) were all rejected"
+              if s.overlay_rejections else s.error or "the incident mapper did not submit one")
+    log.warning("Incident %s: no overlay v%d (%s); writing the empty fallback", s.incident_id, s.version, reason)
+    _write_overlay(s, overlay_mod.fallback(s.incident_id, _model_id(s), s.version, reason))
+
+
 def _write_brief(s: Session, drafts: list[ConsiderationDraft], extra_gaps: tuple[str, ...] = (),
                  published: bool = False) -> Brief:
     prev_text = s.ws.read_or_none(f"brief_v{s.version - 1}.json")
     previous = Brief.model_validate_json(prev_text) if prev_text else None
+    spans, ids = _overlay_context(s)
     brief = build_brief(_incident(s.ws), _dossier(s.ws), drafts, version=s.version, extra_gaps=extra_gaps,
                         previous=previous, verifier_rejections=s.rejections, prefetched_at=s.prefetched_at,
-                        memory=_memory(s))
+                        memory=_memory(s), extra_evidence=spans, overlay_ids=ids)
     brief.published = published
     s.ws.write(s.brief_rel, brief.model_dump_json(indent=2))
     return brief
@@ -599,9 +696,11 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
         _ensure_exterior_entries(s)
         _refresh_dossier(s)  # crew feedback given since the dossier was written
         remembered = _memory(s)
-        evidence, wrong = merge_evidence(_incident(ws), _dossier(ws), remembered), wrong_markers(remembered)
-        if errors := check_considerations(considerations, evidence, wrong):
-            s.rejections += rejected_count(considerations, evidence, wrong)
+        spans, ids = _overlay_context(s)
+        evidence = {**spans, **merge_evidence(_incident(ws), _dossier(ws), remembered)}
+        wrong = wrong_markers(remembered)
+        if errors := check_considerations(considerations, evidence, wrong, ids):
+            s.rejections += rejected_count(considerations, evidence, wrong, ids)
             return "Rejected, nothing written. Fix these and resubmit:\n- " + "\n- ".join(errors)
         _write_brief(s, considerations)
         ws.delete(s.critique_rel)  # any earlier critique is about an older draft
@@ -635,9 +734,64 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
                                                  f"{flag.claim}\n")
         return f"Recorded verdict: {verdict}." + (f" {len(note_flags)} note claim(s) flagged." if note_flags else "")
 
+    @tool
+    def get_transcript() -> str:
+        """The calls so far, one line per segment, each with the span id to cite as evidence (caller lines only)."""
+        spans = overlay_mod.transcript(ws)
+        if not spans:
+            return "No transcript yet."
+        return "\n".join(f"{sp.span_id} [{sp.speaker}] {sp.text}" for sp in spans)
+
+    @tool
+    def get_plan_index() -> str:
+        """The confirmed building's plan index: floors (numbered from the ground floor, 1), rooms, openings, stairs."""
+        index = overlay_mod.load_plan_index(_building_id(s))
+        if not overlay_mod.has_scan(index):
+            return ("NO INTERIOR SCAN on file for this building: use only floor (floor_reported) and unknown "
+                    "locations, and no room, opening or stairs ids.")
+        floors = [{"number": n, "floor_id": f} for n, f in enumerate(index["floors"], 1)]
+        return json.dumps({"floors": floors, "rooms": index["rooms"], "openings": index["openings"],
+                           "stairs": index["stairs"]}, indent=1)
+
+    def overlay_refused(errors: list[str]) -> str:
+        s.overlay_rejections += 1
+        left = MAX_OVERLAY_SUBMISSIONS - s.overlay_attempts
+        return (f"Rejected, nothing written ({left} tr{'y' if left == 1 else 'ies'} left). Fix these and "
+                "resubmit:\n- " + "\n- ".join(errors))
+
+    @tool(parse_docstring=True)
+    def submit_overlay(overlay: OverlayDraft) -> str:
+        """Submit the incident overlay for this version. If it passes the checks, /workspace/overlay_vN.json is written.
+
+        Args:
+            overlay: Occupants, fire, hazards, blocked, contradictions, objectives and considerations.
+        """
+        if s.overlay_attempts >= MAX_OVERLAY_SUBMISSIONS:
+            return "Error: submission budget used up. Do not resubmit."
+        s.overlay_attempts += 1
+        index, spans = overlay_mod.load_plan_index(_building_id(s)), overlay_mod.transcript(ws)
+        try:
+            ov = overlay_mod.assemble(overlay, s.incident_id, _model_id(s), s.version, index, spans,
+                                      previous=overlay_mod.read(ws, s.version - 1))
+        except ValueError as e:
+            return overlay_refused([str(e)])
+        if errors := overlay_mod.check(ov, index, spans):
+            return overlay_refused(errors)
+        _write_overlay(s, ov)
+        return (f"Accepted: /workspace/{overlay_mod.overlay_rel(s.version)} written with {len(ov.occupants)} "
+                f"occupant, {len(ov.fire)} fire, {len(ov.hazards)} hazard and {len(ov.blocked)} blocked entries.")
+
+    def schema_refused(error: Exception) -> str:  # the draft did not even parse
+        if s.overlay_attempts >= MAX_OVERLAY_SUBMISSIONS:
+            return "Error: submission budget used up. Do not resubmit."
+        s.overlay_attempts += 1
+        return overlay_refused([str(error)[:1500]])
+
+    submit_overlay.handle_validation_error = schema_refused
+
     return {t.name: t for t in (confirm_building, write_copilot_question, publish_brief,
                                 *map(pull_tool, LAYERS), pull_vexcel_entries, submit_considerations,
-                                submit_critique)}
+                                submit_critique, get_transcript, get_plan_index, submit_overlay)}
 
 
 # ---------- agent ----------
@@ -694,6 +848,12 @@ def build_orchestrator(s: Session, model: Any = None, checkpointer: Any = None):
          # Progressive disclosure: it sees each skill's name and description, and reads the SKILL.md
          # it needs (occupancy-hazards, size-up-format) with read_file.
          "skills": ["/skills/"]},
+        {"name": "incident_mapper",
+         "middleware": [StallRetryMiddleware("incident_mapper", s.stalls)],
+         "description": "Places what callers reported (occupants, fire, hazards, blocked routes) on the building "
+                        "plan by ids, with objectives, and writes the incident overlay for the version it is told.",
+         "system_prompt": MAPPER_PROMPT,
+         "tools": [tools["get_transcript"], tools["get_plan_index"], tools["submit_overlay"]]},
         {"name": "critic",
          "middleware": [StallRetryMiddleware("critic", s.stalls)],
          "description": "Checks a brief file (advisory wording, evidence support; returns pass or revise) "
@@ -849,7 +1009,9 @@ def _result(s: Session, t0: float, phase: str, brief: Optional[Brief] = None, cr
     return RunResult(incident_id=s.incident_id, status=s.status, version=s.version, brief=brief,
                      candidates=s.candidates, todos=s.todos, critique=critique,
                      fallback_reason=fallback_reason, seconds=seconds, trace_run_id=s.trace_run_id,
-                     needs_review=needs_review, model_stalls=stalls, model_retries=retries)
+                     needs_review=needs_review, model_stalls=stalls, model_retries=retries,
+                     overlay=overlay_mod.read(s.ws, s.version) if brief is not None else None,
+                     overlay_rejections=s.overlay_rejections)
 
 
 def _finish_brief(s: Session, t0: float, phase: str) -> RunResult:
@@ -867,6 +1029,7 @@ def _finish_brief(s: Session, t0: float, phase: str) -> RunResult:
     if any(c.key not in asked for c in copilot.unresolved_life_safety(_incident(s.ws))):
         copilot.write_questions(s.ws, _incident(s.ws))
 
+    _ensure_overlay(s)
     s.status = "briefed"
     if fallback_reason:
         _ensure_dossier(s)
@@ -913,12 +1076,16 @@ def _session(incident_id: str) -> Session:
 
 def save_incident(record: IncidentRecord, new_segments: Iterable[CallSegment] = (),
                   workspace_root: Optional[Path] = None) -> None:
-    """Save fusion's record as the incident's incident.json, and its facts and new segments to Tiger.
+    """Save fusion's record as the incident's incident.json, the new segments to its transcript.json
+    (what the incident mapper cites), and both to Tiger.
 
     Call after every FusionEngine.ingest (pass the segments just ingested). workspace_root=None
     means MongoDB when configured, else workspace/.
     """
-    incident_workspace(record.incident_id, workspace_root).write(INCIDENT, record.model_dump_json(indent=2))
+    new_segments = list(new_segments)
+    ws = incident_workspace(record.incident_id, workspace_root)
+    ws.write(INCIDENT, record.model_dump_json(indent=2))
+    overlay_mod.append_transcript(ws, new_segments)
     db.save_segments(record.incident_id, new_segments)
     db.save_facts(record)
 
@@ -938,7 +1105,7 @@ def start_incident(incident_id: str, workspace_root: Optional[Path] = None,
         raise ValueError(f"Incident {incident_id} has no candidate buildings yet: "
                          "callers gave no location that matches a known building")
 
-    ws.clear(keep=(INCIDENT,))  # earlier output for this incident (briefs, layers, notes, ...)
+    ws.clear(keep=(INCIDENT, overlay_mod.TRANSCRIPT))  # earlier output for this incident (briefs, layers, notes, ...)
     ws.write(CANDIDATES, json.dumps([c.model_dump() for c in candidates], indent=2))
 
     saver = checkpointer or _checkpointer()
@@ -1027,6 +1194,7 @@ def update_incident(incident_id: str, notes: list[str]) -> RunResult:
     if s.status != "briefed":
         raise ValueError(f"Incident {incident_id} has no brief to update yet (status: {s.status})")
     s.version, s.accepted, s.rejections = s.version + 1, 0, 0
+    s.overlay_attempts, s.overlay_rejections = 0, 0
     if _incident(s.ws).confirmed_building_id != s.building_id:
         # Fusion rewrote incident.json from a record that was never told (FusionEngine.confirm).
         log.warning("Incident %s: incident.json lost its confirmed building; restoring %s",

@@ -20,6 +20,7 @@ from services.agents.fusion import FusionEngine
 from services.agents.orchestrator import (MAX_SUBMISSIONS, NOTE_HEADER, Session, make_tools,
                                           prefetch_building, resume_incident, review_brief, save_incident,
                                           start_incident, update_incident)
+from services.agents.overlay import validate_overlay
 from services.agents.workspace import incident_workspace
 
 CALLS = Path(__file__).resolve().parents[1] / "data" / "fixtures" / "calls"
@@ -255,6 +256,7 @@ class RuleModel(BaseChatModel):
     drafts: Any                 # one considerations list per strategy run
     seen: Any                   # agent name -> its system prompt, shared by every bound copy
     stall: Any                  # agent name -> how many of its next calls time out, shared
+    overlays: Any = None        # the incident mapper's submissions, in order (each a draft dict)
     tool_names: tuple = ()
 
     @property
@@ -269,7 +271,8 @@ class RuleModel(BaseChatModel):
         if "task" in self.tool_names:
             return "orchestrator"
         for name, tool_name in [*((layer, f"pull_{layer}") for layer in LAYERS),
-                                ("strategy", "submit_considerations"), ("critic", "submit_critique")]:
+                                ("strategy", "submit_considerations"), ("critic", "submit_critique"),
+                                ("incident_mapper", "submit_overlay")]:
             if tool_name in self.tool_names:
                 return name
         return "other"
@@ -293,9 +296,28 @@ class RuleModel(BaseChatModel):
                 return AIMessage(content=f"{layer} summary line [ev_x]") if called else calls((f"pull_{layer}", {}))
         if "submit_considerations" in self.tool_names:
             return self._strategy(messages, asked, called)
+        if "submit_overlay" in self.tool_names:
+            return self._mapper(messages, asked, called)
         if called:
             return AIMessage(content="Done.")
         return calls(("submit_critique", {"verdict": "pass", "issues": []}))
+
+    def _mapper(self, messages, asked: str, called: bool) -> AIMessage:
+        """Reads the transcript and the plan index in one turn, submits, and resubmits when rejected."""
+        if not called:
+            self.seen.setdefault("mapper_tasks", []).append(asked)
+            return calls(("get_transcript", {}), ("get_plan_index", {}))
+        results = [m for m in messages if isinstance(m, ToolMessage)]
+        submitted = [m for m in results if m.name == "submit_overlay"]
+        if submitted and not submitted[-1].text.startswith("Rejected"):
+            return AIMessage(content="Done.")
+        if not submitted:
+            self.seen["plan_index"] = next(m.text for m in results if m.name == "get_plan_index")
+        else:
+            self.seen.setdefault("overlay_rejections", []).append(submitted[-1].text)
+        if not self.overlays:
+            return AIMessage(content="Nothing more to submit.")
+        return calls(("submit_overlay", {"overlay": self.overlays.pop(0)}))
 
     def _strategy(self, messages, asked: str, called: bool) -> AIMessage:
         """Reads the crew memory file its task names, submits a draft, and resubmits when rejected."""
@@ -328,9 +350,9 @@ def task(subagent: str, ask: str = "") -> tuple[str, dict]:
     return "task", {"subagent_type": subagent, "description": f"Incident: do the {subagent} step. {ask}"}
 
 
-def fake_model(*main_turns, drafts=None, stall=None) -> RuleModel:
+def fake_model(*main_turns, drafts=None, stall=None, overlays=None) -> RuleModel:
     drafts = drafts or [[GOOD, SINGLE_LAYER], [{**GOOD, "title": "Consider Stair B (back stairs) from the alley"}]]
-    return RuleModel(main_script=iter(main_turns), drafts=drafts, seen={}, stall=stall or {})
+    return RuleModel(main_script=iter(main_turns), drafts=drafts, seen={}, stall=stall or {}, overlays=overlays or [])
 
 
 START = [calls(todos("in_progress", *["pending"] * 6)),
@@ -733,3 +755,161 @@ def test_orchestrator_end_to_end_on_s2(incident):
     assert "Floor contradicted: 3 vs 4 (Call 2)" in v2.brief.changes_since_last
     assert all(incident.ws.exists(f"notes/{name}_summary.md") for name in LAYERS)
     assert incident.ws.exists("notes/strategy_reasoning.md")
+
+
+# ---------- incident overlay (docs/INCIDENT_OVERLAY_SPEC.md) ----------
+
+from services.agents import overlay as overlay_mod  # noqa: E402
+from tests.test_overlay import V1 as OVERLAY_V1, V2 as OVERLAY_V2  # noqa: E402
+
+HOUSE = "fake_cedar_house"  # S5; its plan index is Bruno's plan_index.example.json (cedar_plan_index)
+HOUSE_TODOS = ["Confirm building with dispatcher", "CoStar property record", "Matterport interior scan",
+               "Vexcel aerial imagery", "Map reports onto the plan", "Draft considerations", "Critique brief",
+               "Brief ready", "Update incident overlay (v2)", "Redraft considerations (v2)", "Critique brief v2"]
+FRONT_DOOR = {"category": "access", "title": "Consider the front door and the hall stairs to reach upstairs",
+              "rationale": "The front door opens to the hall stairs; the driveway is on the east side.",
+              "evidence_ids": ["ev_ch_scan_fp_1", "ev_ch_aerial_1"], "refs": ["occ-1"]}  # matterport + vexcel
+CHILDREN = {"category": "life_safety", "title": "Consider a search of the upstairs bedrooms for two children",
+            "rationale": "A caller reported two children in a back bedroom upstairs.",
+            "evidence_ids": ["c1:42.0-51.5"], "refs": ["occ-1", "obj-1"]}
+
+
+def house_todos(*statuses: str) -> tuple[str, dict]:
+    return todos(*statuses, names=HOUSE_TODOS)
+
+
+HOUSE_START = [calls(house_todos("in_progress", *["pending"] * 7)),
+               calls(("confirm_building", {"candidates": [HOUSE]}))]
+HOUSE_RESUME = [  # one fan-out turn: three layers and the mapper, in parallel
+    calls(house_todos("completed", *["in_progress"] * 4, "pending", "pending", "pending"),
+          task("costar"), task("matterport"), task("vexcel"), task("incident_mapper", "Overlay version 1.")),
+    calls(house_todos(*["completed"] * 5, "in_progress", "pending", "pending"),
+          task("strategy", "Brief version 1, incident overlay at /workspace/overlay_v1.json.")),
+    calls(task("critic")), calls(house_todos(*["completed"] * 8), ("publish_brief", {})), AIMessage(content="pass")]
+HOUSE_UPDATE = [  # the mapper first: the strategy needs the new overlay
+    calls(house_todos(*["completed"] * 8, "in_progress", "pending", "pending"),
+          task("incident_mapper", "Update the overlay to version 2.")),
+    calls(house_todos(*["completed"] * 9, "in_progress", "pending"),
+          task("strategy", "Brief version 2, incident overlay at /workspace/overlay_v2.json.")),
+    calls(task("critic")), calls(house_todos(*["completed"] * 11), ("publish_brief", {})), AIMessage(content="pass")]
+
+
+@pytest.fixture
+def house(storage, cedar_plan_index):
+    inc = Incident(storage, "s5")
+    inc.replay("c1")
+    return inc
+
+
+def overlay_file(inc, version: int) -> dict:
+    return json.loads(inc.ws.read(f"overlay_v{version}.json"))
+
+
+def test_mapper_places_both_calls_on_the_plan_one_overlay_per_brief_version(house, cedar_plan_index, monkeypatch):
+    # The mapper reads the plan index while the three layer pulls are still waiting: they run together.
+    barrier = threading.Barrier(4, timeout=10)
+    real_pull, real_index, waited = orchestrator.dossier_mod.pull_layer, overlay_mod.load_plan_index, []
+
+    def pull_together(layer, building_id, providers=None, **options):
+        barrier.wait()
+        return real_pull(layer, building_id, providers, **options)
+
+    def index_together(building_id):
+        if not waited:
+            waited.append(True)
+            barrier.wait()
+        return real_index(building_id)
+
+    monkeypatch.setattr(orchestrator.dossier_mod, "pull_layer", pull_together)
+    monkeypatch.setattr(overlay_mod, "load_plan_index", index_together)
+
+    invented_room = mutated_overlay(OVERLAY_V1, lambda d: d["occupants"][0].update(
+        location={"kind": "room", "room_id": "r99"}))
+    model = fake_model(*HOUSE_START, *HOUSE_RESUME, *HOUSE_UPDATE,
+                       overlays=[invented_room, OVERLAY_V1, OVERLAY_V2],
+                       drafts=[[{**CHILDREN, "refs": ["occ-9"]}], [FRONT_DOOR, CHILDREN],
+                               [{**FRONT_DOOR, "refs": ["occ-loc-1"]}, {**CHILDREN, "refs": ["occ-loc-1"]}]])
+    start_incident("inc_s5", workspace_root=house.root, model=model)
+    house.eng.confirm(HOUSE)
+    v1 = resume_incident("inc_s5", HOUSE)
+
+    # v1: the invented room was refused, the second submission went through.
+    assert not barrier.broken
+    assert "r10" in model.seen["plan_index"] and '"number": 2' in model.seen["plan_index"]
+    assert "room_id 'r99' does not exist in the plan" in model.seen["overlay_rejections"][0]
+    assert (v1.status, v1.fallback_reason, v1.overlay_rejections) == ("briefed", None, 1)
+    first = overlay_file(house, 1)
+    assert validate_overlay.validate(first, cedar_plan_index) == []
+    assert (first["version"], first["model_id"], first["routes"], v1.overlay.version) == (
+        1, "fixture-fake_cedar_house", [], v1.brief.version)
+    assert first["occupants"][0]["location"] == {"kind": "floor", "floor_reported": 2, "floor_id": "f2"}
+    assert first["fire"][0]["confidence"] == 0.6 and first["fire"][0]["location"] == {"kind": "room", "room_id": "r4"}
+
+    # The strategy's considerations point at overlay ids; a ref to nothing was refused.
+    assert v1.brief.verifier_rejections == 1
+    assert [c.refs for c in v1.brief.considerations] == [["occ-1"], ["occ-1", "obj-1"]]
+    span = v1.brief.evidence["c1:42.0-51.5"]  # every overlay evidence id resolves in the brief
+    assert (span.kind, span.locator["text"]) == ("transcript_span", "My neighbour's two kids are in the back bedroom upstairs.")
+    assert {e for k in ("occupants", "fire", "objectives", "considerations") for x in first[k]
+            for e in x["evidence_ids"]} <= set(v1.brief.evidence)
+
+    # Call 2: the mapper runs again, first, and the overlay follows the brief to version 2.
+    v2 = update_incident("inc_s5", house.replay("c2"))
+    assert "version 2" in model.seen["mapper_tasks"][-1]
+    second = overlay_file(house, 2)
+    assert validate_overlay.validate(second, cedar_plan_index) == []
+    assert (second["version"], v2.brief.version, v2.overlay.version) == (2, 2, 2)
+    assert second["contradictions"] == [{"group_id": "occ-loc-1", "key": "occupants.location",
+                                         "resolved_by_dispatcher": False}]
+    assert {o["id"]: o["status"] for o in second["occupants"]} == {
+        "occ-1": "contradicted", "occ-1b": "contradicted", "occ-2": "reported"}
+    assert second["changes_since_last"][:2] == ["occ-1 is now contradicted (group occ-loc-1)",
+                                                "New: occupants occ-1b (2) on floor 2"]
+    assert overlay_file(house, 1)["version"] == 1  # earlier versions stay, for the viewer's slider
+    assert [c.refs for c in v2.brief.considerations] == [["occ-loc-1"], ["occ-loc-1"]]
+    assert [t.content for t in v2.todos][4] == "Map reports onto the plan" and \
+        "Update incident overlay (v2)" in [t.content for t in v2.todos]
+    assert overlay_mod.transcript(house.ws)[-1].span_id == "c2:44.0-47.0"  # start_incident kept the transcript
+
+
+def mutated_overlay(draft: dict, change) -> dict:
+    d = json.loads(json.dumps(draft))
+    change(d)
+    return d
+
+
+def test_mapper_out_of_tries_gives_an_empty_overlay_that_says_why(house):
+    broken = mutated_overlay(OVERLAY_V1, lambda d: d["fire"][0].update(evidence_ids=["ev_call_1"]))
+    model = fake_model(*HOUSE_START, *HOUSE_RESUME, overlays=[broken] * 4,
+                       drafts=[[FRONT_DOOR], [{**FRONT_DOOR, "refs": []}]])
+    start_incident("inc_s5", workspace_root=house.root, model=model)
+    house.eng.confirm(HOUSE)
+    v1 = resume_incident("inc_s5", HOUSE)
+    assert len(model.seen["overlay_rejections"]) == 3 and "budget used up" not in model.seen["overlay_rejections"][-1]
+    assert (v1.overlay_rejections, v1.status, v1.fallback_reason) == (3, "briefed", None)
+    ov = overlay_file(house, 1)
+    assert ov["changes_since_last"] == ["Overlay not available: the incident mapper's 3 submission(s) were all rejected"]
+    assert ov["occupants"] == ov["fire"] == [] and ov["version"] == v1.brief.version
+    # The strategy may not point at ids of an overlay that does not exist: its refs were refused once.
+    assert [c.refs for c in v1.brief.considerations] == [[]] and v1.brief.verifier_rejections == 1
+
+
+def test_mapper_on_a_building_without_a_scan_uses_floors_only(depot):
+    s = Session(incident_id="inc_s4b", ws=depot.ws, candidates=orchestrator.find_candidates(depot.eng.record))
+    tools = make_tools(s)
+    tools["confirm_building"].invoke({"candidates": [DEPOT], "chosen_building_id": DEPOT})
+    assert tools["get_plan_index"].invoke({}).startswith("NO INTERIOR SCAN")
+    lines = tools["get_transcript"].invoke({}).splitlines()
+    assert lines[1].startswith("c1:2.3-7.6 [caller] There's a fire at the warehouse at 48 Quarry Road")
+    fire_in_room = {"fire": [{"id": "fire-1", "kind": "fire", "location": {"kind": "room", "room_id": "r1"},
+                              "status": "reported", "confidence": 0.6, "evidence_ids": ["c1:2.3-7.6"]}]}
+    reply = tools["submit_overlay"].invoke({"overlay": fire_in_room})
+    assert reply.startswith("Rejected") and "room_id 'r1' does not exist in the plan" in reply
+    on_floor = mutated_overlay(fire_in_room, lambda d: d["fire"][0].update(location={"kind": "floor", "floor_reported": 1}))
+    assert tools["submit_overlay"].invoke({"overlay": on_floor}).startswith("Accepted")
+    ov = json.loads(depot.ws.read("overlay_v1.json"))
+    assert ov["fire"][0]["location"] == {"kind": "floor", "floor_reported": 1}  # no scan: no floor id
+    assert ov["model_id"] == DEPOT  # no Matterport model: the building id
+    garbled = tools["submit_overlay"].invoke({"overlay": {"fire": [{"id": "x"}]}})
+    assert garbled.startswith("Rejected") and "(0 tries left)" in garbled  # a draft that does not parse counts
+    assert tools["submit_overlay"].invoke({"overlay": on_floor}) == "Error: submission budget used up. Do not resubmit."

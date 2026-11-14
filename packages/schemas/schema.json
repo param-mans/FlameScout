@@ -1,5 +1,46 @@
 {
   "$defs": {
+    "Anchor": {
+      "additionalProperties": false,
+      "properties": {
+        "room_id": {
+          "title": "Room Id",
+          "type": "string"
+        },
+        "position": {
+          "enum": [
+            "center",
+            "near_door",
+            "near_window",
+            "near_stairs",
+            "north_side",
+            "south_side",
+            "east_side",
+            "west_side"
+          ],
+          "title": "Position",
+          "type": "string"
+        },
+        "ref_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ref Id"
+        }
+      },
+      "required": [
+        "room_id",
+        "position"
+      ],
+      "title": "Anchor",
+      "type": "object"
+    },
     "Brief": {
       "properties": {
         "brief_id": {
@@ -352,6 +393,14 @@
           "default": false,
           "title": "Cross Layer",
           "type": "boolean"
+        },
+        "refs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Refs",
+          "type": "array"
         }
       },
       "required": [
@@ -542,7 +591,8 @@
             "dossier.progress",
             "brief.updated",
             "copilot.suggestion",
-            "metric.tick"
+            "metric.tick",
+            "overlay.updated"
           ],
           "title": "Type",
           "type": "string"
@@ -720,6 +770,110 @@
         "confidence"
       ],
       "title": "Fact",
+      "type": "object"
+    },
+    "IncidentOverlay": {
+      "additionalProperties": false,
+      "description": "One per brief version: overlay_vN.json, version == Brief.version.",
+      "properties": {
+        "incident_id": {
+          "title": "Incident Id",
+          "type": "string"
+        },
+        "model_id": {
+          "title": "Model Id",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "as_of": {
+          "format": "date-time",
+          "title": "As Of",
+          "type": "string"
+        },
+        "changes_since_last": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Changes Since Last",
+          "type": "array"
+        },
+        "occupants": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/OverlayOccupant"
+          },
+          "title": "Occupants",
+          "type": "array"
+        },
+        "fire": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/OverlayFire"
+          },
+          "title": "Fire",
+          "type": "array"
+        },
+        "hazards": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/OverlayHazard"
+          },
+          "title": "Hazards",
+          "type": "array"
+        },
+        "blocked": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/OverlayBlocked"
+          },
+          "title": "Blocked",
+          "type": "array"
+        },
+        "contradictions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/OverlayContradiction"
+          },
+          "title": "Contradictions",
+          "type": "array"
+        },
+        "objectives": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/OverlayObjective"
+          },
+          "title": "Objectives",
+          "type": "array"
+        },
+        "considerations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/OverlayConsideration"
+          },
+          "title": "Considerations",
+          "type": "array"
+        },
+        "routes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/OverlayRoute"
+          },
+          "title": "Routes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "incident_id",
+        "model_id",
+        "version",
+        "as_of"
+      ],
+      "title": "IncidentOverlay",
       "type": "object"
     },
     "IncidentRecord": {
@@ -972,6 +1126,684 @@
       "title": "Marker",
       "type": "object"
     },
+    "ObjectiveTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "occupant",
+            "occupant_group",
+            "room",
+            "floor"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "ref_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ref Id"
+        },
+        "floor_reported": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Floor Reported"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ObjectiveTarget",
+      "type": "object"
+    },
+    "OverlayBlocked": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "inferred",
+            "reported",
+            "unverified",
+            "contradicted"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "reported_at": {
+          "format": "date-time",
+          "title": "Reported At",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "group_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Group Id"
+        },
+        "ref_id": {
+          "title": "Ref Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "confidence",
+        "reported_at",
+        "ref_id"
+      ],
+      "title": "OverlayBlocked",
+      "type": "object"
+    },
+    "OverlayConsideration": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "refs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "rationale",
+        "confidence",
+        "evidence_ids"
+      ],
+      "title": "OverlayConsideration",
+      "type": "object"
+    },
+    "OverlayContradiction": {
+      "additionalProperties": false,
+      "properties": {
+        "group_id": {
+          "title": "Group Id",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "resolved_by_dispatcher": {
+          "default": false,
+          "title": "Resolved By Dispatcher",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "group_id",
+        "key"
+      ],
+      "title": "OverlayContradiction",
+      "type": "object"
+    },
+    "OverlayFire": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "inferred",
+            "reported",
+            "unverified",
+            "contradicted"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "reported_at": {
+          "format": "date-time",
+          "title": "Reported At",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "group_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Group Id"
+        },
+        "kind": {
+          "enum": [
+            "smoke",
+            "fire",
+            "heat"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/OverlayLocation"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "confidence",
+        "reported_at",
+        "kind",
+        "location"
+      ],
+      "title": "OverlayFire",
+      "type": "object"
+    },
+    "OverlayHazard": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "inferred",
+            "reported",
+            "unverified",
+            "contradicted"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "reported_at": {
+          "format": "date-time",
+          "title": "Reported At",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "group_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Group Id"
+        },
+        "kind": {
+          "enum": [
+            "gas",
+            "chemical",
+            "battery",
+            "electrical",
+            "structural",
+            "other"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/OverlayLocation"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "confidence",
+        "reported_at",
+        "kind",
+        "location"
+      ],
+      "title": "OverlayHazard",
+      "type": "object"
+    },
+    "OverlayLocation": {
+      "additionalProperties": false,
+      "description": "room > anchor > floor > unknown. Never a more precise kind than the words support.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "room",
+            "anchor",
+            "floor",
+            "unknown"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "room_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Room Id"
+        },
+        "anchor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Anchor"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "floor_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Floor Id"
+        },
+        "floor_reported": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Floor Reported"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "OverlayLocation",
+      "type": "object"
+    },
+    "OverlayObjective": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "rescue",
+            "recon"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "priority": {
+          "minimum": 1,
+          "title": "Priority",
+          "type": "integer"
+        },
+        "target": {
+          "$ref": "#/$defs/ObjectiveTarget"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "priority",
+        "target",
+        "rationale",
+        "evidence_ids"
+      ],
+      "title": "OverlayObjective",
+      "type": "object"
+    },
+    "OverlayOccupant": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "inferred",
+            "reported",
+            "unverified",
+            "contradicted"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "reported_at": {
+          "format": "date-time",
+          "title": "Reported At",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "group_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Group Id"
+        },
+        "count": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Count"
+        },
+        "count_range": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Count Range"
+        },
+        "location": {
+          "$ref": "#/$defs/OverlayLocation"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "confidence",
+        "reported_at",
+        "location"
+      ],
+      "title": "OverlayOccupant",
+      "type": "object"
+    },
+    "OverlayRoute": {
+      "additionalProperties": false,
+      "description": "Planner output only (the viewer's deterministic planner). Agents always send routes: [].",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "objective_id": {
+          "title": "Objective Id",
+          "type": "string"
+        },
+        "produced_by": {
+          "const": "planner",
+          "title": "Produced By",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "status": {
+          "default": "inferred",
+          "enum": [
+            "verified",
+            "inferred",
+            "reported",
+            "unverified",
+            "contradicted"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "waypoints": {
+          "items": {
+            "$ref": "#/$defs/RouteWaypoint"
+          },
+          "minItems": 2,
+          "title": "Waypoints",
+          "type": "array"
+        },
+        "length_m_estimate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Length M Estimate"
+        },
+        "passes_near_fire": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Passes Near Fire"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "id",
+        "objective_id",
+        "produced_by",
+        "kind",
+        "confidence",
+        "waypoints"
+      ],
+      "title": "OverlayRoute",
+      "type": "object"
+    },
     "Progress": {
       "description": "The orchestrator's write_todos plan, rewritten on every change. UI progress strip.",
       "properties": {
@@ -1034,6 +1866,31 @@
         "incident_id"
       ],
       "title": "Progress",
+      "type": "object"
+    },
+    "RouteWaypoint": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "exterior",
+            "room",
+            "opening",
+            "stairs"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "ref_id": {
+          "title": "Ref Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "ref_id"
+      ],
+      "title": "RouteWaypoint",
       "type": "object"
     },
     "TodoItem": {

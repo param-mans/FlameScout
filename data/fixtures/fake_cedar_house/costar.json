@@ -1,0 +1,36 @@
+{
+  "property_id": "fake_cedar_house",
+  "name": "Cedar House",
+  "address": "42 Cedar Drive",
+  "coordinates": {"lat": 34.08, "lon": -118.33},
+  "facts": {
+    "building.name": {
+      "key": "building.name", "value": "Cedar House", "status": "verified", "confidence": 0.95,
+      "evidence_ids": ["ev_ch_costar_1"], "as_of": "2026-07-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "building.use": {
+      "key": "building.use", "value": "Single-family detached house with an attached garage",
+      "status": "verified", "confidence": 0.9,
+      "evidence_ids": ["ev_ch_costar_1"], "as_of": "2026-07-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "building.stories": {
+      "key": "building.stories", "value": 2, "status": "verified", "confidence": 0.95,
+      "evidence_ids": ["ev_ch_costar_1"], "as_of": "2026-07-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "building.year_built": {
+      "key": "building.year_built", "value": 1994, "status": "verified", "confidence": 0.9,
+      "evidence_ids": ["ev_ch_costar_1"], "as_of": "2026-07-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "building.sprinklered": {
+      "key": "building.sprinklered", "value": null, "status": "unverified", "confidence": 0.0,
+      "evidence_ids": [], "updated_at": "2026-11-14T00:00:00Z"
+    }
+  },
+  "tenants": [],
+  "evidence": {
+    "ev_ch_costar_1": {"id": "ev_ch_costar_1", "kind": "costar_record", "source": "costar",
+                       "uri": "fixture://fake_cedar_house/costar/property",
+                       "captured_at": "2026-07-01T00:00:00Z",
+                       "locator": {"note": "synthetic hand-written fixture, not a real CoStar record"}}
+  }
+}

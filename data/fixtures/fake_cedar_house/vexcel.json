@@ -1,0 +1,19 @@
+{
+  "center": {"lat": 34.08, "lon": -118.33},
+  "aerials": [
+    {
+      "evidence": {"id": "ev_ch_aerial_1", "kind": "aerial_crop", "source": "vexcel",
+                   "uri": "fixture://fake_cedar_house/aerial/overhead",
+                   "captured_at": "2026-02-14T00:00:00Z",
+                   "locator": {"view": "overhead", "note": "synthetic hand-written fixture, not real aerial imagery"}},
+      "markers": [
+        {"id": "m_ch_driveway", "kind": "other", "label": "Driveway on the east side leading to the garage door",
+         "floor": 1, "status": "inferred", "confidence": 0.65}
+      ],
+      "exposures": [
+        {"id": "x_ch_west", "label": "Neighbouring two-storey house to the west", "side": "west",
+         "distance_m": 5.0, "status": "inferred", "confidence": 0.6}
+      ]
+    }
+  ]
+}

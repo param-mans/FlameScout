@@ -36,6 +36,7 @@ load_dotenv(ROOT / ".env")  # GEMINI_*, LANGSMITH_*, EXTRACTOR - before anything
 from flamescout_schemas import Brief, CallSegment, Progress  # noqa: E402
 from services.agents.fusion import FusionEngine  # noqa: E402
 from services.agents import copilot, db  # noqa: E402
+from services.agents import overlay as overlay_mod  # noqa: E402
 from services.agents.orchestrator import (RunResult, flush_traces, resume_incident,  # noqa: E402
                                           review_brief, save_incident, start_incident, update_incident)
 from services.agents.workspace import incident_workspace  # noqa: E402
@@ -106,7 +107,8 @@ def report(r: RunResult) -> bool:
           f"verifier_rejections: {brief.verifier_rejections}, published: {brief.published}")
     for c in brief.considerations:
         mark = " [cross-layer]" if c.cross_layer else ""
-        print(f"  {c.rank}. [{c.category}, conf {c.confidence:.2f}]{mark} {c.title}  {c.evidence_ids}")
+        refs = f"  refs {c.refs}" if c.refs else ""
+        print(f"  {c.rank}. [{c.category}, conf {c.confidence:.2f}]{mark} {c.title}  {c.evidence_ids}{refs}")
     if r.fallback_reason:
         print(f"  FACTS-ONLY FALLBACK: {r.fallback_reason}")
     if brief.changes_since_last:
@@ -114,6 +116,19 @@ def report(r: RunResult) -> bool:
     print("gaps:", *brief.gaps, sep="\n  - ")
     for flag in (r.critique or {}).get("note_flags", []):
         print(f"critic flagged a {flag['layer']} note claim: {flag['claim']}")
+    ov = r.overlay
+    if ov is not None:
+        print(f"overlay v{ov.version} (rejected submissions: {r.overlay_rejections}):")
+        for name in ("occupants", "fire", "hazards", "blocked"):
+            for e in getattr(ov, name):
+                where = overlay_mod.describe(e.location) if name != "blocked" else e.ref_id
+                group = f", group {e.group_id}" if e.group_id else ""
+                print(f"  {name} {e.id} [{e.status}{group}] {where}  {e.evidence_ids}")
+        for o in ov.objectives:
+            print(f"  objective {o.id}: {o.type} {o.target.kind} {o.target.ref_id or f'floor {o.target.floor_reported}'} "
+                  f"(priority {o.priority})")
+        for line in ov.changes_since_last:
+            print(f"  change: {line}")
     for q in copilot.read_questions(ws):
         print(f"copilot question [{q.status}]: {q.question}")
     return (brief.published and len(brief.considerations) <= 5

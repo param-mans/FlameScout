@@ -11,6 +11,8 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - Run an incident end to end (call 1 -> dispatcher confirms -> brief v1, call 2 -> brief v2): `python scripts/run_incident.py S2`
   (`--cold` ignores prefetched building data). `S4B` is a building with no interior scan: re-plan, and a
   low-confidence review that `--drop-low` answers by dropping instead of approving.
+  `S5` is Bruno's overlay story; copy `packages/schemas/overlay/plan_index.example.json` to
+  `data/raw/fake_cedar_house/derived/plan_index.json` first (gitignored) or its overlay is floor-level only.
 - Prefetch a building's data layers for the next 24 h: `python scripts/prefetch.py fake_wilshire_tower`
 - Export JSON Schema for the frontend: `python scripts/export_schemas.py`
 - API: `uvicorn services.api.main:app --reload --port 8000` (docs at /docs, WS at /ws/incidents/{id})
@@ -40,6 +42,10 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - `services/agents/memory.py` - long-term building memory: crew feedback (`feedback(incident_id, item_id,
   verdict, note)`) kept per building (MongoDB namespace `["memories"]`, or `data/memories/`, not committed),
   mounted read-only at `/memories/`; `brief.py` applies it ("Crew reported: ..." facts, wrong markers left out).
+- `services/agents/overlay.py` - incident overlay for the 3D viewer (`docs/INCIDENT_OVERLAY_SPEC.md`): transcript
+  spans, plan index (`data/raw/<id>/derived/plan_index.json`, missing = no scan), assembly, checks (Bruno's
+  `validate_overlay.py` + ours), version diff. The `incident_mapper` subagent submits; one `overlay_vN.json`
+  per brief version. No LLM in this module.
 - `services/agents/stalls.py` - 12 s client timeout on every orchestrator / subagent model call, one retry,
   each stall and retry logged with the agent name and counted in `RunResult`.
 - `services/agents/copilot.py` - also holds the orchestrator's dispatcher questions for life-safety

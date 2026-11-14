@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT / "packages" / "schemas"))
 import flamescout_schemas as s  # noqa: E402
 
 models = [s.IncidentRecord, s.BuildingDossier, s.Brief, s.Progress, s.BuildingCandidate, s.LocationCandidate,
-          s.CopilotSuggestion, s.CrewFeedback, s.Event]
+          s.CopilotSuggestion, s.CrewFeedback, s.Event, s.IncidentOverlay]
 from pydantic.json_schema import models_json_schema  # noqa: E402
 
 _, schema = models_json_schema([(m, "serialization") for m in models], title="FlameScout")
