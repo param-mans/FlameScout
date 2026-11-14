@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { liveText, useIncidentSocket, type IncidentResult } from "../../house/useIncidentSocket";
 
 // Static house viewer from public/house-viewer, embedded in an iframe (same origin).
 // layout "split" -> 3D + 2D plan side by side in one iframe; otherwise mode "floor" (2D) or "scan3d" (3D).
@@ -137,7 +138,14 @@ export function SamplePicker({ samples, value, onChange }: { samples: SampleHous
   );
 }
 
-export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId, sampleError, host = false, onIncidentState, onPlanIndex, highlightRefs }: Props) {
+export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId: pickedId, sampleError, host = false, onIncidentState, onPlanIndex, highlightRefs }: Props) {
+  // Live overlay (only the split viewer, only with ?incident=<id>; see house/useIncidentSocket.ts): the overlay's house
+  // replaces the picked one, and the overlay is posted once the viewer reports that house ready.
+  const live = useIncidentSocket(layout === "split");
+  const sampleId = live.sampleId ?? pickedId;
+  const [result, setResult] = useState<IncidentResult | null>(null);
+  const [lastApplied, setLastApplied] = useState<number | null>(null);
+  const liveOn = useRef(live.enabled);
   const frame = useRef<HTMLIFrameElement>(null);
   // Sample in the iframe URL: fixed once the iframe exists; later changes go by postMessage (no reload).
   const [frameSample, setFrameSample] = useState<string | null>(sampleId);
@@ -155,6 +163,7 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId, s
   const src = frameSample ? `${BASE}casa.html?embed=1&sample=${encodeURIComponent(frameSample)}&${view}${debug}${host ? "&host=1" : ""}` : null;
   const cb = useRef({ onIncidentState, onPlanIndex });
   cb.current = { onIncidentState, onPlanIndex };
+  const [readySample, setReadySample] = useState<string | null>(null); // house the viewer last reported ready
   const what = split ? "FLOOR PLAN + 3D" : mode === "floor" ? "FLOOR PLAN" : "3D SCAN";
 
   // Viewer replies from our own iframe only. On the first "ready" of each iframe document the app theme is sent and
@@ -167,8 +176,9 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId, s
     const onMessage = (e: MessageEvent) => {
       const win = frame.current?.contentWindow;
       if (e.origin !== window.location.origin || !win || e.source !== win) return;
-      const d = e.data as ({ type?: string; message?: string; version?: number; errors?: string[]; index?: unknown } & Partial<ViewerIncidentState>) | null;
+      const d = e.data as ({ type?: string; message?: string; version?: number; errors?: string[]; index?: unknown; sample?: string } & Partial<ViewerIncidentState>) | null;
       if (d?.type === "ready") {
+        if (typeof d.sample === "string") setReadySample(d.sample);
         if (themed.current) return show();
         win.postMessage({ type: "theme", vars: readThemeTokens() }, window.location.origin);
         window.clearTimeout(themeTimer.current);
@@ -178,7 +188,12 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId, s
         show();
       } else if (d?.type === "error") setStatus({ kind: "error", message: d.message ?? "Viewer error" });
       // incident layer (docs/INCIDENT_OVERLAY_SPEC.md): the host logs rejected overlays; the plan index is kept for the agents
-      else if (d?.type === "incidentRejected") console.warn("[house-viewer] incident overlay rejected", { version: d.version, errors: d.errors });
+      else if (d?.type === "incidentRejected") {
+        console.warn("[house-viewer] incident overlay rejected", { version: d.version, errors: d.errors });
+        if (liveOn.current) { console.error("[incident] overlay rejected", d.errors); setResult({ kind: "rejected", version: typeof d.version === "number" ? d.version : null, errors: Array.isArray(d.errors) ? d.errors : [] }); }
+      } else if (d?.type === "incidentApplied" && typeof d.version === "number") {
+        if (liveOn.current) { const v = d.version; setResult({ kind: "applied", version: v }); setLastApplied(v); }
+      }
       else if (d?.type === "planIndex") { planIndex.current = d.index ?? null; cb.current.onPlanIndex?.(d.index ?? null); }
       else if (d?.type === "incidentState" && cb.current.onIncidentState)
         cb.current.onIncidentState({ overlay: (d.overlay as ViewerIncidentState["overlay"]) ?? null, version: d.version ?? null, versions: Array.isArray(d.versions) ? d.versions : [],
@@ -187,6 +202,13 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId, s
     window.addEventListener("message", onMessage);
     return () => { window.removeEventListener("message", onMessage); window.clearTimeout(themeTimer.current); };
   }, []);
+
+  // live overlay (?incident=): sent only when the viewer has reported THIS house ready (its plan is loaded)
+  const liveOverlay = live.sampleId === sampleId ? live.overlay : null;
+  useEffect(() => {
+    if (liveOverlay && sampleId && readySample === sampleId)
+      frame.current?.contentWindow?.postMessage({ type: "setIncident", overlay: liveOverlay }, window.location.origin);
+  }, [liveOverlay, readySample, sampleId]);
 
   // highlight a consideration's refs in the viewer
   const refsKey = JSON.stringify(highlightRefs ?? []);
@@ -228,7 +250,7 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId, s
       </div>
     ) : null;
 
-  return (
+  const viewer = (
     <div className="relative h-full w-full bg-bg">
       {src && !sampleError && (
         <iframe
@@ -240,6 +262,18 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId, s
         />
       )}
       {overlay && <div className="absolute inset-0 grid place-items-center text-center">{overlay}</div>}
+    </div>
+  );
+  if (!live.enabled) return viewer;
+  const bad = result?.kind === "rejected" || !!live.unknownModel;
+  return (
+    <div className="flex h-full w-full flex-col bg-bg" data-incident-version={lastApplied ?? undefined} data-live-sample={sampleId ?? undefined}>
+      <div className="flex shrink-0 items-center justify-end border-b border-line bg-panel px-2 py-0.5">
+        <div role="status" data-live-status className={`num flex min-h-[44px] items-center border px-3 text-[12px] ${bad ? "border-contradicted text-contradicted" : "border-accent text-accent"}`}>
+          {liveText(live, result, lastApplied)}
+        </div>
+      </div>
+      <div className="relative min-h-0 flex-1">{viewer}</div>
     </div>
   );
 }
