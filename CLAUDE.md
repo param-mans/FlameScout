@@ -18,16 +18,21 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
   `EXTRACTOR=keyword|gemini`, default keyword; `EXTRACT_TIMEOUT_S`, default 4.0).
 - `services/agents/fusion.py` - deterministic merge, contradictions, open questions. No LLM.
 - `services/agents/orchestrator.py` - one persistent deep agent per incident (checkpointer, thread =
-  incident id); subagents dossier, strategy, critic. `start_incident` pauses at the `confirm_building`
+  incident id); subagents costar, matterport, vexcel (delegated in one turn, run in parallel),
+  strategy, critic. `start_incident` pauses at the `confirm_building`
   interrupt, `resume_incident` takes the dispatcher's choice, `update_incident` writes the next brief
   version. JSON artifacts are written only by its tools; the model may write only `notes/*.md`.
   API guide: `docs/agents-api.md`.
-- `services/agents/locator.py` - candidate buildings for an incident from fixture dossiers. No LLM.
-- `services/agents/brief.py` - deterministic Brief assembly, consideration checks, `changes_since_last`
-  diff. No LLM.
-- `services/agents/dossier.py` - loads `data/fixtures/<building_id>/dossier.json` (live adapters not built).
-- `data/fixtures/calls/` - scripted calls S1-S4. `data/fixtures/<building_id>/` - dossier fixtures.
-- `workspace/<incident_id>/` - incident files (incident.json, candidates.json, dossier.json, brief_vN.json,
+- `services/agents/providers.py` - PRD 7.4 adapter Protocols, fixture implementations, live stubs
+  (`DATA_MODE=live` logs "not configured" and serves fixtures).
+- `services/agents/locator.py` - candidate buildings for an incident via the CoStar adapter. No LLM.
+- `services/agents/brief.py` - deterministic Brief assembly, consideration checks (incl. at least one
+  cross-layer consideration), `changes_since_last` diff. No LLM.
+- `services/agents/dossier.py` - pulls the costar / matterport / vexcel layers through the adapters and
+  merges them into a BuildingDossier. No LLM.
+- `data/fixtures/calls/` - scripted calls S1-S4. `data/fixtures/<building_id>/{costar,matterport,vexcel}.json`
+  - per-layer fixtures, our own normalized fields only.
+- `workspace/<incident_id>/` - incident files (incident.json, candidates.json, layers/*.json, dossier.json, brief_vN.json,
   critique_vN.json, todos.json = the orchestrator's plan + status for the UI progress strip, notes/*.md).
   This is the deepagent filesystem AND what the UI renders. Not committed.
 
@@ -63,6 +68,6 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - Timebox: if a feature isn't working in its estimate, fall back to the fixture and move on.
 
 ## TODO (later)
-- Split the dossier subagent into parallel `costar` / `matterport` / `vexcel` subagents once real data
-  arrives (today it is one subagent loading a fixture).
+- Implement the live CoStar / Matterport / Vexcel adapters in `providers.py` once real API access and
+  field names are confirmed (today `DATA_MODE=live` serves fixtures).
 - Add an `interrupt_on` gate before publishing a brief that has low-confidence considerations.

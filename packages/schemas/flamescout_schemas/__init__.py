@@ -116,6 +116,7 @@ class Consideration(BaseModel):
     rationale: str
     confidence: float = Field(ge=0, le=1)
     evidence_ids: list[str] = []
+    cross_layer: bool = False   # evidence from 2+ of the costar / matterport / vexcel layers
 
 
 class Brief(BaseModel):

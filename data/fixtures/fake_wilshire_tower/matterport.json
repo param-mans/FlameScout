@@ -1,0 +1,56 @@
+{
+  "model": {"model_id": "fixture-fake_wilshire_tower", "captured_at": "2026-06-12T00:00:00Z"},
+  "floorplans": [
+    {
+      "floor": 1,
+      "evidence": {"id": "ev_scan_fp_1", "kind": "scan_floorplan", "source": "matterport",
+                   "uri": "fixture://fake_wilshire_tower/scan/floorplan-1",
+                   "captured_at": "2026-06-12T00:00:00Z",
+                   "locator": {"floor": 1, "note": "synthetic hand-written fixture, not a real scan"}},
+      "markers": [
+        {"id": "m_entry_main", "kind": "entry", "label": "Main entrance, Wilshire Boulevard side (south)",
+         "floor": 1, "status": "inferred", "confidence": 0.8},
+        {"id": "m_entry_rear", "kind": "entry", "label": "Rear service entrance, north wall, opens onto the alley",
+         "floor": 1, "status": "inferred", "confidence": 0.7},
+        {"id": "m_stair_a", "kind": "stair", "label": "Stair A (front, south side), serves floors 1-6",
+         "status": "inferred", "confidence": 0.8},
+        {"id": "m_stair_b", "kind": "stair",
+         "label": "Stair B (rear / back stairs, north side), serves floors 1-6, discharges at ground level to the alley",
+         "status": "inferred", "confidence": 0.75},
+        {"id": "m_elevator", "kind": "elevator", "label": "Passenger elevator, main lobby",
+         "floor": 1, "status": "inferred", "confidence": 0.8}
+      ]
+    },
+    {
+      "floor": 4,
+      "evidence": {"id": "ev_scan_fp_4", "kind": "scan_floorplan", "source": "matterport",
+                   "uri": "fixture://fake_wilshire_tower/scan/floorplan-4",
+                   "captured_at": "2026-06-12T00:00:00Z",
+                   "locator": {"floor": 4, "note": "synthetic hand-written fixture, not a real scan"}},
+      "markers": [
+        {"id": "m_stair_a", "kind": "stair", "label": "Stair A (front, south side), serves floors 1-6",
+         "status": "inferred", "confidence": 0.8},
+        {"id": "m_stair_b", "kind": "stair",
+         "label": "Stair B (rear / back stairs, north side), serves floors 1-6, discharges at ground level to the alley",
+         "status": "inferred", "confidence": 0.75},
+        {"id": "m_standpipe", "kind": "standpipe", "label": "Standpipe outlet in Stair A, floor 4 landing",
+         "floor": 4, "status": "inferred", "confidence": 0.55}
+      ]
+    }
+  ],
+  "frames": [
+    {
+      "floor": 1,
+      "evidence": {"id": "ev_scan_frame_1", "kind": "scan_frame", "source": "matterport",
+                   "uri": "fixture://fake_wilshire_tower/scan/frame-entrance",
+                   "captured_at": "2026-06-12T00:00:00Z",
+                   "locator": {"floor": 1, "note": "synthetic hand-written fixture, not a real scan"}},
+      "markers": [
+        {"id": "m_key_box", "kind": "key_box", "label": "Key box, right of the main entrance",
+         "floor": 1, "status": "inferred", "confidence": 0.6},
+        {"id": "m_fdc", "kind": "fdc", "label": "Fire department connection, south wall near the main entrance",
+         "floor": 1, "status": "inferred", "confidence": 0.65}
+      ]
+    }
+  ]
+}

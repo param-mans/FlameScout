@@ -7,8 +7,8 @@
   call 2 -> fusion change notes -> update_incident (same agent thread)      -> brief_v2.json
   ... one update per further call in the script.
 
-Writes workspace/<incident_id>/: incident.json, candidates.json, dossier.json, brief_vN.json,
-critique_vN.json, todos.json and notes/*.md.
+Writes workspace/<incident_id>/: incident.json, candidates.json, layers/{costar,matterport,vexcel}.json,
+dossier.json, brief_vN.json, critique_vN.json, todos.json and notes/*.md.
 """
 import json
 import logging
@@ -64,7 +64,8 @@ def report(r: RunResult) -> bool:
           f"critic: {(r.critique or {}).get('verdict', 'did not run')}, "
           f"verifier_rejections: {brief.verifier_rejections}")
     for c in brief.considerations:
-        print(f"  {c.rank}. [{c.category}, conf {c.confidence:.2f}] {c.title}  {c.evidence_ids}")
+        mark = " [cross-layer]" if c.cross_layer else ""
+        print(f"  {c.rank}. [{c.category}, conf {c.confidence:.2f}]{mark} {c.title}  {c.evidence_ids}")
     if r.fallback_reason:
         print(f"  FACTS-ONLY FALLBACK: {r.fallback_reason}")
     if brief.changes_since_last:
@@ -97,7 +98,7 @@ for call_id in call_ids[1:]:
         continue
     update = update_incident(incident_id, notes)
     ok = report(update) and ok
-    timings.append(f"v{update.version}: {update.seconds:.1f} s (dossier reused)")
+    timings.append(f"v{update.version}: {update.seconds:.1f} s (data layers reused)")
 
 flush_traces()
 print("\nfiles:", *sorted(str(p.relative_to(ROOT)) for p in ws.rglob("*") if p.is_file()), sep="\n  ")

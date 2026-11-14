@@ -35,7 +35,7 @@ Starts the agent. It writes its plan, then pauses at the `confirm_building` gate
 
 - Raises `ValueError` if the incident has no candidate buildings yet.
 - Returns `status="awaiting_confirmation"`, `candidates` (best match first), `brief=None`.
-- Clears earlier output for this incident (briefs, critiques, dossier, notes, todos), then writes:
+- Clears earlier output for this incident (briefs, critiques, layers, dossier, notes, todos), then writes:
   - `candidates.json`: list of `BuildingCandidate` (`building_id`, `name`, `address`, `score`)
   - `todos.json`: `Progress` with `status="awaiting_confirmation"`
 - Takes about 4 s.
@@ -50,13 +50,16 @@ The dispatcher's answer. Maps to `POST /api/incidents/{id}/confirm-location`.
 - Returns `status="briefed"`, `version=1`, `brief` (a valid `Brief`).
 - Writes:
   - `incident.json`: sets `confirmed_building_id` and `status="confirmed"`
-  - `dossier.json`, `notes/dossier_summary.md`
+  - `layers/costar.json`, `layers/matterport.json`, `layers/vexcel.json`: one per data layer, pulled
+    by three subagents running in parallel, each with a note `notes/<layer>_summary.md`
+  - `dossier.json`: the three layers merged in code
   - `brief_v1.json`, `critique_v1.json`, `notes/strategy_reasoning.md`
   - `todos.json`: ends with `status="done"`
-- Takes roughly 30-40 s.
+- Takes roughly 40-50 s.
 
 Fusion also writes `incident.json`. So that a later save does not drop the confirmation, tell your
 `FusionEngine` too: `engine.confirm(building_id)` before or right after `resume_incident`.
+(`update_incident` restores a dropped confirmation and logs a warning, but do not rely on it.)
 
 ## `update_incident(incident_id, notes) -> RunResult`
 
@@ -64,12 +67,12 @@ New information after a brief. `notes` is the list of change notes that `FusionE
 returns; save the updated `incident.json` first, then call this. Skip the call when `notes` is empty.
 
 - Raises `ValueError` if there is no brief yet (not confirmed, or rejected) or no session.
-- Same agent thread; the dossier is reused. Only the strategy and critic steps run again.
+- Same agent thread; the data layers and dossier are reused. Only the strategy and critic steps run again.
 - Returns `status="briefed"`, `version=N`, `brief` with `changes_since_last` filled in by a
   deterministic diff against the previous version, e.g. `"Floor contradicted: 3 vs 4 (Call 2)"`.
 - Writes `brief_vN.json`, `critique_vN.json`, `notes/strategy_reasoning_vN.md`, `todos.json`.
   Earlier versions stay on disk.
-- Takes roughly 20-25 s.
+- Takes roughly 25 s.
 
 ## `RunResult`
 
@@ -89,6 +92,14 @@ returns; save the updated `incident.json` first, then call this. Skip the call w
 In the `Brief`: `considerations` (0-5, each "Consider ...", with `evidence_ids` that resolve in
 `evidence`), `changes_since_last`, `gaps`, and `verifier_rejections` (how many draft considerations
 the code checks and the critic rejected on the way to this version).
+
+Each consideration has `cross_layer: bool`: true when its evidence comes from two or more of the
+CoStar / Matterport / Vexcel layers (`evidence[id].source`). Every brief with considerations has at
+least one; highlight these in the UI.
+
+Building data comes through the adapters in `services/agents/providers.py`. `DATA_MODE=fixture`
+(default) reads `data/fixtures/<building_id>/{costar,matterport,vexcel}.json`; `DATA_MODE=live` is
+not implemented yet and logs "live adapter not configured; using fixtures".
 
 **The functions do not raise when the agent or the model fails.** The crew still gets a brief with
 every deterministic fact and no considerations; `fallback_reason` says why and `gaps[0]` starts with

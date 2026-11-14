@@ -10,9 +10,13 @@ to v2, v3 ... as new information arrives.
 
 Subagents and the tools that write the JSON artifacts:
 
-  dossier   load_dossier()            -> dossier.json   + notes/dossier_summary.md
-  strategy  submit_considerations()   -> brief_vN.json  + notes/strategy_reasoning*.md
-  critic    submit_critique()         -> critique_vN.json (pass | revise)
+  costar      pull_costar()      -> layers/costar.json      + notes/costar_summary.md
+  matterport  pull_matterport()  -> layers/matterport.json  + notes/matterport_summary.md
+  vexcel      pull_vexcel()      -> layers/vexcel.json      + notes/vexcel_summary.md
+              (delegated in ONE orchestrator turn, so the three run concurrently;
+               when the third layer lands, code merges them into dossier.json)
+  strategy    submit_considerations()   -> brief_vN.json  + notes/strategy_reasoning*.md
+  critic      submit_critique()         -> critique_vN.json (pass | revise)
 
 The model plans, delegates, drafts considerations and critiques. The JSON
 artifacts are written only by tools (deterministic, schema-checked); the
@@ -30,6 +34,7 @@ import json
 import logging
 import os
 import shutil
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -39,7 +44,7 @@ from typing import Any, Callable, Literal, Optional
 from deepagents import FilesystemPermission, create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
 from langchain.agents.middleware import TodoListMiddleware
-from langchain_core.tools import BaseTool, tool
+from langchain_core.tools import BaseTool, StructuredTool, tool
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
@@ -49,6 +54,7 @@ from flamescout_schemas import (Brief, BuildingCandidate, BuildingDossier, Incid
 from . import dossier as dossier_mod
 from .brief import (ConsiderationDraft, build_brief, check_considerations, merge_evidence,
                     rejected_count)
+from .dossier import LAYERS, LayerData
 from .locator import find_candidates
 
 log = logging.getLogger(__name__)
@@ -67,15 +73,18 @@ Subagents cannot see this conversation, so every task description must be self-c
 A. FIRST BRIEF. The user message starts with "New incident".
 1. First turn, two tool calls together:
    - read_file("/workspace/incident.json", limit=1000)
-   - write_todos with five todos: "Confirm building with dispatcher" (in_progress), "Load building
-     dossier", "Draft considerations", "Critique brief", "Brief ready" (all pending)
+   - write_todos with seven todos: "Confirm building with dispatcher" (in_progress), "CoStar property
+     record", "Matterport interior scan", "Vexcel aerial imagery", "Draft considerations",
+     "Critique brief", "Brief ready" (all pending)
 2. Next turn, one tool call only: confirm_building(candidates=[the candidate building ids from the
    user message, in the same order]). The run pauses until the dispatcher answers. If the dispatcher
    rejects the candidates, reply "No building confirmed." and do nothing else.
-3. Next turn, two tool calls together: write_todos (confirm completed, dossier in_progress) and
-   task(subagent_type="dossier"): ask it to load the dossier for this incident.
-4. Next turn, two tool calls together: write_todos (dossier completed, draft in_progress) and
-   task(subagent_type="strategy"): ask it to draft brief version 1. Mention any unresolved
+3. Next turn, FOUR tool calls together, never one at a time: write_todos (confirm completed, the three
+   data todos in_progress) and task(subagent_type="costar"), task(subagent_type="matterport"),
+   task(subagent_type="vexcel"), each asked to pull its data layer for this incident. Calling all
+   three in the same turn makes them run in parallel.
+4. Next turn, two tool calls together: write_todos (the three data todos completed, draft
+   in_progress) and task(subagent_type="strategy"): ask it to draft brief version 1. Mention any unresolved
    contradiction between callers that you saw in incident.json.
 5. Next turn, two tool calls together: write_todos (draft completed, critique in_progress) and
    task(subagent_type="critic"): ask it to check /workspace/brief_v1.json.
@@ -85,7 +94,8 @@ A. FIRST BRIEF. The user message starts with "New incident".
 
 B. UPDATE. The user message starts with "Update": new information arrived after a brief was published,
 and the message says which brief version N to produce. The building and its dossier have not changed,
-so redo only what the new information affects: never call confirm_building or the dossier subagent.
+so redo only what the new information affects: never call confirm_building or the costar,
+matterport or vexcel subagents.
 1. One turn, two tool calls together: write_todos (keep every earlier todo as it is, add "Redraft
    considerations (vN)" in_progress and "Critique brief vN" pending) and task(subagent_type="strategy"):
    ask it to draft brief version N, quoting the new information word for word.
@@ -98,14 +108,20 @@ Apart from the one read_file in A1, never call read_file, ls, glob or grep: do n
 subagents' work yourself. Never state facts about the building or the incident yourself, and never
 contact anyone."""
 
-DOSSIER_PROMPT = """You assemble the building dossier for a confirmed fire incident. Use exactly three turns:
-1. Call load_dossier() once. It saves /workspace/dossier.json and returns a digest.
-2. Call write_file once to create /workspace/notes/dossier_summary.md: a short markdown summary for the
-   crew-brief writer (use and stories, access and egress, hazards, exposures, what is unknown or
-   unverified). At most 80 words. Keep the evidence ids in brackets next to each point. Use only
-   what the digest says; never guess.
-3. Reply with one sentence: what was loaded and what is unknown.
+LAYER_PROMPT = """You pull one data layer of the building dossier for a confirmed fire incident: {what}. \
+Use exactly three turns:
+1. Call pull_{layer}() once. It saves /workspace/layers/{layer}.json and returns a digest.
+2. Call write_file once to create /workspace/notes/{layer}_summary.md: at most 60 words on what this
+   layer tells a fire crew ({focus}) and what is missing or unverified. Keep the evidence ids in
+   brackets next to each point. Use only what the digest says; never guess.
+3. Reply with one sentence: what was pulled and what is unknown.
 Do not call any other tool."""
+
+LAYERS_INFO = {
+    "costar": ("the CoStar property record", "use, stories, tenants, tenant-related hazards"),
+    "matterport": ("the Matterport interior scan", "entrances, stairs, elevator, key box, FDC, standpipes"),
+    "vexcel": ("Vexcel aerial imagery", "approach and rear access, roof, adjacent structures"),
+}
 
 STRATEGY_PROMPT = """You draft advisory considerations for the first-arriving fire crew. Your task says \
 which brief version N you are drafting. Use exactly three turns:
@@ -128,7 +144,11 @@ Rules for every consideration:
 - Use only facts in the two files. Never guess or add outside knowledge about this building.
 - Caller reports are unconfirmed: say "reported". Where callers contradict each other, do not pick a
   side; word the consideration so it holds for both, or say it is unresolved.
-- Do not build a consideration on a fact whose status is "unverified"."""
+- Do not build a consideration on a fact whose status is "unverified".
+- At least one consideration must combine two data layers: its evidence_ids include evidence from two
+  different sources among costar, matterport and vexcel (the "source" field of each evidence item),
+  for example an aerial access point together with the interior stair it leads to. Only combine
+  layers where both pieces of evidence really support the consideration."""
 
 CRITIC_PROMPT = """You are the critic for a fire-crew advisory brief. Use exactly three turns:
 1. read_file(<the brief path given in your task>, limit=3000).
@@ -143,6 +163,8 @@ Check every item in "considerations" against the brief's own "size_up", "markers
 - Caller reports are described as reported, and a contradiction listed in "gaps" is not silently
   resolved in favour of one caller.
 - Nothing relies on a fact whose status is "unverified".
+- Where "cross_layer" is true, the pieces of evidence from different sources are about the same place
+  or route and fit together physically.
 verdict "pass" only if every consideration passes. Otherwise "revise", with one specific issue per
 problem that names the consideration id (c1, c2, ...). Do not ask for stylistic changes."""
 
@@ -173,6 +195,7 @@ class Session:
     ws: Path
     candidates: list[BuildingCandidate] = field(default_factory=list)
     status: Status = "awaiting_confirmation"
+    building_id: Optional[str] = None  # what the dispatcher confirmed
     version: int = 1
     accepted: int = 0      # accepted submissions for the current version
     rejections: int = 0    # draft considerations rejected for the current version
@@ -181,6 +204,10 @@ class Session:
     todos: list[TodoItem] = field(default_factory=list)
     on_todos: Optional[Callable[[Progress], None]] = None
     trace_run_id: Optional[str] = None
+    lock: Any = field(default_factory=threading.Lock)  # the three layer tools run concurrently
+
+    def layer_path(self, layer: str) -> Path:
+        return self.ws / "layers" / f"{layer}.json"
 
     @property
     def brief_path(self) -> Path:
@@ -223,6 +250,51 @@ def _confirm(ws: Path, building_id: str) -> None:
     _write(ws / INCIDENT, incident.model_dump_json(indent=2))
 
 
+def _layer_on_disk(s: Session, layer: str, building_id: str) -> Optional[LayerData]:
+    path = s.layer_path(layer)
+    if not path.exists():
+        return None
+    data = LayerData.model_validate_json(path.read_text())
+    return data if data.building_id == building_id else None
+
+
+def _pull(s: Session, layer: str) -> str:
+    """Tool body for pull_<layer>: save the layer, merge into dossier.json once all three are in."""
+    building_id = _incident(s.ws).confirmed_building_id
+    if not building_id:
+        return "Error: the dispatcher has not confirmed a building yet."
+    if data := _layer_on_disk(s, layer, building_id):
+        return "Already pulled, nothing rewritten.\n" + dossier_mod.digest(data)
+    try:
+        data = dossier_mod.pull_layer(layer, building_id)
+    except (OSError, ValueError, KeyError) as e:
+        return f"Error: {e}"
+    with s.lock:
+        _write(s.layer_path(layer), data.model_dump_json(indent=2))
+        layers = [_layer_on_disk(s, name, building_id) for name in LAYERS]
+        if all(layers):
+            _write(s.ws / DOSSIER, dossier_mod.merge_layers(building_id, layers).model_dump_json(indent=2))
+    return dossier_mod.digest(data)
+
+
+def _ensure_dossier(s: Session) -> None:
+    """dossier.json must exist before a brief is built: pull in code whatever a subagent did not."""
+    building_id = _incident(s.ws).confirmed_building_id or ""
+    with s.lock:
+        if (s.ws / DOSSIER).exists() and _dossier(s.ws).building_id == building_id:
+            return
+        layers = []
+        for name in LAYERS:
+            data = _layer_on_disk(s, name, building_id)
+            if data is None:
+                log.warning("Incident %s: %s layer was not pulled by its subagent; pulling it in code",
+                            s.incident_id, name)
+                data = dossier_mod.pull_layer(name, building_id)
+                _write(s.layer_path(name), data.model_dump_json(indent=2))
+            layers.append(data)
+        _write(s.ws / DOSSIER, dossier_mod.merge_layers(building_id, layers).model_dump_json(indent=2))
+
+
 def _write_brief(s: Session, drafts: list[ConsiderationDraft], extra_gaps: tuple[str, ...] = ()) -> Brief:
     prev_path = s.ws / f"brief_v{s.version - 1}.json"
     previous = Brief.model_validate_json(prev_path.read_text()) if prev_path.exists() else None
@@ -259,23 +331,14 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
         _confirm(ws, chosen_building_id)
         return f"The dispatcher confirmed building {chosen_building_id}."
 
-    @tool
-    def load_dossier() -> str:
-        """Load the dossier for this incident's confirmed building and save it as /workspace/dossier.json.
+    def pull_tool(layer: str) -> BaseTool:
+        def pull() -> str:
+            return _pull(s, layer)
 
-        Returns a digest of the dossier with the evidence ids for every fact and marker.
-        """
-        building_id = _incident(ws).confirmed_building_id
-        if not building_id:
-            return "Error: the dispatcher has not confirmed a building yet."
-        if (ws / DOSSIER).exists() and (d := _dossier(ws)).building_id == building_id:
-            return "Already loaded, nothing rewritten.\n" + dossier_mod.digest(d)
-        try:
-            d = dossier_mod.load_dossier(building_id)
-        except (OSError, ValueError) as e:
-            return f"Error: {e}"
-        _write(ws / DOSSIER, d.model_dump_json(indent=2))
-        return dossier_mod.digest(d)
+        return StructuredTool.from_function(
+            pull, name=f"pull_{layer}",
+            description=f"Pull {LAYERS_INFO[layer][0]} for this incident's confirmed building and save it as "
+                        f"/workspace/layers/{layer}.json. Returns a digest with the evidence ids.")
 
     @tool(parse_docstring=True)
     def submit_considerations(considerations: list[ConsiderationDraft]) -> str:
@@ -286,8 +349,9 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
         """
         if s.accepted >= MAX_SUBMISSIONS:
             return "Error: regeneration budget used up. Do not resubmit."
-        if not (ws / DOSSIER).exists():
-            return "Error: /workspace/dossier.json does not exist yet. The dossier subagent must run first."
+        if not _incident(ws).confirmed_building_id:
+            return "Error: the dispatcher has not confirmed a building yet."
+        _ensure_dossier(s)
         evidence = merge_evidence(_incident(ws), _dossier(ws))
         if errors := check_considerations(considerations, evidence):
             s.rejections += rejected_count(considerations, evidence)
@@ -317,7 +381,8 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
              "checked_at": now().isoformat()}, indent=2))
         return f"Recorded verdict: {verdict}."
 
-    return {t.name: t for t in (confirm_building, load_dossier, submit_considerations, submit_critique)}
+    return {t.name: t for t in (confirm_building, *map(pull_tool, LAYERS), submit_considerations,
+                                submit_critique)}
 
 
 # ---------- agent ----------
@@ -326,7 +391,9 @@ def _model(thinking: bool = True):
     from langchain_google_genai import ChatGoogleGenerativeAI
 
     # "low" is the lowest thinking level this model accepts ("minimal" is a 400) and default
-    # thinking roughly doubles every turn. thinking_budget=0 switches thinking off altogether.
+    # thinking roughly doubles every turn. thinking_budget=0 asks for none, but it is a hint, not a
+    # switch: in an 8-call A/B on the layer-note turn the model still reasoned in 6 of 8 calls
+    # (3 of 8 at "low"). There is no setting that reliably turns thinking off on this model.
     effort = {"thinking_level": "low"} if thinking else {"thinking_budget": 0}
     return ChatGoogleGenerativeAI(model=os.environ["GEMINI_FAST_MODEL"],
                                   google_api_key=os.environ["GEMINI_API_KEY"], **effort)
@@ -334,19 +401,23 @@ def _model(thinking: bool = True):
 
 def build_orchestrator(s: Session, model: Any = None, checkpointer: Any = None):
     tools = make_tools(s)
+    # Mechanical work (one tool call, one short note) and the critic ask for no thinking: at "low"
+    # a turn sometimes spent 1000+ reasoning tokens (13 s).
+    quick = model or _model(thinking=False)
     subagents = [
-        {"name": "dossier",
-         "description": "Loads the confirmed building's dossier into the workspace and summarises it.",
-         "system_prompt": DOSSIER_PROMPT, "tools": [tools["load_dossier"]]},
+        *({"name": layer,
+           "description": f"Pulls {LAYERS_INFO[layer][0]} for the confirmed building into the workspace "
+                          "and writes a short note. Independent of the other data layers.",
+           "system_prompt": LAYER_PROMPT.format(layer=layer, what=LAYERS_INFO[layer][0],
+                                                focus=LAYERS_INFO[layer][1]),
+           "tools": [tools[f"pull_{layer}"]], "model": quick} for layer in LAYERS),
         {"name": "strategy",
          "description": "Drafts up to 5 advisory considerations from incident.json and dossier.json and "
                         "writes the brief for the version it is told. Can revise given critic issues.",
          "system_prompt": STRATEGY_PROMPT, "tools": [tools["submit_considerations"]]},
         {"name": "critic",
          "description": "Checks a brief file: advisory wording, evidence support. Returns pass or revise.",
-         "system_prompt": CRITIC_PROMPT, "tools": [tools["submit_critique"]],
-         # Even at "low" the critic sometimes spent 1000+ reasoning tokens (13 s) on one turn.
-         "model": model or _model(thinking=False)},
+         "system_prompt": CRITIC_PROMPT, "tools": [tools["submit_critique"]], "model": quick},
     ]
     return create_deep_agent(
         model=model or _model(),
@@ -454,9 +525,7 @@ def _finish_brief(s: Session, t0: float) -> RunResult:
         fallback_reason = "the critic still flagged issues: " + "; ".join(critique["issues"])
 
     if fallback_reason:
-        if not (s.ws / DOSSIER).exists():
-            d = dossier_mod.load_dossier(_incident(s.ws).confirmed_building_id or "")
-            _write(s.ws / DOSSIER, d.model_dump_json(indent=2))
+        _ensure_dossier(s)
         brief = _write_brief(s, [], extra_gaps=(f"Considerations withheld: {fallback_reason}",))
     else:
         brief = Brief.model_validate_json(s.brief_path.read_text())
@@ -490,7 +559,8 @@ def start_incident(incident_id: str, workspace_root: Path = WORKSPACE,
     for stale in [ws / DOSSIER, ws / CANDIDATES, ws / TODOS,
                   *ws.glob("brief_v*.json"), *ws.glob("critique_v*.json")]:
         stale.unlink(missing_ok=True)
-    shutil.rmtree(ws / "notes", ignore_errors=True)
+    for folder in ("notes", "layers"):
+        shutil.rmtree(ws / folder, ignore_errors=True)
     _write(ws / CANDIDATES, json.dumps([c.model_dump() for c in candidates], indent=2))
 
     saver = checkpointer or _CHECKPOINTER
@@ -537,6 +607,7 @@ def resume_incident(incident_id: str, building_id: Optional[str]) -> RunResult:
                      "chosen_building_id": building_id}}}
         _run(s, Command(resume={"decisions": [edit]}), "resume", t0)
     # else: start_incident never reached the gate; s.error says why and becomes the fallback reason
+    s.building_id = building_id
     if _incident(s.ws).confirmed_building_id != building_id:
         _confirm(s.ws, building_id)  # the agent never got there; the dispatcher's choice still stands
     return _finish_brief(s, t0)
@@ -549,6 +620,11 @@ def update_incident(incident_id: str, notes: list[str]) -> RunResult:
     if s.status != "briefed":
         raise ValueError(f"Incident {incident_id} has no brief to update yet (status: {s.status})")
     s.version, s.accepted, s.rejections = s.version + 1, 0, 0
+    if _incident(s.ws).confirmed_building_id != s.building_id:
+        # Fusion rewrote incident.json from a record that was never told (FusionEngine.confirm).
+        log.warning("Incident %s: incident.json lost its confirmed building; restoring %s",
+                    incident_id, s.building_id)
+        _confirm(s.ws, s.building_id)
     listing = "\n".join(f"- {n}" for n in notes)
     prompt = (f"Update for incident {incident_id}. /workspace/incident.json has changed. "
               f"New information from the calls:\n{listing}\n"

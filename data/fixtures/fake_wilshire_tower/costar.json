@@ -1,0 +1,67 @@
+{
+  "property_id": "fake_wilshire_tower",
+  "name": "Wilshire Tower",
+  "address": "1200 Wilshire Boulevard",
+  "coordinates": {"lat": 34.05, "lon": -118.26},
+  "facts": {
+    "building.name": {
+      "key": "building.name", "value": "Wilshire Tower", "status": "verified", "confidence": 0.95,
+      "evidence_ids": ["ev_costar_1"], "as_of": "2026-09-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "building.use": {
+      "key": "building.use", "value": "Mixed use: ground-floor retail, residential on floors 2-6",
+      "status": "verified", "confidence": 0.9,
+      "evidence_ids": ["ev_costar_1"], "as_of": "2026-09-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "building.stories": {
+      "key": "building.stories", "value": 6, "status": "verified", "confidence": 0.95,
+      "evidence_ids": ["ev_costar_1"], "as_of": "2026-09-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "building.year_built": {
+      "key": "building.year_built", "value": 1987, "status": "verified", "confidence": 0.9,
+      "evidence_ids": ["ev_costar_1"], "as_of": "2026-09-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "building.sprinklered": {
+      "key": "building.sprinklered", "value": null, "status": "unverified", "confidence": 0.0,
+      "evidence_ids": [], "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "hazard.commercial_kitchen": {
+      "key": "hazard.commercial_kitchen",
+      "value": "Ground-floor restaurant tenant: commercial kitchen, cooking/grease fire potential",
+      "status": "inferred", "confidence": 0.6,
+      "evidence_ids": ["ev_costar_2"], "as_of": "2026-09-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    "hazard.lithium_batteries": {
+      "key": "hazard.lithium_batteries",
+      "value": "Ground-floor e-bike sales and repair tenant: lithium-ion batteries likely on site",
+      "status": "inferred", "confidence": 0.55,
+      "evidence_ids": ["ev_costar_3"], "as_of": "2026-09-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    }
+  },
+  "tenants": [
+    {
+      "key": "tenant.unit_101", "value": "Corner Noodle House (restaurant), ground floor, unit 101",
+      "status": "verified", "confidence": 0.85,
+      "evidence_ids": ["ev_costar_2"], "as_of": "2026-09-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    },
+    {
+      "key": "tenant.unit_102", "value": "Volt Cycle (e-bike sales and repair), ground floor, unit 102",
+      "status": "verified", "confidence": 0.85,
+      "evidence_ids": ["ev_costar_3"], "as_of": "2026-09-01T00:00:00Z", "updated_at": "2026-11-14T00:00:00Z"
+    }
+  ],
+  "evidence": {
+    "ev_costar_1": {"id": "ev_costar_1", "kind": "costar_record", "source": "costar",
+                    "uri": "fixture://fake_wilshire_tower/costar/property",
+                    "captured_at": "2026-09-01T00:00:00Z",
+                    "locator": {"note": "synthetic hand-written fixture, not a real CoStar record"}},
+    "ev_costar_2": {"id": "ev_costar_2", "kind": "costar_record", "source": "costar",
+                    "uri": "fixture://fake_wilshire_tower/costar/tenant-101",
+                    "captured_at": "2026-09-01T00:00:00Z",
+                    "locator": {"note": "synthetic hand-written fixture, not a real CoStar record"}},
+    "ev_costar_3": {"id": "ev_costar_3", "kind": "costar_record", "source": "costar",
+                    "uri": "fixture://fake_wilshire_tower/costar/tenant-102",
+                    "captured_at": "2026-09-01T00:00:00Z",
+                    "locator": {"note": "synthetic hand-written fixture, not a real CoStar record"}}
+  }
+}

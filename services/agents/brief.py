@@ -18,6 +18,7 @@ from flamescout_schemas import (Brief, BuildingDossier, Consideration, Evidence,
                                 IncidentRecord, now)
 
 MAX_CONSIDERATIONS = 5
+DATA_LAYERS = frozenset({"costar", "matterport", "vexcel"})  # building-data layers; calls are not one
 ADVISORY_PREFIX = "Consider "
 UNSCORED_CONFIDENCE = 0.3  # evidence that no scored fact or marker cites
 
@@ -49,6 +50,18 @@ def _draft_errors(d: ConsiderationDraft, evidence: dict[str, Evidence]) -> list[
     return errors
 
 
+def is_cross_layer(evidence_ids: list[str], evidence: dict[str, Evidence]) -> bool:
+    """True when the cited evidence comes from two or more building-data layers."""
+    return len({evidence[e].source for e in evidence_ids if e in evidence} & DATA_LAYERS) >= 2
+
+
+def _lacks_cross_layer(drafts: list[ConsiderationDraft], evidence: dict[str, Evidence]) -> bool:
+    """The brief must combine layers at least once, when the dossier has two or more to combine."""
+    available = {e.source for e in evidence.values()} & DATA_LAYERS
+    return bool(drafts) and len(available) >= 2 and not any(
+        is_cross_layer(d.evidence_ids, evidence) for d in drafts)
+
+
 def check_considerations(drafts: list[ConsiderationDraft], evidence: dict[str, Evidence]) -> list[str]:
     """Why these drafts cannot go in a Brief. Empty list = acceptable."""
     errors: list[str] = []
@@ -56,13 +69,17 @@ def check_considerations(drafts: list[ConsiderationDraft], evidence: dict[str, E
         errors.append(f"{len(drafts)} considerations; the maximum is {MAX_CONSIDERATIONS}")
     for i, d in enumerate(drafts, 1):
         errors += [f"#{i}: {e}" for e in _draft_errors(d, evidence)]
+    if _lacks_cross_layer(drafts, evidence):
+        errors.append("no consideration combines data layers: at least one must cite evidence from two "
+                      'different sources among costar, matterport and vexcel (the "source" of each evidence '
+                      "item), for example an aerial access point plus an interior stair that both support it")
     return errors
 
 
 def rejected_count(drafts: list[ConsiderationDraft], evidence: dict[str, Evidence]) -> int:
-    """How many of these drafts the checks refuse: each faulty one, plus any beyond the maximum."""
+    """How many drafts the checks refuse: each faulty one, any beyond the maximum, or 1 for a set-level miss."""
     faulty = sum(1 for d in drafts if _draft_errors(d, evidence))
-    return max(faulty, len(drafts) - MAX_CONSIDERATIONS)
+    return max(faulty, len(drafts) - MAX_CONSIDERATIONS, int(_lacks_cross_layer(drafts, evidence)))
 
 
 def _evidence_confidence(incident: IncidentRecord, dossier: BuildingDossier) -> dict[str, float]:
@@ -160,6 +177,7 @@ def build_brief(incident: IncidentRecord, dossier: BuildingDossier,
     considerations = [
         Consideration(id=f"c{i}", rank=i, category=d.category, title=d.title.strip(),
                       rationale=d.rationale.strip(), evidence_ids=list(dict.fromkeys(d.evidence_ids)),
+                      cross_layer=is_cross_layer(d.evidence_ids, evidence),
                       confidence=min((conf[e] for e in d.evidence_ids if e in conf),
                                      default=UNSCORED_CONFIDENCE))
         for i, d in enumerate(drafts, 1)

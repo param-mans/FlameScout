@@ -27,8 +27,8 @@ def dossier():
 
 def draft(**kw) -> ConsiderationDraft:
     base = dict(category="access", title="Consider Stair B from the rear alley",
-                rationale="A caller reported someone shouting from the back stairs.",
-                evidence_ids=["ev_scan_fp_4"])
+                rationale="Stair B discharges to the rear alley, which has vehicle access.",
+                evidence_ids=["ev_scan_fp_1", "ev_aerial_2"])  # matterport + vexcel
     return ConsiderationDraft(**{**base, **kw})
 
 
@@ -110,3 +110,23 @@ def test_rejected_count(incident, dossier):
     assert rejected_count([draft(), draft(title="Go"), draft(evidence_ids=["ev_made_up"])], evidence) == 2
     assert rejected_count([draft()] * 7, evidence) == 2  # two beyond the maximum
     assert rejected_count([draft()], evidence) == 0
+    assert rejected_count([draft(evidence_ids=["ev_scan_fp_4"])], evidence) == 1  # no cross-layer one
+
+
+def test_cross_layer_is_flagged_and_required(incident, dossier):
+    evidence = merge_evidence(incident, dossier)
+    single = draft(category="hazard", evidence_ids=["ev_costar_3"])
+    with_call = draft(evidence_ids=["ev_scan_fp_1", "ev_call_2"])  # a call is not a data layer
+    brief = build_brief(incident, dossier, [draft(), single, with_call])
+    assert [c.cross_layer for c in brief.considerations] == [True, False, False]
+
+    errors = check_considerations([single, with_call], evidence)
+    assert len(errors) == 1 and "combines data layers" in errors[0]
+    with pytest.raises(ValueError, match="combines data layers"):
+        build_brief(incident, dossier, [single])
+
+
+def test_cross_layer_rule_needs_two_layers_and_a_draft(incident, dossier):
+    assert build_brief(incident, dossier, []).considerations == []  # facts-only fallback stays legal
+    costar_only = {k: e for k, e in merge_evidence(incident, dossier).items() if e.source in ("costar", "call")}
+    assert check_considerations([draft(category="hazard", evidence_ids=["ev_costar_3"])], costar_only) == []

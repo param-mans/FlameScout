@@ -1,13 +1,18 @@
 import json
 import os
+import threading
+import uuid
 from pathlib import Path
+from typing import Any
 
 import pytest
-from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 
 from flamescout_schemas import Brief, BuildingDossier, CallSegment, Progress
 from services.agents import orchestrator
+from services.agents.dossier import LAYERS
 from services.agents.fusion import FusionEngine
 from services.agents.orchestrator import (MAX_SUBMISSIONS, Session, make_tools, resume_incident,
                                           start_incident, update_incident)
@@ -15,8 +20,9 @@ from services.agents.orchestrator import (MAX_SUBMISSIONS, Session, make_tools, 
 CALLS = Path(__file__).resolve().parents[1] / "data" / "fixtures" / "calls"
 BUILDING = "fake_wilshire_tower"
 GOOD = {"category": "access", "title": "Consider Stair B from the rear alley",
-        "rationale": "A caller reported someone shouting from the back stairs.",
-        "evidence_ids": ["ev_scan_fp_4"]}
+        "rationale": "Stair B discharges to the rear alley, which has vehicle access.",
+        "evidence_ids": ["ev_scan_fp_1", "ev_aerial_2"]}  # matterport + vexcel
+SINGLE_LAYER = {**GOOD, "title": "Consider the standpipe in Stair A", "evidence_ids": ["ev_scan_fp_4"]}
 
 
 class Incident:
@@ -64,25 +70,32 @@ def test_confirm_building_tool_only_accepts_a_candidate(session):
     assert (saved.confirmed_building_id, saved.status) == (BUILDING, "confirmed")
 
 
-def test_load_dossier_needs_confirmation_and_is_not_repeated(session, incident):
-    load = make_tools(session)["load_dossier"]
-    assert "not confirmed" in load.invoke({})
-    incident.confirm()
-    assert "ev_costar_1" in load.invoke({})
-    assert BuildingDossier.model_validate_json((session.ws / "dossier.json").read_text()).building_id == BUILDING
-    written = (session.ws / "dossier.json").stat().st_mtime_ns
-    assert load.invoke({}).startswith("Already loaded")
-    assert (session.ws / "dossier.json").stat().st_mtime_ns == written
-
-
-def test_submit_considerations_writes_the_current_version(session, incident):
+def test_pull_tools_write_layers_then_merge_and_do_not_repeat(session, incident):
     tools = make_tools(session)
+    assert "not confirmed" in tools["pull_costar"].invoke({})
     incident.confirm()
-    assert "does not exist yet" in tools["submit_considerations"].invoke({"considerations": [GOOD]})
-    tools["load_dossier"].invoke({})
+    assert "ev_costar_1" in tools["pull_costar"].invoke({})
+    assert "ev_scan_fp_1" in tools["pull_matterport"].invoke({})
+    assert (session.ws / "layers" / "costar.json").exists() and not (session.ws / "dossier.json").exists()
+    assert "ev_aerial_2" in tools["pull_vexcel"].invoke({})  # third layer: code merges
+    dossier = BuildingDossier.model_validate_json((session.ws / "dossier.json").read_text())
+    assert dossier.building_id == BUILDING and {e.source for e in dossier.evidence.values()} == set(LAYERS)
+
+    written = (session.ws / "layers" / "vexcel.json").stat().st_mtime_ns
+    assert tools["pull_vexcel"].invoke({}).startswith("Already pulled")
+    assert (session.ws / "layers" / "vexcel.json").stat().st_mtime_ns == written
+
+
+def test_submit_fills_in_layers_a_subagent_did_not_pull(session, incident):
+    tools = make_tools(session)
+    assert "not confirmed" in tools["submit_considerations"].invoke({"considerations": [GOOD]})
+    incident.confirm()
+    tools["pull_costar"].invoke({})  # matterport and vexcel never ran
     assert "brief_v1.json" in tools["submit_considerations"].invoke({"considerations": [GOOD]})
+    assert all((session.ws / "layers" / f"{name}.json").exists() for name in LAYERS)
     v1 = Brief.model_validate_json((session.ws / "brief_v1.json").read_text())
-    assert [c.title for c in v1.considerations] == [GOOD["title"]] and v1.changes_since_last == []
+    assert [(c.title, c.cross_layer) for c in v1.considerations] == [(GOOD["title"], True)]
+    assert v1.changes_since_last == []
 
     incident.replay("c2")
     session.version, session.accepted, session.rejections = 2, 0, 0
@@ -94,90 +107,116 @@ def test_submit_considerations_writes_the_current_version(session, incident):
 def test_rejections_are_counted_into_the_brief(session, incident):
     tools = make_tools(session)
     incident.confirm()
-    tools["load_dossier"].invoke({})
     bad = [{**GOOD, "title": "Send the truck to Stair B"}, {**GOOD, "evidence_ids": ["ev_made_up"]}, GOOD]
     out = tools["submit_considerations"].invoke({"considerations": bad})
     assert out.startswith("Rejected") and "#1" in out and "ev_made_up" in out
+    out = tools["submit_considerations"].invoke({"considerations": [SINGLE_LAYER]})
+    assert out.startswith("Rejected") and "combines data layers" in out
     assert not (session.ws / "brief_v1.json").exists()
 
-    tools["submit_considerations"].invoke({"considerations": [GOOD]})
+    tools["submit_considerations"].invoke({"considerations": [GOOD, SINGLE_LAYER]})
     assert "needs at least one issue" in tools["submit_critique"].invoke({"verdict": "revise", "issues": []})
     tools["submit_critique"].invoke({"verdict": "revise", "issues": ["c1: not supported"]})
     assert json.loads((session.ws / "critique_v1.json").read_text())["verdict"] == "revise"
     tools["submit_considerations"].invoke({"considerations": [GOOD]})
     assert not (session.ws / "critique_v1.json").exists()  # it was about an older draft
     brief = Brief.model_validate_json((session.ws / "brief_v1.json").read_text())
-    assert brief.verifier_rejections == 3  # two by the code checks, one by the critic
+    assert brief.verifier_rejections == 4  # 2 faulty drafts + 1 missing cross-layer + 1 critic issue
 
 
 def test_regeneration_budget(session, incident):
     tools = make_tools(session)
     incident.confirm()
-    tools["load_dossier"].invoke({})
     for _ in range(MAX_SUBMISSIONS):
         assert tools["submit_considerations"].invoke({"considerations": [GOOD]}).startswith("Accepted")
     assert "budget used up" in tools["submit_considerations"].invoke({"considerations": [GOOD]})
 
 
-# ---------- start / resume / update with a scripted model (no API) ----------
+# ---------- start / resume / update with a fake model (no API) ----------
 
-class ScriptedModel(GenericFakeChatModel):
+def calls(*tool_calls: tuple[str, dict]) -> AIMessage:
+    return AIMessage(content="", tool_calls=[{"name": n, "args": a, "id": f"call_{uuid.uuid4().hex[:8]}",
+                                              "type": "tool_call"} for n, a in tool_calls])
+
+
+class RuleModel(BaseChatModel):
+    """Answers by which agent is asking (known from the tools it was given), not by call order:
+    the three layer subagents run concurrently, so their model calls interleave."""
+    main_script: Any            # iterator of the orchestrator's turns, shared by every bound copy
+    drafts: Any                 # one considerations list per strategy run
+    tool_names: tuple = ()
+
+    @property
+    def _llm_type(self) -> str:
+        return "rule-model"
+
     def bind_tools(self, tools, **kwargs):
-        return self
+        names = tuple(getattr(t, "name", None) or t.get("name") or t["function"]["name"] for t in tools)
+        return self.model_copy(update={"tool_names": names})
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        return ChatResult(generations=[ChatGeneration(message=self._reply(messages))])
+
+    def _reply(self, messages) -> AIMessage:
+        if "task" in self.tool_names:  # the orchestrator: its turns are sequential, so a script works
+            return next(self.main_script, AIMessage(content="(script exhausted)"))
+        if any(isinstance(m, ToolMessage) for m in messages):
+            return AIMessage(content="Done.")
+        for layer in LAYERS:
+            if f"pull_{layer}" in self.tool_names:
+                return calls((f"pull_{layer}", {}))
+        if "submit_considerations" in self.tool_names:
+            return calls(("submit_considerations", {"considerations": self.drafts.pop(0)}))
+        return calls(("submit_critique", {"verdict": "pass", "issues": []}))
 
 
-def scripted(*steps) -> ScriptedModel:
-    """Each step is a final text or a list of (tool name, args). One shared script, in call order."""
-    def messages():
-        for i, step in enumerate(steps):
-            if isinstance(step, str):
-                yield AIMessage(content=step)
-            else:
-                yield AIMessage(content="", tool_calls=[
-                    {"name": name, "args": args, "id": f"call_{i}_{j}", "type": "tool_call"}
-                    for j, (name, args) in enumerate(step)])
-        for _ in range(5):  # a wrong turn should fail an assertion, not raise StopIteration
-            yield AIMessage(content="(script exhausted)")
-    return ScriptedModel(messages=messages())
+TODOS = ["Confirm building with dispatcher", "CoStar property record", "Matterport interior scan",
+         "Vexcel aerial imagery", "Draft considerations", "Critique brief", "Brief ready",
+         "Redraft considerations (v2)", "Critique brief v2"]
 
 
 def todos(*statuses: str) -> tuple[str, dict]:
-    names = ["Confirm building with dispatcher", "Load building dossier", "Draft considerations",
-             "Critique brief", "Brief ready", "Redraft considerations (v2)", "Critique brief v2"]
-    return "write_todos", {"todos": [{"content": n, "status": s} for n, s in zip(names, statuses)]}
+    return "write_todos", {"todos": [{"content": n, "status": s} for n, s in zip(TODOS, statuses)]}
 
 
 def task(subagent: str) -> tuple[str, dict]:
     return "task", {"subagent_type": subagent, "description": f"Incident inc_s2: do the {subagent} step."}
 
 
-FULL_SCRIPT = [
-    # start_incident
-    [todos("in_progress", "pending", "pending", "pending", "pending")],
-    [("confirm_building", {"candidates": [BUILDING]})],          # pauses here
-    # resume_incident
-    [task("dossier")], [("load_dossier", {})], "Dossier loaded.",
-    [task("strategy")], [("submit_considerations", {"considerations": [GOOD]})], "Wrote /workspace/brief_v1.json.",
-    [task("critic")], [("submit_critique", {"verdict": "pass", "issues": []})], "pass",
-    [todos(*["completed"] * 5)], "pass",
-    # update_incident
-    [todos(*["completed"] * 5, "in_progress", "pending"), task("strategy")],
-    [("submit_considerations", {"considerations": [{**GOOD, "title": "Consider Stair B (back stairs)"}]})],
-    "Wrote /workspace/brief_v2.json.",
-    [task("critic")], [("submit_critique", {"verdict": "pass", "issues": []})], "pass",
-    [todos(*["completed"] * 7)], "pass",
-]
+def fake_model(*main_turns) -> RuleModel:
+    drafts = [[GOOD, SINGLE_LAYER], [{**GOOD, "title": "Consider Stair B (back stairs) from the alley"}]]
+    return RuleModel(main_script=iter(main_turns), drafts=drafts)
 
 
-def test_start_pauses_resume_briefs_update_reuses_the_thread_and_dossier(incident):
+START = [calls(todos("in_progress", *["pending"] * 6)),
+         calls(("confirm_building", {"candidates": [BUILDING]}))]          # pauses here
+RESUME = [calls(todos("completed", "in_progress", "in_progress", "in_progress", "pending", "pending", "pending"),
+                task("costar"), task("matterport"), task("vexcel")),       # one turn: three in parallel
+          calls(task("strategy")), calls(task("critic")),
+          calls(todos(*["completed"] * 7)), AIMessage(content="pass")]
+UPDATE = [calls(todos(*["completed"] * 7, "in_progress", "pending"), task("strategy")),
+          calls(task("critic")), calls(todos(*["completed"] * 9)), AIMessage(content="pass")]
+
+
+def test_start_pauses_resume_briefs_update_reuses_thread_and_layers(incident, monkeypatch):
+    # All three layer pulls must be in flight at once, or the barrier breaks and the pulls fail.
+    barrier = threading.Barrier(3, timeout=10)
+    real_pull = orchestrator.dossier_mod.pull_layer
+
+    def pull_together(layer, building_id, providers=None):
+        barrier.wait()
+        return real_pull(layer, building_id, providers)
+
+    monkeypatch.setattr(orchestrator.dossier_mod, "pull_layer", pull_together)
+
     seen: list[Progress] = []
     started = start_incident("inc_s2", workspace_root=incident.root, on_todos=seen.append,
-                             model=scripted(*FULL_SCRIPT))
+                             model=fake_model(*START, *RESUME, *UPDATE))
     assert started.status == "awaiting_confirmation" and started.brief is None
     assert [c.building_id for c in started.candidates] == [BUILDING]
     paused = Progress.model_validate_json((incident.ws / "todos.json").read_text())
     assert paused.status == "awaiting_confirmation" and paused.todos[0].status == "in_progress"
-    assert not (incident.ws / "dossier.json").exists()  # nothing happens before the dispatcher answers
+    assert not (incident.ws / "layers").exists()  # nothing happens before the dispatcher answers
     assert orchestrator._incident(incident.ws).confirmed_building_id is None
 
     with pytest.raises(ValueError, match="not one of the candidates"):
@@ -188,8 +227,9 @@ def test_start_pauses_resume_briefs_update_reuses_the_thread_and_dossier(inciden
     incident.eng.confirm(BUILDING)
     v1 = resume_incident("inc_s2", BUILDING)
     assert (v1.status, v1.version, v1.fallback_reason) == ("briefed", 1, None)
+    assert not barrier.broken and all((incident.ws / "layers" / f"{name}.json").exists() for name in LAYERS)
     assert orchestrator._incident(incident.ws).confirmed_building_id == BUILDING
-    assert [c.title for c in v1.brief.considerations] == [GOOD["title"]]
+    assert [c.cross_layer for c in v1.brief.considerations] == [True, False]
     assert v1.critique["verdict"] == "pass" and all(t.status == "completed" for t in v1.todos)
     dossier_written = (incident.ws / "dossier.json").stat().st_mtime_ns
     session = orchestrator._SESSIONS["inc_s2"]
@@ -202,20 +242,20 @@ def test_start_pauses_resume_briefs_update_reuses_the_thread_and_dossier(inciden
     assert (v2.status, v2.version, v2.fallback_reason) == ("briefed", 2, None)
     on_disk = Brief.model_validate_json((incident.ws / "brief_v2.json").read_text())
     assert on_disk.changes_since_last[0] == "Floor contradicted: 3 vs 4 (Call 2)"
-    assert "Considerations redrafted: 1 (was 1)" in on_disk.changes_since_last
+    assert "Considerations redrafted: 1 (was 2)" in on_disk.changes_since_last
     assert (incident.ws / "brief_v1.json").exists() and (incident.ws / "critique_v2.json").exists()
-    assert (incident.ws / "dossier.json").stat().st_mtime_ns == dossier_written  # dossier reused
+    assert (incident.ws / "dossier.json").stat().st_mtime_ns == dossier_written  # data layers reused
     assert len(session.agent.get_state(session.config).values["messages"]) > messages_after_v1  # same thread
-    assert len(v2.todos) == 7 and seen[-1].status == "done" and seen[-1].version == 2
+    assert len(v2.todos) == 9 and seen[-1].status == "done" and seen[-1].version == 2
 
 
 def test_dispatcher_can_reject_every_candidate(incident):
-    script = FULL_SCRIPT[:2] + ["No building confirmed."]
-    start_incident("inc_s2", workspace_root=incident.root, model=scripted(*script))
+    start_incident("inc_s2", workspace_root=incident.root,
+                   model=fake_model(*START, AIMessage(content="No building confirmed.")))
     result = resume_incident("inc_s2", None)
     assert result.status == "rejected" and result.brief is None
     assert orchestrator._incident(incident.ws).confirmed_building_id is None
-    assert not list(incident.ws.glob("brief_v*.json"))
+    assert not list(incident.ws.glob("brief_v*.json")) and not (incident.ws / "layers").exists()
     assert Progress.model_validate_json((incident.ws / "todos.json").read_text()).status == "rejected"
 
 
@@ -240,7 +280,7 @@ def test_broken_agent_still_gets_a_facts_only_brief(incident, monkeypatch):
     brief = Brief.model_validate_json((incident.ws / "brief_v1.json").read_text())
     assert result.status == "briefed" and result.fallback_reason and brief.considerations == []
     assert brief.gaps[0].startswith("Considerations withheld") and brief.location_confirmed
-    assert brief.size_up["building.stories"].value == 6
+    assert brief.size_up["building.stories"].value == 6 and len(brief.markers) == 10
 
     v2 = update_incident("inc_s2", incident.replay("c2"))  # updates degrade the same way
     assert v2.fallback_reason and "Floor contradicted: 3 vs 4 (Call 2)" in v2.brief.changes_since_last
@@ -263,8 +303,8 @@ def test_orchestrator_end_to_end_on_s2(incident):
         assert len(brief.considerations) <= 5
         assert all(c.title.startswith("Consider ") and c.evidence_ids for c in brief.considerations)
         assert all(e in brief.evidence for c in brief.considerations for e in c.evidence_ids)
-        assert result.fallback_reason or brief.considerations
+        assert result.fallback_reason or any(c.cross_layer for c in brief.considerations)
         assert all(t.status == "completed" for t in result.todos)
     assert "Floor contradicted: 3 vs 4 (Call 2)" in v2.brief.changes_since_last
-    assert (incident.ws / "notes" / "dossier_summary.md").exists()
+    assert all((incident.ws / "notes" / f"{name}_summary.md").exists() for name in LAYERS)
     assert (incident.ws / "notes" / "strategy_reasoning.md").exists()

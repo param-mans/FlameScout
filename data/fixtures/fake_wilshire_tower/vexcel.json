@@ -1,0 +1,36 @@
+{
+  "center": {"lat": 34.05, "lon": -118.26},
+  "aerials": [
+    {
+      "evidence": {"id": "ev_aerial_1", "kind": "aerial_crop", "source": "vexcel",
+                   "uri": "fixture://fake_wilshire_tower/aerial/overhead",
+                   "captured_at": "2026-03-20T00:00:00Z",
+                   "locator": {"view": "overhead", "note": "synthetic hand-written fixture, not real aerial imagery"}},
+      "markers": [
+        {"id": "m_roof", "kind": "roof_access",
+         "label": "Flat roof; access bulkhead at the south end, above Stair A",
+         "floor": 6, "status": "inferred", "confidence": 0.5}
+      ],
+      "exposures": [
+        {"id": "x_east", "label": "3-storey commercial building to the east", "side": "east",
+         "distance_m": 4.5, "status": "inferred", "confidence": 0.6}
+      ]
+    },
+    {
+      "evidence": {"id": "ev_aerial_2", "kind": "aerial_crop", "source": "vexcel",
+                   "uri": "fixture://fake_wilshire_tower/aerial/oblique-north",
+                   "captured_at": "2026-03-20T00:00:00Z",
+                   "locator": {"view": "oblique, looking south at the rear",
+                               "note": "synthetic hand-written fixture, not real aerial imagery"}},
+      "markers": [
+        {"id": "m_alley_access", "kind": "other",
+         "label": "Rear alley along the north side, about 6 m wide, vehicle access from the side street to the east",
+         "floor": 1, "status": "inferred", "confidence": 0.65}
+      ],
+      "exposures": [
+        {"id": "x_north", "label": "Alley to the north, about 6 m wide, then a parking structure", "side": "north",
+         "distance_m": 6.0, "status": "inferred", "confidence": 0.6}
+      ]
+    }
+  ]
+}
