@@ -37,7 +37,7 @@ export const OP = {
   door: 1, doorArc: 0.3, window: 0.75, stairs: 0.5,
   points: 0.3,
   ghostLine: 0.11, aboveLine: 0.025,          // plantas no enfocadas: por debajo / por encima
-  label: 0.7, floorLabel: 0.55,
+  label: 0.7, label3d: 0.92, floorLabel: 0.55,       // label3d: rotulos 3D casi opacos para que se lean
   bbox: 0.05, baseSlab: 0.1, stairsLine: 0.9, stairsFill: 0.1, explode: 0.5, ghostTag: 0.6,
   detailEdge: 0.55, detailPoints: 0.6,        // modo Detalle
   ghost2d: 0.12, above2d: 0.03,

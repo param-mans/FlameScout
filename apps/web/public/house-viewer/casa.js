@@ -189,6 +189,7 @@ function limpiar3D() {
   const tirar = (o) => o.traverse((x) => { if (x.geometry) x.geometry.dispose(); if (x.material) [].concat(x.material).forEach((m) => { if (m.map) m.map.dispose(); m.dispose() }) })
   P.forEach((p) => { escena.remove(p.g); tirar(p.g) })
   ;[caja, rutaG, explG, ...rotPlanta, ...escG.flatMap((e) => [e.grp, e.etq]), ...P.map((F) => F.tag)].forEach((o) => { if (o) { escena.remove(o); tirar(o) } })
+  LEG.clear()
   P = []; rotPlanta = []; escG = []; explG = null; explClave = ''; detalleHecho = false; texRayado = null
   rutaG = new THREE.Group(); escena.add(rutaG)
 }
@@ -253,8 +254,22 @@ function texturaRotulo(lineasTxt, grande) {
   g.textAlign = 'center'; g.textBaseline = 'middle'; g.letterSpacing = '4px'
   g.font = fuente(px, 500); g.fillStyle = T.text; g.fillText(txt[0], c.width / 2, 28)
   if (txt[1]) { g.font = fuente(px * 0.72, 400); g.fillStyle = txt[1] === 'SIN RUTA CALCULABLE' ? T.noRoute : T.textDim; g.fillText(txt[1], c.width / 2, 70) }
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.minFilter = THREE.LinearFilter
+  // mipmaps: el rotulo se ve mas pequeno que el canvas y sin ellos las letras salen granuladas
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true
   return { t, aspecto: c.width / c.height, alto: c.height / 56 }
+}
+// Rotulos legibles: tamano real en metros al acercarse, pero nunca menos de `px` pixeles de alto en pantalla.
+// PX_LINEA = alto de una linea de rotulo de habitacion (unos 14 px de letra).
+const PX_LINEA = 22, LEG = new Map() // sprite -> { bx, by, px } (aparte de userData, que otras partes reasignan)
+function legible(sp, bx, by, px) { LEG.set(sp, { bx, by, px }); sp.scale.set(bx, by, 1) }
+function ajustarLegibles() {
+  const h = renderer.domElement.clientHeight || 1, k = 2 * Math.tan((camara.fov * Math.PI) / 360)
+  for (const [sp, { bx, by, px }] of LEG) {
+    if (!sp.parent) { LEG.delete(sp); continue }
+    sp.getWorldPosition(_w)
+    const pxPorM = h / (k * Math.max(0.01, camara.position.distanceTo(_w))), f = Math.max(1, px / (by * pxPorM))
+    sp.scale.set(bx * f, by * f, 1)
+  }
 }
 
 // ---------------------------------------------------------------- construccion
@@ -361,7 +376,7 @@ function construir3D() {
     // etiqueta "P1", "P2"... en la esquina de la planta cuando es fantasma
     const bp = limitesPiso(f), { t: tt, aspecto: asp } = texturaRotulo(['P' + (fi + 1), ''], true)
     const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tt, depthTest: false, transparent: true, opacity: 0, fog: false }))
-    const ht = Math.max(0.35, tam * 0.025); tag.scale.set(ht * asp, ht, 1); tag.center.set(1, 0); tag.renderOrder = 12
+    const ht = Math.max(0.35, tam * 0.025); legible(tag, ht * asp, ht, PX_LINEA); tag.center.set(1, 0); tag.renderOrder = 12
     tag.userData = { x: bp.minX, z: -bp.maxY }; escena.add(tag); F.tag = tag
     P.push(F); refs.pisos.push(g)
   })
@@ -372,7 +387,7 @@ function construir3D() {
   plan.floors.forEach((f, fi) => {
     const { t, aspecto } = texturaRotulo(['FLOOR ' + (fi + 1), ''], true)
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true, opacity: 0, fog: false }))
-    const h = Math.max(0.45, tam * 0.035); sp.scale.set(h * aspecto, h, 1); sp.center.set(0, 0.5)
+    const h = Math.max(0.45, tam * 0.035); legible(sp, h * aspecto, h, PX_LINEA * 1.1); sp.center.set(0, 0.5)
     sp.userData = { fi, x: b.maxX + 0.8, z: -(b.minY + b.maxY) / 2 }; sp.renderOrder = 11
     escena.add(sp); rotPlanta.push(sp)
   })
@@ -427,7 +442,7 @@ function construirEscaleras() {
     if (texto) {
       const { t, aspecto } = texturaRotulo([texto, ''])
       etq = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true, opacity: 0.9, fog: false }))
-      const h = 0.22; etq.scale.set(h * aspecto, h, 1); etq.renderOrder = 13; escena.add(etq)
+      const h = 0.22; escena.add(etq); legible(etq, h * aspecto, h, PX_LINEA * 0.9); etq.renderOrder = 13
     }
     escG.push({ grp, etq, mats, H, E, cx: ubicada ? punto((R.s0 + R.s1) / 2, R.tc) : e.m, soloHuella: !ubicada })
   })
@@ -526,7 +541,7 @@ function paso() {
     aplicarPlantas(); rotSucio = true
     if (t >= 1) anim = null
   }
-  if (P.length && rotSucio) { rotulos(); rotSucio = false }
+  if (P.length && rotSucio) { ajustarLegibles(); rotulos(); rotSucio = false }
 }
 function aplicarPlantas() {
   P.forEach((F) => {
@@ -589,7 +604,7 @@ function rotulos() {
       if (visible) cajas.push(r)
     }
     sp.userData.oculto = !visible
-    sp.material.opacity = visible ? (hov ? 1 : OP.label) * Math.min(1, F.cur.v.slab) : 0
+    sp.material.opacity = visible ? (hov ? 1 : OP.label3d) * Math.min(1, F.cur.v.slab) : 0
     sp.visible = sp.material.opacity > 0.01
   }
 }
@@ -619,7 +634,7 @@ function estilo3D() {
       const { t, aspecto, alto } = texturaRotulo(textoEtiqueta(F.fi, sp.userData.room))
       if (sp.material.map) sp.material.map.dispose()
       sp.material.map = t; sp.material.needsUpdate = true
-      const h = 0.26 * alto; sp.scale.set(h * aspecto, h, 1)
+      const h = 0.26 * alto; legible(sp, h * aspecto, h, PX_LINEA * alto)
     })
   })
   aplicarPlantas(); rotSucio = true
