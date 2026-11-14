@@ -196,12 +196,12 @@ class TodoItem(BaseModel):
     status: Literal["pending", "in_progress", "completed"]
 
 
-class BuildingCandidate(BaseModel):
-    """A building the dispatcher can confirm (PRD FR-3). Produced by the locator, never by an LLM."""
-    building_id: str
-    name: str
-    address: str
-    score: float = Field(ge=0, le=1)
+class BuildingCandidate(LocationCandidate):
+    """A building the dispatcher can confirm (PRD FR-3): the orchestrator's candidates.
+
+    The same fields as LocationCandidate (the rules pipeline's candidates), so the UI reads both the
+    same way. Filled deterministically by locator.find_candidates, never by an LLM.
+    """
 
 
 class Progress(BaseModel):

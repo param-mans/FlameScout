@@ -140,30 +140,63 @@
       "type": "object"
     },
     "BuildingCandidate": {
-      "description": "A building the dispatcher can confirm (PRD FR-3). Produced by the locator, never by an LLM.",
+      "description": "A building the dispatcher can confirm (PRD FR-3): the orchestrator's candidates.\n\nThe same fields as LocationCandidate (the rules pipeline's candidates), so the UI reads both the\nsame way. Filled deterministically by locator.find_candidates, never by an LLM.",
       "properties": {
         "building_id": {
           "title": "Building Id",
           "type": "string"
         },
         "name": {
-          "title": "Name",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
         },
         "address": {
           "title": "Address",
           "type": "string"
+        },
+        "coordinates": {
+          "additionalProperties": true,
+          "default": {},
+          "title": "Coordinates",
+          "type": "object"
         },
         "score": {
           "maximum": 1,
           "minimum": 0,
           "title": "Score",
           "type": "number"
+        },
+        "match_reasons": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Match Reasons",
+          "type": "array"
+        },
+        "scan_available": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scan Available"
         }
       },
       "required": [
         "building_id",
-        "name",
         "address",
         "score"
       ],

@@ -73,9 +73,28 @@ Leave `workspace_root` as `None` (MongoDB or `workspace/`); a path forces local 
 - Raises `ValueError` if the incident has no candidate buildings yet.
 - Returns `status="awaiting_confirmation"`, `candidates` (best match first), `brief=None`.
 - Clears earlier output for this incident (briefs, critiques, layers, dossier, notes, todos), then writes:
-  - `candidates.json`: list of `BuildingCandidate` (`building_id`, `name`, `address`, `score`)
+  - `candidates.json`: list of `BuildingCandidate` (fields below)
   - `todos.json`: `Progress` with `status="awaiting_confirmation"`
 - Takes about 5 s.
+
+### `BuildingCandidate`
+
+The same fields as the rules pipeline's `LocationCandidate` (`GET /api/incidents/{id}/candidates`);
+in the schema it is a subclass of it, so one UI type renders both.
+
+| Field | Meaning |
+| --- | --- |
+| `building_id` | pass it to `resume_incident` |
+| `name`, `address` | from the CoStar record |
+| `coordinates` | `{"lat": .., "lon": ..}` from the CoStar record; `{}` if it has none |
+| `score` | 0-1: how well the best thing a caller said matches the address or the name |
+| `match_reasons` | why it matched, one line per thing a caller said: `"address exact match"`, `"address partial match: 1200 Wilshire Boulevard (0.50)"`, `"name match: Wilshire Tower"`, `"name partial match: Wilshire Tower (0.33)"` |
+| `scan_available` | `true` / `false`: whether the Matterport adapter has a model for it; `null` if the lookup failed |
+
+All of it is computed in code (`locator.find_candidates`), no model call. The two pipelines word
+`match_reasons` differently (the rules pipeline writes `"name 'Wilshire Tower' matched (0.92)"`);
+show them as text, do not parse them. `scan_available` is a hint for the dispatcher: the brief
+decides from the Matterport layer it pulls after confirmation.
 
 ## `resume_incident(incident_id, building_id) -> RunResult`
 

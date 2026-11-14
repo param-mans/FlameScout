@@ -375,7 +375,13 @@ def test_start_pauses_resume_briefs_update_reuses_thread_and_layers(incident, mo
     started = start_incident("inc_s2", workspace_root=incident.root, on_todos=seen.append, model=session_model)
     assert started.status == "awaiting_confirmation" and started.brief is None
     assert [c.building_id for c in started.candidates] == [BUILDING]
+    # What the dispatcher sees, everywhere the candidates go: RunResult, candidates.json, todos.json.
+    shown = {"coordinates": {"lat": 34.05, "lon": -118.26}, "scan_available": True,
+             "match_reasons": ["address exact match"]}
+    assert {k: getattr(started.candidates[0], k) for k in shown} == shown
+    assert {k: json.loads(incident.ws.read("candidates.json"))[0][k] for k in shown} == shown
     paused = Progress.model_validate_json(incident.ws.read("todos.json"))
+    assert {k: getattr(paused.candidates[0], k) for k in shown} == shown
     assert paused.status == "awaiting_confirmation" and paused.todos[0].status == "in_progress"
     assert not incident.ws.exists("layers")  # nothing happens before the dispatcher answers
     assert orchestrator._incident(incident.ws).confirmed_building_id is None
