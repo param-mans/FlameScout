@@ -30,15 +30,36 @@ async function call(key, route, params, binary = false) {
   return { status: 429, body: null };
 }
 
-/** { meta: { source, copyright, convention, views: { dir: { file, captureDate } }, notes }, images: { dir: Buffer } } */
+const ZOOM = 20, PX = 1024;
+// side (m) that PX pixels cover at a zoom level (Web Mercator), as the demo's metros_para_px
+const metersForPx = (lat, zoom) => Math.round((PX * 156543.03392 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom * 10) / 10;
+
+/** Straight-down aerial (ortho): coverage first (layer urban, else wide-area), zoom 20 or the maximum available. */
+async function ortho(key, lat, lon, point) {
+  const cov = await call(key, "/ortho/collections", { ...point, include: "layer,collection,first-capture-date,last-capture-date,max-zoom" });
+  const cols = cov.status === 200 ? (cov.body?.features ?? []).map((f) => f.properties ?? {}) : [];
+  const newest = (xs) => [...xs].sort((a, b) => String(b["last-capture-date"] ?? "").localeCompare(String(a["last-capture-date"] ?? "")))[0];
+  const pick = LAYERS.map((l) => newest(cols.filter((c) => c.layer === l))).find(Boolean) || newest(cols);
+  if (!pick) return { view: null, image: null, note: cov.status === 200 ? "no ortho coverage" : `ortho/collections HTTP ${cov.status}` };
+  const zoom = pick["max-zoom"] && pick["max-zoom"] < ZOOM ? Math.floor(pick["max-zoom"]) : ZOOM, side = metersForPx(lat, zoom);
+  const { status, body } = await call(key, "/ortho/extract", { layer: pick.layer || "urban", ...point, bands: "rgb", zoom, "bbox-dimensions": `${side},${side}`,
+    "image-format": "jpeg", ...(pick.collection ? { collection: pick.collection } : {}) }, true);
+  if (status === 200 && body && body[0] === 0xff && body[1] === 0xd8)
+    return { view: { file: "aerial.jpg", captureDate: pick["last-capture-date"] ?? pick["first-capture-date"] ?? null, layer: pick.layer ?? null, boxMeters: side }, image: body };
+  return { view: null, image: null, note: `ortho/extract HTTP ${status}` };
+}
+
+/** { meta: { source, copyright, convention, views: { aerial | dir: { file, captureDate } }, notes }, images: { aerial | dir: Buffer } } */
 export async function obliques(key, lat, lon) {
   const point = { wkt: `POINT(${lon} ${lat})`, srid: "4326" };
+  const top = await ortho(key, lat, lon, point);
   const cov = await call(key, "/oriented/collections", { ...point, "product-type": "oblique",
     include: "layer,collection,first-capture-date,last-capture-date,product-type" });
   const cols = cov.status === 200 ? (cov.body?.features ?? []).map((f) => f.properties ?? {}) : [];
   const meta = { source: "Vexcel API 2.0", copyright: COPYRIGHT, convention: "oblique-<dir> = direction the camera faces",
     views: {}, notes: cov.status === 200 ? [] : [`oriented/collections HTTP ${cov.status}`] };
   const images = {};
+  if (top.view) { meta.views.aerial = top.view; images.aerial = top.image; } else meta.notes.push(top.note);
   for (const d of DIRS) {
     const pt = `oblique-${d}`;
     const cand = cols.filter((c) => [pt, "oblique", undefined].includes(c["product-type"]));
