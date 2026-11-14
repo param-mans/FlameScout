@@ -1,0 +1,105 @@
+{
+  "incident_id": "inc-demo-001",
+  "model_id": "sample-b",
+  "version": 2,
+  "as_of": "2026-11-15T03:12:40Z",
+  "changes_since_last": [
+    "Call 2 reports the children in a different upstairs bedroom than Call 1",
+    "Call 2 reports flames at the back kitchen window"
+  ],
+  "occupants": [
+    {
+      "id": "occ-1a", "count": 2, "group_id": "occ-loc-1",
+      "location": {"kind": "room", "room_id": "r10"},
+      "status": "contradicted", "confidence": 0.5,
+      "reported_at": "2026-11-15T03:10:05Z", "evidence_ids": ["call-1:42.0-51.5"],
+      "note": "Call 1: two children in the back bedroom"
+    },
+    {
+      "id": "occ-1b", "count": 2, "group_id": "occ-loc-1",
+      "location": {"kind": "room", "room_id": "r9"},
+      "status": "contradicted", "confidence": 0.5,
+      "reported_at": "2026-11-15T03:12:10Z", "evidence_ids": ["call-2:12.0-19.0"],
+      "note": "Call 2: two children in the front bedroom"
+    },
+    {
+      "id": "occ-2", "count_range": [1, 2],
+      "location": {"kind": "floor", "floor_reported": 2},
+      "status": "reported", "confidence": 0.4,
+      "reported_at": "2026-11-15T03:11:20Z", "evidence_ids": ["call-2:30.0-36.0"],
+      "note": "Call 2: someone shouting from upstairs, no room given"
+    }
+  ],
+  "fire": [
+    {
+      "id": "fire-1", "kind": "smoke",
+      "location": {"kind": "room", "room_id": "r4"},
+      "status": "reported", "confidence": 0.8,
+      "reported_at": "2026-11-15T03:10:05Z", "evidence_ids": ["call-1:12.0-20.5"]
+    },
+    {
+      "id": "fire-2", "kind": "fire",
+      "location": {"kind": "anchor", "anchor": {"room_id": "r4", "position": "near_window", "ref_id": "w7"}},
+      "status": "reported", "confidence": 0.7,
+      "reported_at": "2026-11-15T03:12:10Z", "evidence_ids": ["call-2:3.0-9.0"]
+    }
+  ],
+  "hazards": [
+    {
+      "id": "haz-1", "kind": "gas",
+      "location": {"kind": "room", "room_id": "r5"},
+      "status": "reported", "confidence": 0.3,
+      "reported_at": "2026-11-15T03:11:20Z", "evidence_ids": ["call-2:44.0-47.0"],
+      "note": "Caller smells gas near the garage"
+    }
+  ],
+  "blocked": [],
+  "contradictions": [
+    {"group_id": "occ-loc-1", "key": "occupants.location", "resolved_by_dispatcher": false}
+  ],
+  "objectives": [
+    {
+      "id": "obj-1", "type": "rescue", "priority": 1,
+      "target": {"kind": "occupant_group", "ref_id": "occ-loc-1"},
+      "rationale": "Reported occupants upstairs and the fire is on the ground floor below them",
+      "evidence_ids": ["call-1:42.0-51.5", "call-2:12.0-19.0"]
+    },
+    {
+      "id": "obj-2", "type": "recon", "priority": 2,
+      "target": {"kind": "room", "ref_id": "r5"},
+      "rationale": "Possible gas smell reported near the garage",
+      "evidence_ids": ["call-2:44.0-47.0"]
+    }
+  ],
+  "considerations": [
+    {
+      "id": "con-1",
+      "text": "Consider asking Call 2 which upstairs bedroom the children are in before choosing a rescue approach",
+      "rationale": "The two callers name different bedrooms (front vs back) and nobody has confirmed either",
+      "confidence": 0.8, "evidence_ids": ["call-1:42.0-51.5", "call-2:12.0-19.0"], "refs": ["occ-loc-1"]
+    },
+    {
+      "id": "con-2",
+      "text": "Consider treating the kitchen and the stair route below the bedrooms as exposed to fire",
+      "rationale": "Fire is reported in the kitchen and the only mapped stairs connect that floor to the bedrooms",
+      "confidence": 0.6, "evidence_ids": ["call-1:12.0-20.5", "call-2:3.0-9.0"], "refs": ["fire-1", "fire-2"]
+    }
+  ],
+  "routes": [
+    {
+      "id": "route-1", "objective_id": "obj-1", "produced_by": "planner",
+      "kind": "rescue", "status": "inferred", "confidence": 0.6,
+      "waypoints": [
+        {"kind": "exterior", "ref_id": "d1"},
+        {"kind": "room", "ref_id": "r1"},
+        {"kind": "room", "ref_id": "r6"},
+        {"kind": "stairs", "ref_id": "s1"},
+        {"kind": "room", "ref_id": "r11"},
+        {"kind": "room", "ref_id": "r8"},
+        {"kind": "room", "ref_id": "r9"}
+      ],
+      "length_m_estimate": 17.5, "passes_near_fire": true,
+      "note": "Planner estimate over the scanned plan, straight lines between room and door centers"
+    }
+  ]
+}

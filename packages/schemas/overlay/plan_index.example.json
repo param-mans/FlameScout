@@ -1,0 +1,22 @@
+{
+  "floors": ["f1", "f2"],
+  "rooms": {
+    "r1": {"floor_id": "f1", "label": "ENTRANCE", "type": "entrance"},
+    "r2": {"floor_id": "f1", "label": "LIVING ROOM", "type": "living room"},
+    "r4": {"floor_id": "f1", "label": "KITCHEN", "type": "kitchen"},
+    "r5": {"floor_id": "f1", "label": "GARAGE", "type": "garage"},
+    "r6": {"floor_id": "f1", "label": "STAIRCASE", "type": "staircase"},
+    "r8": {"floor_id": "f2", "label": "HALLWAY", "type": "hallway"},
+    "r9": {"floor_id": "f2", "label": "BEDROOM", "type": "bedroom"},
+    "r10": {"floor_id": "f2", "label": "BEDROOM", "type": "bedroom"},
+    "r11": {"floor_id": "f2", "label": "STAIRCASE", "type": "staircase"}
+  },
+  "openings": {
+    "d1": {"type": "doorway", "exterior": true, "floor_id": "f1"},
+    "d2": {"type": "doorway", "exterior": false, "floor_id": "f1"},
+    "d9": {"type": "doorway", "exterior": false, "floor_id": "f2"},
+    "w7": {"type": "window", "exterior": true, "floor_id": "f1"},
+    "w12": {"type": "window", "exterior": true, "floor_id": "f2"}
+  },
+  "stairs": ["s1"]
+}
