@@ -190,7 +190,14 @@ html.tema-app .obl-img { border-color: var(--border); }
 /* Capa de incidente: banner, consideraciones, aviso sin escaneo y chip DEBUG (unico sitio con colores saturados) */
 #inc-banner { display: none; left: 10px; top: 48px; width: min(420px, 46%); max-height: 46%; overflow-y: auto; font-size: 10.5px; line-height: 1.35; z-index: 6; border-color: var(--borderHi); }
 html.embed.layout-split #inc-banner { top: 10px; }
-#inc-banner .inc-fila { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#inc-banner .inc-fila { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+#inc-banner .inc-tog { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 4px; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; }
+#inc-banner .inc-tog .hint { overflow: hidden; text-overflow: ellipsis; }
+#inc-banner .inc-flecha { margin-left: auto; color: var(--textDim); }
+/* plegado: una franja de 48 px como mucho */
+#inc-banner.plegado { max-height: 48px; overflow: hidden; padding-top: 2px; padding-bottom: 2px; }
+#inc-banner.plegado .inc-cuerpo { display: none; }
+html.compacto #inc-banner { width: min(420px, calc(100% - 20px)); }
 #inc-banner .inc-fila b { letter-spacing: .14em; color: #fff; }
 #inc-banner .inc-vers { display: inline-flex; gap: 3px; margin-left: auto; }
 #inc-banner .inc-vers button { padding: 0 6px; }

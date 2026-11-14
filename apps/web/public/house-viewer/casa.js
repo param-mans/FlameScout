@@ -1220,7 +1220,7 @@ function tema(vars) {
 // la pagina contenedora. setIncident: si el plano aun no ha cargado se guarda el ultimo overlay y se aplica al cargar; las
 // versiones menores que la actual se ignoran (respuesta incidentRejected); se valida con incident/validate.js (port de
 // validate_overlay.py) contra el indice del plano cargado; si es valido se aplica y se guarda para el control de versiones.
-const INC = { index: null, versions: new Map(), actual: null, pendiente: null, vista: null, rutas: null, resaltar: new Set(), escenarios: [], escenario: null }
+const INC = { index: null, versions: new Map(), actual: null, pendiente: null, vista: null, rutas: null, resaltar: new Set(), escenarios: [], escenario: null, bannerAbierto: null }
 function prepararIncidente(plan) {
   INC.versions = new Map(); INC.actual = null; INC.vista = null; INC.rutas = null; INC.resaltar = new Set()
   try { INC.index = plan ? buildPlanIndex(plan) : emptyPlanIndex() } catch (e) { INC.index = null; avisarPadre({ type: 'planIndex', index: null, error: e.message }); return }
@@ -1545,7 +1545,9 @@ function asegurarDomIncidente() {
   det.innerHTML = '<summary>Considerations · incident</summary><div id="inc-panel-body"></div>'
   const der = $('der'), ref = $('oblicuas'); der.insertBefore(det, ref || null)
   if (DEBUG) { const d = document.createElement('div'); d.id = 'inc-debug'; document.body.appendChild(d) }
-  ban.addEventListener('click', (e) => { const b = e.target.closest('[data-incv]'); if (b) { INC.vista = Number(b.dataset.incv); reconstruirIncidente() } })
+  ban.addEventListener('click', (e) => {
+    if (e.target.closest('[data-inctog]')) { INC.bannerAbierto = ban.classList.contains('plegado'); pintarPanelIncidente(); return }
+    const b = e.target.closest('[data-incv]'); if (b) { INC.vista = Number(b.dataset.incv); reconstruirIncidente() } })
   det.addEventListener('click', (e) => { const c = e.target.closest('[data-con]'); if (!c) return
     const ov = ovVista(), con = (ov.considerations || []).find((x) => x.id === c.dataset.con); if (!con) return
     const igual = con.refs.length && con.refs.every((r) => INC.resaltar.has(r)) && INC.resaltar.size === con.refs.length
@@ -1578,12 +1580,18 @@ function pintarPanelIncidente() {
   for (const c of ov.contradictions || []) avisos.push([IC.amber, `Contradiction: ${c.key} (${c.group_id}) not resolved by the dispatcher`])
   if (INC.rutas) for (const id of INC.rutas.noRoute) avisos.push(['#e5e7eb', `No route computable (${id})`])
   else if ((ov.objectives || []).length) avisos.push(['#e5e7eb', 'No route computable (no interior scan)'])
-  ban.innerHTML = `<div class="inc-fila"><b>INCIDENT</b><span class="hint">${esc(ov.incident_id)} · v${ov.version} · as of ${esc(String(ov.as_of).slice(11, 16))}Z</span>` +
+  // compacto y plegable: una linea (version y numero de elementos) que se despliega al tocar; plegado por defecto en pantallas
+  // de 1180 px o menos para no tapar el 3D; el estado elegido se conserva entre versiones
+  const abierto = INC.bannerAbierto ?? !document.documentElement.classList.contains('compacto')
+  const nItems = (ov.changes_since_last || []).length + avisos.length
+  ban.classList.toggle('plegado', !abierto)
+  ban.innerHTML = `<div class="inc-fila"><button class="inc-tog" data-inctog="1" aria-expanded="${abierto}"><b>INCIDENT</b><span class="hint">v${ov.version} · ${nItems} item${nItems === 1 ? '' : 's'}</span><span class="inc-flecha" aria-hidden="true">${abierto ? '▴' : '▾'}</span></button>` +
     `<span class="inc-vers">${versiones.map((v) => `<button data-incv="${v}" class="${v === ov.version ? 'on' : ''}">v${v}</button>`).join('')}</span></div>` +
+    `<div class="inc-cuerpo"><div class="hint">${esc(ov.incident_id)} · as of ${esc(String(ov.as_of).slice(11, 16))}Z</div>` +
     ((ov.changes_since_last || []).length ? `<div class="inc-cambios">${ov.changes_since_last.map((c) => `<div>● ${esc(c)}</div>`).join('')}</div>` : '') +
     avisos.map(([col, t]) => `<div class="inc-aviso" style="border-color:${col};color:${col}">${esc(t)}</div>`).join('') +
     (INC.rutas ? `<div class="hint">${INC.rutas.routes.length} route(s) · planner ${INC.rutas.ms} ms</div>` : '') +
-    `<div class="inc-advisory">${AVISO}</div>`
+    `<div class="inc-advisory">${AVISO}</div></div>`
   body.innerHTML = (ov.considerations || []).map((c) => `<button class="inc-card ${c.refs.length && c.refs.every((r) => INC.resaltar.has(r)) ? 'on' : ''}" data-con="${esc(c.id)}">` +
     `<div class="inc-card-t">${esc(c.text)}</div><div class="hint">${esc(c.rationale)}</div>` +
     `<div class="inc-card-m">confidence ${Math.round(c.confidence * 100)}% · evidence ${esc(c.evidence_ids.join(', '))}${c.refs.length ? ' · refs ' + esc(c.refs.join(', ')) : ''}</div></button>`).join('') || '<div class="hint">No considerations.</div>'
