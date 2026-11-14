@@ -4,10 +4,11 @@ import { Inspector, type Selection } from "./Inspector";
 import { SitePlan, type Layers } from "./SitePlan";
 import { Timeline } from "./Timeline";
 import { Btn, KV, Panel, StatusTag, fmt } from "./ui";
-import { BuildingViewer } from "./viewer/BuildingViewer";
+import { BuildingViewer, HOUSE_VIEWER_DEFAULT } from "./viewer/BuildingViewer";
 
-// Opt-in house viewer for the Floor 2D / 3D scan tabs: ?viewer=1[&sample=<id>]; the house is picked inside the viewer.
-const VIEWER = new URLSearchParams(window.location.search).get("viewer") === "1";
+// House viewer mode (?viewer=1 or HOUSE_VIEWER_DEFAULT): one central "Floor plan + 3D" view instead of the
+// Map / Floor 2D / 3D scan tabs. The house is picked inside the viewer (?sample=<id>).
+const VIEWER = HOUSE_VIEWER_DEFAULT || new URLSearchParams(window.location.search).get("viewer") === "1";
 
 const LABELS: Record<string, string> = {
   "building.use": "Use",
@@ -128,11 +129,17 @@ export function MdtView({ brief, segments, contradictions }: { brief: Brief; seg
         <section className="relative flex min-h-0 flex-col bg-bg">
           <div className="flex h-7 shrink-0 items-center justify-between border-b border-line bg-panel px-2.5">
             <div className="flex gap-1">
-              <Btn active={tab === "map"} onClick={() => setTab("map")}>Map</Btn>
-              <Btn active={tab === "floor"} onClick={() => setTab("floor")}>Floor 2D</Btn>
-              <Btn active={tab === "scan3d"} onClick={() => setTab("scan3d")}>3D scan</Btn>
+              {VIEWER ? (
+                <Btn active>Floor plan + 3D</Btn>
+              ) : (
+                <>
+                  <Btn active={tab === "map"} onClick={() => setTab("map")}>Map</Btn>
+                  <Btn active={tab === "floor"} onClick={() => setTab("floor")}>Floor 2D</Btn>
+                  <Btn active={tab === "scan3d"} onClick={() => setTab("scan3d")}>3D scan</Btn>
+                </>
+              )}
             </div>
-            {tab === "map" && (
+            {!VIEWER && tab === "map" && (
               <div className="flex gap-1">
                 <Btn active={layers.markers} onClick={() => toggle("markers")}>Markers</Btn>
                 <Btn active={layers.exposures} onClick={() => toggle("exposures")}>Exposures</Btn>
@@ -141,10 +148,10 @@ export function MdtView({ brief, segments, contradictions }: { brief: Brief; seg
             )}
           </div>
           <div className="relative min-h-0 flex-1">
-            {tab === "map" ? (
+            {VIEWER ? (
+              <BuildingViewer layout="split" />
+            ) : tab === "map" ? (
               <SitePlan brief={brief} layers={layers} selectedKey={sel?.key ?? null} highlightIds={highlightIds} onSelect={onMapSelect} />
-            ) : VIEWER ? (
-              <BuildingViewer key={tab} mode={tab} />
             ) : (
               <div className="grid h-full place-items-center text-center">
                 {/* TODO: Matterport embed / normalized 2D plan with markers (PRD section 23) */}
@@ -156,7 +163,7 @@ export function MdtView({ brief, segments, contradictions }: { brief: Brief; seg
                 </div>
               </div>
             )}
-            {noScan && tab === "map" && (
+            {!VIEWER && noScan && tab === "map" && (
               <div className="num absolute left-3 top-3 border border-unverified/60 bg-bg/90 px-2 py-1 text-[11px] text-unverified">○ NO INTERIOR SCAN ON FILE</div>
             )}
           </div>

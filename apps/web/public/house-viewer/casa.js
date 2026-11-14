@@ -29,7 +29,8 @@ const SIN_RUTA = 'no computable route'
 // ---------------------------------------------------------------- modo embed y mensajes con la pagina que lo contiene
 const Q = new URLSearchParams(location.search)
 const EMBED = Q.get('embed') === '1', MODO = Q.get('mode') === '2d' ? '2d' : '3d'
-const SOLO_2D = EMBED && MODO === '2d'
+const SPLIT = EMBED && Q.get('layout') === 'split' // 3D (izquierda, ~2/3) y 2D a la vez; apilados por debajo de 900 px
+const SOLO_2D = EMBED && !SPLIT && MODO === '2d'
 const ORIGEN = location.origin // solo se aceptan y envian mensajes al mismo origen
 const avisarPadre = (msg) => { if (window.parent !== window) window.parent.postMessage(msg, ORIGEN) }
 const estadoEmbed = (t) => { const el = document.getElementById('estado-embed'); if (el) el.textContent = t || '' }
@@ -806,6 +807,41 @@ function selectoresPlanta() {
   $('minipisos').innerHTML = `<button data-foco="all" class="barra ${S.foco === 'all' ? 'on' : ''}">ALL</button>` +
     S.plan.floors.map((f, i) => i).reverse().map((i) => `<button data-foco="${i}" class="barra ${S.foco === i ? 'on' : ''}" title="${esc(piso(i).label)}">P${i + 1}</button>`).join('')
   $('tabs2d').innerHTML = botones + `<span class="hint" style="margin-left:6px">2D: ${esc(piso(focoIdx()).label)}</span><button id="fit2d" title="Fit" style="margin-left:auto">⤢</button>`
+  barraSplit()
+}
+// ---------------------------------------------------------------- modo split: barra comun (planta, color, capas) y paneles plegables
+function montarSplit() {
+  const barra = document.createElement('div')
+  barra.id = 'barra-split'
+  barra.innerHTML = '<span class="etq">Floor</span><span id="pisos-split" class="plantas"></span><span id="planta2d-split" class="hint"></span>' +
+    '<span class="sep"></span><span class="fila-btn" id="color-split"><button data-color="type">Rooms</button><button data-color="evac">Evacuation heat map</button></span>' +
+    '<span class="hueco"></span><button data-fit title="Fit the 2D plan">⤢ Fit 2D</button><button id="btn-capas" aria-expanded="false">Layers ▾</button>'
+  document.querySelector('main').prepend(barra)
+  barra.appendChild($('izq')) // el panel de vista/capas/filtros pasa a ser un menu plegable
+  const plegable = (id, titulo, abierto, hijo) => {
+    const d = document.createElement('details'); d.id = id; d.className = 'plegable'; d.open = abierto
+    d.innerHTML = `<summary>${titulo}</summary>`; d.appendChild(hijo); $('der').appendChild(d); return d
+  }
+  $('der').appendChild($('leyenda2d'))
+  plegable('insp-split', 'Inspector', true, $('inspector'))
+  plegable('tabla-split', 'Entities', false, $('tabla'))
+  const menu = (abrir) => { $('izq').classList.toggle('abierto', abrir); $('btn-capas').setAttribute('aria-expanded', String(abrir)); $('btn-capas').classList.toggle('on', abrir) }
+  barra.addEventListener('click', (e) => {
+    const t = e.target.closest('button'); if (!t || $('izq').contains(t)) return
+    if (t.id === 'btn-capas') return menu(!$('izq').classList.contains('abierto'))
+    if (t.dataset.foco != null) setFoco(t.dataset.foco === 'all' ? 'all' : Number(t.dataset.foco))
+    if (t.dataset.fit != null) { S.vb = null; render2D() }
+    if (t.dataset.color && S.plan) { S.color = t.dataset.color; panelIzq(); refrescar() }
+  })
+  window.addEventListener('mousedown', (e) => { if (!barra.contains(e.target)) menu(false) })
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') menu(false) })
+}
+function barraSplit() {
+  if (!SPLIT || !S.plan || !$('pisos-split')) return
+  $('pisos-split').innerHTML = `<button data-foco="all" class="${S.foco === 'all' ? 'on' : ''}" title="All floors">ALL</button>` +
+    S.plan.floors.map((f, i) => `<button data-foco="${i}" class="${S.foco === i ? 'on' : ''}" title="${esc(f.label)}">${i + 1}</button>`).join('')
+  $('planta2d-split').textContent = '2D: ' + piso(focoIdx()).label
+  document.querySelectorAll('#color-split [data-color]').forEach((b) => b.classList.toggle('on', b.dataset.color === S.color))
 }
 function zoomPan2D() {
   const cont = $('vista2d')
@@ -873,7 +909,10 @@ function tabla() {
 const fila = (k, v) => (v == null || v === '' ? '' : `<tr><td>${esc(k)}</td><td>${v}</td></tr>`)
 function inspector() {
   const el = $('inspector'), s = S.sel
-  if (!s) { el.style.display = 'none'; return }
+  if (!s) {
+    if (SPLIT) { el.innerHTML = '<div class="hint">Select a room, door or window in either view.</div>'; el.style.display = 'block' } else el.style.display = 'none'
+    return
+  }
   let h = '<button class="cerrar" id="cerrar-insp">×</button>', t = ''
   const f = piso(s.fi)
   if (s.kind === 'room') {
@@ -943,7 +982,7 @@ function seleccionar(ent, desdePadre = false) {
   refrescar(); selectoresPlanta()
   const fl = document.querySelector('#tabla tr.sel'); if (fl) fl.scrollIntoView({ block: 'nearest' })
 }
-function refrescar() { estilo3D(); render2D(); tabla(); inspector(); notas() }
+function refrescar() { estilo3D(); render2D(); tabla(); inspector(); notas(); barraSplit() }
 function setDetalle(v) { S.detalle = v; if (v) construirDetalle(); panelIzq(); aplicarPlantas(); rotSucio = true; render2D(); avisoHud() }
 
 function eventos() {
@@ -1058,7 +1097,7 @@ async function cargar(id) {
   $('carga').textContent = `Loaded in ${S.ms.total} ms`
   estadoEmbed('')
   avisoHud()
-  avisarPadre({ type: 'ready', sample: id, floors: plan.floors.length, mode: EMBED ? MODO : null })
+  avisarPadre({ type: 'ready', sample: id, floors: plan.floors.length, mode: EMBED ? (SPLIT ? 'split' : MODO) : null })
   window.__casa = { S, THREE, ms: S.ms, id, setFoco, setDetalle, ponerHover, get refs() { return refs }, get P() { return P }, get escG() { return escG }, get explG() { return explG }, // solo para las pruebas automaticas
     medir(n, fx) { const gl = renderer.getContext(), px = new Uint8Array(4), t0 = performance.now(); for (let i = 0; i < n; i++) { if (fx) composer.render(); else renderer.render(escena, camara); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px) } return (performance.now() - t0) / n } }
 }
@@ -1066,6 +1105,7 @@ async function cargar(id) {
 let LISTA = [] // samples/index.json
 async function inicio() {
   if (SOLO_2D) $('der').appendChild($('inspector')) // en la vista embebida 2D el inspector va sobre el plano
+  if (SPLIT) montarSplit()
   eventos(); zoomPan2D()
   try {
     const r = await fetch('samples/index.json')

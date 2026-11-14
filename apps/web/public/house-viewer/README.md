@@ -28,6 +28,7 @@ an unresolved bare `three` import makes it skip pre-bundling for the whole app.
 | `sample` | `sample-a` ... `sample-d` | House to load (default: first entry of `samples/index.json`) |
 | `embed` | `1` | Single full-size view for an iframe: no header, side panels or entity table |
 | `mode` | `2d` \| `3d` | View shown in embed mode (default `3d`) |
+| `layout` | `split` | Embed mode: 3D (left, about two thirds) and 2D plan side by side in one page, stacked when the frame is narrower than 900 px. Shared toolbar (floor, rooms / heat map, fit, collapsible Layers menu); right column with the plan, legend, collapsible inspector and collapsed entity table. Selection and hover are shared by both views |
 | `huella` | `original` | Diagnostic: draw stair footprints without the fit step |
 
 Without `embed=1` the page shows the full viewer: view, layer and room-type controls, both views and

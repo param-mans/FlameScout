@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 // Static house viewer from public/house-viewer, embedded in an iframe (same origin).
-// mode "floor" -> 2D plan, "scan3d" -> 3D model. The viewer reports "ready" / "error" via postMessage.
+// layout "split" -> 3D + 2D plan side by side in one iframe; otherwise mode "floor" (2D) or "scan3d" (3D).
+// The viewer reports "ready" / "error" via postMessage.
 // The sample house is chosen with the temporary picker on top; the choice is kept in ?sample=<id>.
-type Props = { mode: "floor" | "scan3d"; sampleId?: string };
+type Props = { mode?: "floor" | "scan3d"; layout?: "single" | "split"; sampleId?: string };
+
+/** Flip to true to show the house viewer in the MDT without ?viewer=1. */
+export const HOUSE_VIEWER_DEFAULT = false;
 type Status = { kind: "idle" } | { kind: "loading" } | { kind: "ready" } | { kind: "error"; message: string };
 export type SampleHouse = { id: string; address: string; title: string; floors: number; rooms: number };
 
@@ -87,7 +91,7 @@ function SamplePicker({ samples, value, onChange }: { samples: SampleHouse[]; va
   );
 }
 
-export function BuildingViewer({ mode, sampleId }: Props) {
+export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId }: Props) {
   const frame = useRef<HTMLIFrameElement>(null);
   const initial = useMemo(() => {
     const id = sampleId ?? new URLSearchParams(window.location.search).get("sample");
@@ -111,7 +115,10 @@ export function BuildingViewer({ mode, sampleId }: Props) {
   }, []);
 
   const known = !sample || !samples || samples.some((s) => s.id === sample);
-  const src = frameSample ? `${BASE}casa.html?embed=1&sample=${encodeURIComponent(frameSample)}&mode=${mode === "floor" ? "2d" : "3d"}` : null;
+  const split = layout === "split";
+  const view = split ? "layout=split" : `mode=${mode === "floor" ? "2d" : "3d"}`;
+  const src = frameSample ? `${BASE}casa.html?embed=1&sample=${encodeURIComponent(frameSample)}&${view}` : null;
+  const what = split ? "FLOOR PLAN + 3D" : mode === "floor" ? "FLOOR PLAN" : "3D SCAN";
 
   // Viewer replies: "ready" or "error" from our own iframe only.
   useEffect(() => {
@@ -148,7 +155,7 @@ export function BuildingViewer({ mode, sampleId }: Props) {
         <div className="mt-1 text-[12px] text-faint">{!known ? `Unknown sample "${sample}". Pick one from the list above.` : "Choose one from the picker above to load its floor plan and 3D model."}</div>
       </div>
     ) : status.kind === "loading" ? (
-      <div className="num text-[13px] text-dim">LOADING {mode === "floor" ? "FLOOR PLAN" : "3D SCAN"}…</div>
+      <div className="num text-[13px] text-dim">LOADING {what}…</div>
     ) : status.kind === "error" ? (
       <div>
         <div className="num text-[15px] text-unverified">○ VIEWER UNAVAILABLE</div>
@@ -170,7 +177,7 @@ export function BuildingViewer({ mode, sampleId }: Props) {
           <iframe
             ref={frame}
             src={src}
-            title={mode === "floor" ? "Floor plan 2D" : "3D scan"}
+            title={split ? "Floor plan and 3D model" : mode === "floor" ? "Floor plan 2D" : "3D scan"}
             className={`absolute inset-0 h-full w-full border-0 bg-bg ${status.kind === "ready" ? "" : "invisible"}`}
             onError={() => setStatus({ kind: "error", message: "Viewer could not be loaded" })}
           />
