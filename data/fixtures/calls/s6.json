@@ -1,0 +1,15 @@
+{
+  "script_id": "S6",
+  "description": "Two calls to 9660 Fairdale Lane (hero 209217448, real scan in data/raw; plan index v2 from data/raw/209217448/derived/plan_index.json). Call 1: smoke in the kitchen, the children upstairs. Call 2: the children in a bedroom downstairs (contradicts call 1), the husband in the study, gas smell near the garage. Expected on the plan: smoke in the kitchen j7nhq2abkp0 (the only kitchen, floor 1 tsmq1wak12rhgn0mawksxcwcd); the children as a contradicted group, floor 2 (pd0i1c4yq9w0y2zsb07ed23sb, which has no bedroom) vs floor 1, where three bedrooms match (d3slsxy3zlg, tt6gm2a0463x9wmnx7rn6gugc, 2qdmc5i9byxi79ry1pxdkqzea) so they stay at floor level and the dispatcher gets resolve_place's question; the husband in the office rewssvxhpxq (the only office); the gas hazard in the garage tfsfsskzu72.",
+  "segments": [
+    {"call_id": "c1", "speaker": "call_taker", "text": "911, what's the address of your emergency?", "t_start": 0.0, "t_end": 2.0},
+    {"call_id": "c1", "speaker": "caller", "text": "9660 Fairdale Lane, there's smoke coming from the kitchen.", "t_start": 3.0, "t_end": 8.5},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Is anyone still inside?", "t_start": 10.0, "t_end": 11.5},
+    {"call_id": "c1", "speaker": "caller", "text": "Yes, my two children are upstairs.", "t_start": 13.0, "t_end": 17.0},
+    {"call_id": "c2", "speaker": "call_taker", "text": "911, what's the address of your emergency?", "t_start": 0.0, "t_end": 2.5},
+    {"call_id": "c2", "speaker": "caller", "text": "I live next to 9660 Fairdale Lane, the house is full of smoke.", "t_start": 3.0, "t_end": 8.0},
+    {"call_id": "c2", "speaker": "caller", "text": "The two kids are in a bedroom downstairs, I saw them through the window.", "t_start": 11.0, "t_end": 17.5},
+    {"call_id": "c2", "speaker": "caller", "text": "Her husband is in the study.", "t_start": 20.0, "t_end": 23.0},
+    {"call_id": "c2", "speaker": "caller", "text": "And I smell gas near the garage.", "t_start": 26.0, "t_end": 29.0}
+  ]
+}

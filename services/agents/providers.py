@@ -167,11 +167,13 @@ def _first_sentence(text: Optional[str]) -> Optional[str]:
     return re.split(r"(?<=[.!?])\s+", text.strip(), maxsplit=1)[0]
 
 
+FIRE_SPRINKLER = "Fire Sprinkler System"  # the exact listing feature name; nothing else counts
+
+
 def sprinkler_fact(home_security: list[str], lot_mentions: list[str], evidence_id: str) -> dict:
-    """Residential listings (FIELD_NOTES.md): only "Fire Sprinkler..." under Home Security is a fire
-    sprinkler system. "Sprinkler System" under Lot Details, or in the remarks, is lawn irrigation:
-    no claim either way."""
-    if any(re.search(r"\bfire sprinkler", f, re.I) for f in home_security):
+    """Residential listings (FIELD_NOTES.md): only the Home Security feature "Fire Sprinkler System" is a fire
+    sprinkler system. "Sprinkler System" (Lot Details, the remarks) is lawn irrigation: no claim either way."""
+    if any(f.strip().lower() == FIRE_SPRINKLER.lower() for f in home_security):
         return _fact("building.sprinklered", True, evidence_id, 0.8)
     reason = ("not stated; the listing's 'Sprinkler System' is lawn irrigation, not fire protection"
               if lot_mentions else "not stated in the listing")

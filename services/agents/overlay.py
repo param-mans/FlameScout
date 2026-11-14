@@ -3,11 +3,14 @@
 The incident_mapper subagent decides WHAT was reported and WHERE on the plan, as ids. This module:
 
 - keeps the call transcript in the workspace (transcript.json), one span id per segment;
-- loads a building's plan index (data/raw/<id>/derived/plan_index.json; missing = no interior scan);
+- loads a building's plan index (data/raw/<id>/derived/plan_index.json, else the synthetic
+  data/fixtures/<id>/plan_index.json; missing = no interior scan);
+- resolves a spoken place to plan ids with Bruno's resolve_place.py (plan index v2 relations: next_to,
+  over / under, at_stairs, size_rank). One room only when exactly one matches, never a guess;
 - assembles an IncidentOverlay from the mapper's draft: version = brief version, reported_at from the
   spans, caller confidence capped, floor_reported mapped to a floor id only when the scan has that floor;
 - checks it: Bruno's validate_overlay.py, plus our rules (evidence is caller spans, contradictions are
-  candidates from different calls and never resolved, no room more precise than the words);
+  candidates from different calls and never resolved, every room id resolved by resolve_place);
 - diffs two versions into changes_since_last.
 """
 from __future__ import annotations
@@ -17,9 +20,9 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING, Iterable, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from flamescout_schemas import (CallSegment, Evidence, IncidentOverlay, OverlayBlocked, OverlayConsideration,
                                 OverlayContradiction, OverlayFire, OverlayHazard, OverlayObjective,
@@ -32,14 +35,23 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).resolve().parents[2]
 PLAN_INDEX_ROOT = ROOT / "data" / "raw"   # <building_id>/derived/plan_index.json, gitignored sponsor data
+FIXTURE_PLAN_ROOT = ROOT / "data" / "fixtures"  # <building_id>/plan_index.json, synthetic buildings
 TRANSCRIPT = "transcript.json"
 REPORTED_CAP = 0.6                        # a caller's report, as in fusion
 EMPTY_INDEX = {"floors": [], "rooms": {}, "openings": {}, "stairs": []}
 
-_spec = importlib.util.spec_from_file_location(
-    "validate_overlay", ROOT / "packages" / "schemas" / "overlay" / "validate_overlay.py")
-validate_overlay = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(validate_overlay)
+
+
+def _load(name: str):
+    """Bruno's stdlib modules in packages/schemas/overlay/ (the viewer's contract), used as they are."""
+    spec = importlib.util.spec_from_file_location(name, ROOT / "packages" / "schemas" / "overlay" / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+validate_overlay = _load("validate_overlay")
+resolve_place = _load("resolve_place")
 
 
 def overlay_rel(version: int) -> str:
@@ -99,12 +111,14 @@ def load_plan_index(building_id: Optional[str]) -> dict:
     """The building's plan index, or the empty one (no interior scan) when there is none or it is unreadable."""
     if not building_id or not re.fullmatch(r"[A-Za-z0-9_-]+", building_id):
         return dict(EMPTY_INDEX)
-    path = PLAN_INDEX_ROOT / building_id / "derived" / "plan_index.json"
-    try:
-        index = json.loads(path.read_text())
-    except (OSError, ValueError):
-        return dict(EMPTY_INDEX)
-    return {key: index.get(key, empty) for key, empty in EMPTY_INDEX.items()}
+    for path in (PLAN_INDEX_ROOT / building_id / "derived" / "plan_index.json",
+                 FIXTURE_PLAN_ROOT / building_id / "plan_index.json"):
+        try:
+            index = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        return {**index, **{key: index.get(key, empty) for key, empty in EMPTY_INDEX.items()}}
+    return dict(EMPTY_INDEX)
 
 
 def has_scan(index: dict) -> bool:
@@ -115,6 +129,46 @@ def floor_id_for(index: dict, floor_reported: Optional[int]) -> Optional[str]:
     """Floor n (ground = 1) -> its id, only when the scan covers it. The index lists floors bottom up."""
     floors = index.get("floors", [])
     return floors[floor_reported - 1] if floor_reported and 1 <= floor_reported <= len(floors) else None
+
+
+# ---------- resolving a spoken place ----------
+
+class PlaceQuery(BaseModel):
+    """What the incident mapper asks resolve_place: the caller's place, in the plan index's terms."""
+    about: str = Field(description='Who or what is placed, with the call, e.g. "two children (call 2)"')
+    evidence_ids: list[str] = Field(description="The caller span ids that give this place")
+    floor_reported: Optional[int] = Field(None, description="Floor number the caller gave (ground floor = 1)")
+    type: Optional[str] = Field(None, description="A room type from the plan index, e.g. bedroom, kitchen, office")
+    size: Optional[Literal["largest", "smallest"]] = Field(None, description='"the big bedroom" -> largest')
+    over: Optional[str] = Field(None, description='"the bedroom over the kitchen" -> kitchen (a room type or id)')
+    under: Optional[str] = Field(None, description='"the room under the loft" -> loft (a room type or id)')
+    next_to: Optional[str] = Field(None, description='"next to the bathroom" -> bathroom (a room type or id)')
+    at_stairs: Optional[bool] = Field(None, description='"by the stairs" -> true')
+
+
+def names_a_room(q: PlaceQuery) -> bool:
+    """The caller said something about a room, not only a floor ("upstairs" alone is a floor location)."""
+    return any(v is not None for v in (q.type, q.size, q.over, q.under, q.next_to, q.at_stairs))
+
+
+def resolve(index: dict, q: PlaceQuery) -> dict:
+    """resolve_place.py on this building's index: {status: resolved | ambiguous | none, ids, question, reason}."""
+    if not has_scan(index):
+        return {"status": "none", "ids": [], "question": None, "reason": "no interior scan on file"}
+    floor_id = None
+    if q.floor_reported is not None:
+        floor_id = floor_id_for(index, q.floor_reported)
+        if floor_id is None:
+            return {"status": "none", "ids": [], "question": None,
+                    "reason": f"the scan has no floor {q.floor_reported}"}
+    return resolve_place.resolve_place(index, floor_id=floor_id, type=q.type, size=q.size, over=q.over,
+                                       under=q.under, next_to=q.next_to, at_stairs=q.at_stairs)
+
+
+def place_label(q: PlaceQuery) -> str:
+    """The place as the dispatcher reads it: "bedroom on floor 1"."""
+    floor = f" on floor {q.floor_reported}" if q.floor_reported is not None else ""
+    return f"{q.type or 'room'}{floor}"
 
 
 # ---------- the mapper's draft ----------
@@ -190,43 +244,29 @@ def fallback(incident_id: str, model_id: str, version: int, reason: str) -> Inci
 
 # ---------- checks ----------
 
-# Words a caller uses for a room type (plan index "type" / "label"). Extra words only: the type's own
-# words always count.
-ROOM_WORDS = {
-    "bedroom": {"bedroom", "bedrooms"}, "bathroom": {"bathroom", "bath", "toilet", "restroom", "washroom"},
-    "kitchen": {"kitchen"}, "garage": {"garage"}, "living room": {"living", "lounge", "family room"},
-    "dining room": {"dining"}, "hallway": {"hall", "hallway", "corridor", "landing"},
-    "staircase": {"stairs", "stair", "staircase", "stairway", "stairwell"},
-    "entrance": {"entrance", "entry", "foyer", "front door"}, "office": {"office", "study"},
-    "laundry room": {"laundry", "utility room"}, "closet": {"closet"}, "basement": {"basement", "cellar"},
-    "attic": {"attic"},
-}
-_GENERIC = {"room", "other", "area", "space"}
-
-
-def _room_words(room: dict) -> set[str]:
-    words: set[str] = set()
-    for value in (room.get("type"), room.get("label")):
-        if value:
-            value = str(value).lower()
-            words |= ROOM_WORDS.get(value, set()) | ({value} if value not in _GENERIC else set())
-            words |= {w for w in re.findall(r"[a-z]+", value) if w not in _GENERIC and len(w) > 2}
-    return words
-
-
-def _mentions(text: str, words: set[str]) -> set[str]:
-    text = text.lower()
-    return {w for w in words if re.search(rf"(?<![a-z]){re.escape(w)}(?![a-z])", text)}
-
-
 def _locations(overlay: IncidentOverlay):
     for name in ("occupants", "fire", "hazards"):
         for e in getattr(overlay, name):
             yield name, e
 
 
-def check(overlay: IncidentOverlay, index: dict, spans: list[Span]) -> list[str]:
-    """Why this overlay cannot be published. Empty list = valid."""
+def room_refs(overlay: IncidentOverlay, index: dict) -> list[tuple[str, str]]:
+    """(entity id, room id) for every place in the overlay that names a plan room."""
+    rooms, out = index.get("rooms", {}), []
+    for _, e in _locations(overlay):
+        loc = e.location
+        if loc.kind == "room":
+            out.append((e.id, loc.room_id))
+        elif loc.kind == "anchor":
+            out.append((e.id, loc.anchor.room_id))
+    out += [(b.id, b.ref_id) for b in overlay.blocked if b.ref_id in rooms]
+    out += [(o.id, o.target.ref_id) for o in overlay.objectives if o.target.kind == "room"]
+    return out
+
+
+def check(overlay: IncidentOverlay, index: dict, spans: list[Span], resolved: Iterable[str]) -> list[str]:
+    """Why this overlay cannot be published. Empty list = valid. `resolved`: the room ids resolve_place
+    resolved for this version (plus those of the previous accepted version)."""
     data = json.loads(dump(overlay))
     errors = list(validate_overlay.validate(data, index))
     callers = {s.span_id: s for s in spans if s.speaker == "caller"}
@@ -265,24 +305,11 @@ def check(overlay: IncidentOverlay, index: dict, spans: list[Span]) -> list[str]
         if c.resolved_by_dispatcher:
             errors.append(f"contradiction {c.group_id}: only the dispatcher resolves it; keep resolved_by_dispatcher false")
 
-    rooms = index.get("rooms", {})
-    for kind, e in _locations(overlay):
-        loc = e.location
-        room_id = loc.room_id if loc.kind == "room" else (loc.anchor.room_id if loc.kind == "anchor" else None)
-        if room_id not in rooms:
-            continue  # unknown ids are reported by the validator
-        said = " ".join(callers[ev].text for ev in e.evidence_ids if ev in callers)
-        named = _mentions(said, _room_words(rooms[room_id]))
-        if not named:
-            errors.append(f"{e.id}: the cited words do not name a {rooms[room_id].get('type') or 'room'}; "
-                          f"use a floor or unknown location instead of {room_id}")
-            continue
-        floor = rooms[room_id].get("floor_id")
-        on_floor = [rid for rid, r in rooms.items() if r.get("floor_id") == floor and named & _room_words(r)]
-        if len(on_floor) > 1:
-            errors.append(f"{e.id}: the plan has {len(on_floor)} rooms that match '{sorted(named)[0]}' on that floor "
-                          f"({', '.join(sorted(on_floor))}) and the index cannot tell them apart; "
-                          "use a floor location and put the caller's words in note")
+    resolved, rooms = set(resolved), index.get("rooms", {})
+    for eid, room_id in room_refs(overlay, index):
+        if room_id in rooms and room_id not in resolved:  # unknown ids are reported by the validator
+            errors.append(f"{eid}: room {room_id} was not resolved by resolve_place; call resolve_place with the "
+                          "caller's place, or use a floor location (floor_reported) if it is ambiguous")
     return errors
 
 

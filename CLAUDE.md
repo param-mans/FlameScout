@@ -12,8 +12,8 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
   (`--cold` ignores prefetched building data). `S4B` is hero 23296 (9700 Tanner Rd, no interior scan, needs
   `data/raw/23296`); `S4Q` is the synthetic no-scan building: re-plan, and a
   low-confidence review that `--drop-low` answers by dropping instead of approving.
-  `S5` is Bruno's overlay story; copy `packages/schemas/overlay/plan_index.example.json` to
-  `data/raw/fake_cedar_house/derived/plan_index.json` first (gitignored) or its overlay is floor-level only.
+  `S5` is Bruno's overlay story on `fake_cedar_house` (synthetic v2 plan index in its fixtures);
+  `S6` is 9660 Fairdale Lane (hero 209217448, real scan; needs a v2 `data/raw/209217448/derived/plan_index.json`).
 - Prefetch a building's data layers for the next 24 h: `python scripts/prefetch.py fake_wilshire_tower`
 - Export JSON Schema for the frontend: `python scripts/export_schemas.py`
 - API: `uvicorn services.api.main:app --reload --port 8000` (docs at /docs, WS at /ws/incidents/{id})
@@ -47,7 +47,8 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - `services/agents/overlay.py` - incident overlay for the 3D viewer (`docs/INCIDENT_OVERLAY_SPEC.md`): transcript
   spans, plan index (`data/raw/<id>/derived/plan_index.json`, missing = no scan), assembly, checks (Bruno's
   `validate_overlay.py` + ours), version diff. The `incident_mapper` subagent submits; one `overlay_vN.json`
-  per brief version. No LLM in this module.
+  per brief version. Places resolve only through Bruno's `packages/schemas/overlay/resolve_place.py`
+  (mapper tool `resolve_place`); ambiguous -> floor level + a question in `copilot_questions.json`. No LLM in this module.
 - `services/agents/stalls.py` - 12 s client timeout on every orchestrator / subagent model call, one retry,
   each stall and retry logged with the agent name and counted in `RunResult`. `FailoverMiddleware`: a failed
   call goes once to the backup provider. A subagent that still fails gives up alone (the run goes on).
@@ -75,7 +76,7 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
   `data/fixtures/<building_id>/{costar,matterport,vexcel}.json`
   - per-layer fixtures, our own normalized fields only.
 - Incident workspace (MongoDB, or `workspace/<incident_id>/`): incident.json, candidates.json, copilot_questions.json, layers/*.json,
-  dossier.json, brief_vN.json, critique_vN.json, todos.json = the orchestrator's plan + status for the UI
+  dossier.json, brief_vN.json, critique_vN.json, overlay_vN.json, places_vN.json (resolve_place calls), todos.json = the orchestrator's plan + status for the UI
   progress strip, notes/*.md. This is the deepagent filesystem AND what the UI renders. Not committed.
 - `services/agents/{rules_dossier,rules_brief,critic,copilot}.py`, `services/agents/tools/` - the earlier
   plain-function pipeline used by `services/api/` (rules engine R-01..R-09 in `config/rules.yaml`, provider

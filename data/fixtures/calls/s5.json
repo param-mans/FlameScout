@@ -1,6 +1,6 @@
 {
   "script_id": "S5",
-  "description": "Two calls to a scanned two-storey house (fake_cedar_house), the story of Bruno's incident_overlay.example.json. Call 1: smoke in the kitchen, two children in the back bedroom. Call 2: flames at the back kitchen window, the children in the front bedroom, someone shouting upstairs, gas smell near the garage. Expect an occupant contradiction group and no room guessed for the bedrooms. The plan index for it is packages/schemas/overlay/plan_index.example.json, copied into data/raw/fake_cedar_house/derived/ (or a test's tmp root).",
+  "description": "Two calls to a scanned two-storey house (fake_cedar_house), the story of Bruno's incident_overlay.example.json. Call 1: smoke in the kitchen, two children in the back bedroom. Call 2: flames at the back kitchen window, the children in the front bedroom, someone shouting upstairs, gas smell near the garage. Expect an occupant contradiction group and no room guessed for the bedrooms. Its plan index is data/fixtures/fake_cedar_house/plan_index.json: Bruno's plan_index.example.json (v2), marked synthetic.",
   "segments": [
     {"call_id": "c1", "speaker": "call_taker", "text": "911, what's the address of your emergency?", "t_start": 0.0, "t_end": 2.0},
     {"call_id": "c1", "speaker": "caller", "text": "There's smoke coming out of the kitchen at 42 Cedar Drive.", "t_start": 12.0, "t_end": 20.5},

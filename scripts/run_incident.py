@@ -3,6 +3,7 @@
     python scripts/run_incident.py S2 [--cold] [--drop-low]
     python scripts/run_incident.py S4B           (9700 Tanner Rd, hero 23296 in data/raw: no interior scan)
     python scripts/run_incident.py S4Q           (synthetic building with no interior scan)
+    python scripts/run_incident.py S6            (9660 Fairdale Lane, hero 209217448: real scan, plan index v2)
 
   call 1 -> fusion -> start_incident   (agent plans, pauses for the dispatcher)
             simulated dispatcher picks the first candidate -> resume_incident -> brief_v1.json
@@ -63,6 +64,7 @@ eng = FusionEngine(f"inc_{script_id}")
 incident_id = eng.record.incident_id
 ws = incident_workspace(incident_id)
 db.reset_incident(incident_id)  # a re-run of the same script starts its Tiger rows over (timings are kept)
+ws.clear()  # and its workspace: start_incident keeps transcript.json, which would still hold the last run's calls
 
 
 def replay(call_id: str) -> list[str]:
@@ -132,8 +134,13 @@ def report(r: RunResult) -> bool:
                   f"(priority {o.priority})")
         for line in ov.changes_since_last:
             print(f"  change: {line}")
+        for p in json.loads(ws.read_or_none(f"places_v{ov.version}.json") or "[]"):
+            q, res = p["query"], p["result"]
+            asked = {k: v for k, v in q.items() if v is not None and k not in ("about", "evidence_ids")}
+            print(f"  resolve_place {q['about']} {asked} -> {res['status']} {res['ids']}")
     for q in copilot.read_questions(ws):
-        print(f"copilot question [{q.status}]: {q.question}")
+        rooms = f"  rooms {q.room_ids}" if q.room_ids else ""
+        print(f"copilot question [{q.status}]: {q.question}{rooms}")
     return (brief.published and len(brief.considerations) <= 5
             and all(c.title.startswith("Consider ") and c.evidence_ids
                     and all(e in brief.evidence for e in c.evidence_ids) for c in brief.considerations))

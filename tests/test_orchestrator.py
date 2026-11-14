@@ -259,6 +259,7 @@ class RuleModel(BaseChatModel):
     stall: Any                  # agent name -> how many of its next calls time out, shared
     overlays: Any = None        # the incident mapper's submissions, in order (each a draft dict)
     hang: Any = None            # agent name -> seconds its first call sits before answering (run deadline)
+    places: Any = ()            # the incident mapper's resolve_place queries, all in one turn
     tool_names: tuple = ()
 
     @property
@@ -308,7 +309,8 @@ class RuleModel(BaseChatModel):
         return calls(("submit_critique", {"verdict": "pass", "issues": []}))
 
     def _mapper(self, messages, asked: str, called: bool) -> AIMessage:
-        """Reads the transcript and the plan index in one turn, submits, and resubmits when rejected."""
+        """Reads the transcript and the plan index in one turn, resolves its places in the next (when the
+        building has a scan), submits, and resubmits when rejected."""
         if not called:
             self.seen.setdefault("mapper_tasks", []).append(asked)
             return calls(("get_transcript", {}), ("get_plan_index", {}))
@@ -316,6 +318,12 @@ class RuleModel(BaseChatModel):
         submitted = [m for m in results if m.name == "submit_overlay"]
         if submitted and not submitted[-1].text.startswith("Rejected"):
             return AIMessage(content="Done.")
+        resolved = [m.text for m in results if m.name == "resolve_place"]
+        index_text = next((m.text for m in results if m.name == "get_plan_index"), "")
+        if not submitted and not resolved and self.places and not index_text.startswith("NO INTERIOR SCAN"):
+            return calls(*(("resolve_place", {"place": p}) for p in self.places))
+        if resolved and not submitted:
+            self.seen.setdefault("places", []).append(resolved)
         if not submitted:
             self.seen["plan_index"] = next(m.text for m in results if m.name == "get_plan_index")
         else:
@@ -355,10 +363,10 @@ def task(subagent: str, ask: str = "") -> tuple[str, dict]:
     return "task", {"subagent_type": subagent, "description": f"Incident: do the {subagent} step. {ask}"}
 
 
-def fake_model(*main_turns, drafts=None, stall=None, overlays=None, hang=None) -> RuleModel:
+def fake_model(*main_turns, drafts=None, stall=None, overlays=None, hang=None, places=()) -> RuleModel:
     drafts = drafts or [[GOOD, SINGLE_LAYER], [{**GOOD, "title": "Consider Stair B (back stairs) from the alley"}]]
     return RuleModel(main_script=iter(main_turns), drafts=drafts, seen={}, stall=stall or {}, overlays=overlays or [],
-                     hang=hang or {})
+                     hang=hang or {}, places=places)
 
 
 START = [calls(todos("in_progress", *["pending"] * 6)),
@@ -866,6 +874,15 @@ def house(storage, cedar_plan_index):
     return inc
 
 
+# What the mapper resolves on the cedar plan: the kitchen and garage are unique, "the back bedroom upstairs"
+# is one of two bedrooms the index cannot tell apart ("back" is an orientation, and there is none).
+CEDAR_PLACES = (
+    {"about": "smoke (call 1)", "evidence_ids": ["c1:12.0-20.5"], "floor_reported": 1, "type": "kitchen"},
+    {"about": "two children (call 1)", "evidence_ids": ["c1:42.0-51.5"], "floor_reported": 2, "type": "bedroom"},
+    {"about": "gas smell (call 2)", "evidence_ids": ["c2:44.0-47.0"], "floor_reported": 1, "type": "garage"},
+)
+
+
 def overlay_file(inc, version: int) -> dict:
     return json.loads(inc.ws.read(f"overlay_v{version}.json"))
 
@@ -891,7 +908,7 @@ def test_mapper_places_both_calls_on_the_plan_one_overlay_per_brief_version(hous
     invented_room = mutated_overlay(OVERLAY_V1, lambda d: d["occupants"][0].update(
         location={"kind": "room", "room_id": "r99"}))
     model = fake_model(*HOUSE_START, *HOUSE_RESUME, *HOUSE_UPDATE,
-                       overlays=[invented_room, OVERLAY_V1, OVERLAY_V2],
+                       overlays=[invented_room, OVERLAY_V1, OVERLAY_V2], places=CEDAR_PLACES,
                        drafts=[[{**CHILDREN, "refs": ["occ-9"]}], [FRONT_DOOR, CHILDREN],
                                [{**FRONT_DOOR, "refs": ["occ-loc-1"]}, {**CHILDREN, "refs": ["occ-loc-1"]}]])
     published = []  # what on_overlay hands on, e.g. to the overlay.updated WebSocket event
@@ -921,6 +938,17 @@ def test_mapper_places_both_calls_on_the_plan_one_overlay_per_brief_version(hous
         1, "fixture-fake_cedar_house", [], v1.brief.version)
     assert first["occupants"][0]["location"] == {"kind": "floor", "floor_reported": 2, "floor_id": "f2"}
     assert first["fire"][0]["confidence"] == 0.6 and first["fire"][0]["location"] == {"kind": "room", "room_id": "r4"}
+
+    # Every place went through resolve_place: kitchen and garage resolved, the bedroom stays at floor level and
+    # the dispatcher gets the resolver's question.
+    assert [r.split(":")[0] for r in model.seen["places"][0]] == ["resolved", "ambiguous", "resolved"]
+    asked = [q for q in copilot.read_questions(house.ws) if q.reason == "ambiguous_place"]
+    assert [(q.question, q.room_ids, q.evidence_ids) for q in asked] == [
+        ("two children (call 1): which bedroom on floor 2? Over the kitchen or over the living room?",
+         ["r10", "r9"], ["c1:42.0-51.5"])]
+    places = {p["query"]["about"]: p["result"]["status"] for p in json.loads(house.ws.read("places_v1.json"))}
+    assert places == {"smoke (call 1)": "resolved", "two children (call 1)": "ambiguous",
+                      "gas smell (call 2)": "resolved"}  # in the order the parallel calls finished
 
     # The strategy's considerations point at overlay ids; a ref to nothing was refused.
     assert v1.brief.verifier_rejections == 1
@@ -1041,3 +1069,21 @@ def test_spent_budget_stops_redrafts_and_publishing(session, incident):
     assert tools["publish_brief"].invoke({}) == orchestrator.BUDGET_SPENT
     assert "Do not resubmit" in tools["submit_considerations"].invoke({"considerations": [GOOD]})
     assert stop.wrap_tool_call(Req("costar"), lambda r: "ran") == "ran"  # other subagents are not blocked
+
+
+def test_resolve_place_tool_floor_only_asks_nothing_and_ambiguous_asks_once(house):
+    s = Session(incident_id="inc_s5", ws=house.ws, candidates=orchestrator.find_candidates(house.eng.record))
+    tools = make_tools(s)
+    tools["confirm_building"].invoke({"candidates": [HOUSE], "chosen_building_id": HOUSE})
+    upstairs = {"about": "two children (call 1)", "evidence_ids": ["c1:42.0-51.5"], "floor_reported": 2}
+    assert tools["resolve_place"].invoke({"place": upstairs}).startswith("floor only")
+    bedroom = tools["resolve_place"].invoke({"place": {**upstairs, "type": "bedroom"}})
+    assert bedroom.startswith("ambiguous") and "over the kitchen or over the living room?" in bedroom
+    on_floor = {"occupants": [{"id": "occ-1", "count": 2, "location": {"kind": "floor", "floor_reported": 2},
+                               "status": "reported", "confidence": 0.5, "evidence_ids": ["c1:42.0-51.5"]}]}
+    in_r9 = mutated_overlay(on_floor, lambda d: d["occupants"][0].update(location={"kind": "room", "room_id": "r9"}))
+    assert "room r9 was not resolved by resolve_place" in tools["submit_overlay"].invoke({"overlay": in_r9})
+    assert copilot.read_questions(house.ws) == []  # nothing accepted yet: nothing asked
+    assert tools["submit_overlay"].invoke({"overlay": on_floor}).startswith("Accepted")
+    assert [q.question for q in copilot.read_questions(house.ws)] == [
+        "two children (call 1): which bedroom on floor 2? Over the kitchen or over the living room?"]

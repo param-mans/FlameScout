@@ -95,8 +95,10 @@ class CopilotSuggestion(BaseModel):
     incident_id: str
     field: str                           # fact key the question would fill
     question: str
-    reason: Literal["missing", "contradiction"] = "missing"
+    reason: Literal["missing", "contradiction", "ambiguous_place"] = "missing"
     status: Literal["open", "dismissed", "asked"] = "open"
+    room_ids: list[str] = Field(default_factory=list)      # ambiguous_place: the plan rooms that match
+    evidence_ids: list[str] = Field(default_factory=list)  # ambiguous_place: the caller spans it is about
 
 
 class CrewFeedback(BaseModel):
@@ -241,8 +243,7 @@ class Progress(BaseModel):
 # packages/schemas/overlay/validate_overlay.py; dump with model_dump(mode="json", exclude_none=True)
 # (a null floor_id is an invalid floor id to it).
 
-AnchorPosition = Literal["center", "near_door", "near_window", "near_stairs",
-                         "north_side", "south_side", "east_side", "west_side"]
+AnchorPosition = Literal["center", "near_door", "near_window", "near_stairs"]  # no orientation (plan index v2)
 
 
 class _OverlayModel(BaseModel):
@@ -339,8 +340,8 @@ class ObjectiveTarget(_OverlayModel):
 
     @model_validator(mode="after")
     def _ref(self) -> "ObjectiveTarget":
-        if self.floor_reported is not None and self.kind != "floor":
-            raise ValueError(f"target kind {self.kind!r} takes no floor_reported (only kind 'floor' does)")
+        if self.kind != "floor":
+            self.floor_reported = None  # redundant next to an occupant / group / room ref_id: dropped
         if not self.ref_id and not (self.kind == "floor" and self.floor_reported is not None):
             raise ValueError(f"target kind {self.kind!r} needs ref_id" +
                              (" or floor_reported" if self.kind == "floor" else ""))

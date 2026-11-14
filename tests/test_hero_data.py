@@ -4,6 +4,7 @@ Offline tests build small records with the real files' field names in a tmp data
 `real_data` tests read the sponsor data itself and are skipped where it is absent (CI, fresh clones).
 """
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -99,6 +100,9 @@ def test_residential_listing_is_mapped_to_our_facts(raw):
 
 @pytest.mark.parametrize("security, lot, claim", [
     (["Fire Sprinkler System"], [], True),
+    ([" fire sprinkler system "], [], True),
+    (["Sprinkler System"], [], None),                          # the irrigation name, even under Home Security
+    (["Fire Sprinklers Partial"], [], None),                   # anything but the exact name: no claim
     (["Security System Owned"], ["Sprinkler System"], None),   # lot irrigation: no claim
     ([], ["remarks"], None),                                   # a sprinkler system mentioned in the remarks
     ([], [], None),
@@ -196,6 +200,26 @@ def test_no_contradiction_when_one_side_is_missing(raw):
     assert [c.key for c in load_dossier(HOUSE).contradictions] == ["building.bathrooms"]
 
 
+@pytest.mark.parametrize("stories, floors, contradicted", [
+    (1.5, 2, False),   # a half storey under the roof is scanned as a second floor
+    (1.5, 1, True),
+    (1.5, 3, True),
+    (2, 2, False),
+    (3, 2, True),
+])
+def test_stories_vs_floors_scanned(raw, stories, floors, contradicted):
+    listing = json.loads((raw / HOUSE / "costar" / "listing.json").read_text())
+    listing["resoValues"]["structure"]["stories"] = stories
+    write(raw / HOUSE / "costar" / "listing.json", listing)
+    plan = json.loads((raw / HOUSE / "matterport" / "plan.json").read_text())
+    next(f for f in plan["facts"] if f["key"] == "building.floors_scanned")["value"] = floors
+    write(raw / HOUSE / "matterport" / "plan.json", plan)
+    found = [c for c in load_dossier(HOUSE).contradictions if c.key == "building.stories"]
+    assert bool(found) is contradicted
+    if found:
+        assert found[0].message == f"Listing: {stories:g} floors; scan: {floors}. Verify the number of floors."
+
+
 def test_lane_and_court_addresses_are_found(raw):
     eng = FusionEngine("inc_x")
     eng.ingest(CallSegment(call_id="c1", speaker="caller", text="Smoke at 18107 Test Oak Ln", t_start=0, t_end=1))
@@ -245,3 +269,33 @@ def test_coverage_metadata_cannot_make_a_consideration_cross_layer(raw):
     assert "ev_vx_ortho" not in observed_evidence(d)
     # only one layer with observations: the cross-layer rule cannot apply, so nothing is rejected for it
     assert check_considerations([roof], merge_evidence(record, d), observed=observed_evidence(d)) == []
+
+
+@pytest.mark.real_data
+@pytest.mark.skipif(not (REAL_RAW / "209217448" / "derived" / "plan_index.json").is_file(),
+                    reason="data/raw (sponsor data) not on this machine")
+def test_s6_fairdale_places_resolve_on_the_real_plan_index(monkeypatch):
+    from services.agents import overlay
+
+    monkeypatch.setattr(overlay, "PLAN_INDEX_ROOT", REAL_RAW)
+    index = overlay.load_plan_index("209217448")
+    if index.get("version") != 2:
+        pytest.skip("the local Fairdale plan index is v1 (no relations); regenerate it")
+    script = json.loads((Path(__file__).resolve().parents[1] / "data" / "fixtures" / "calls" / "s6.json").read_text())
+    ids = set(re.findall(r"\b(?=\w*\d)[a-z0-9]{11,25}\b", script["description"])) - {"209217448"}
+    assert ids and ids <= set(index["rooms"]) | set(index["floors"])  # the expected ids are real plan ids
+
+    def ask(**q):
+        return overlay.resolve(index, overlay.PlaceQuery(about="x", evidence_ids=[], **q))
+
+    assert ask(type="kitchen", floor_reported=1)["ids"] == ["j7nhq2abkp0"]
+    assert ask(type="office")["ids"] == ["rewssvxhpxq"]
+    assert ask(type="garage", floor_reported=1)["ids"] == ["tfsfsskzu72"]
+    downstairs = ask(type="bedroom", floor_reported=1)
+    assert (downstairs["status"], downstairs["ids"]) == (
+        "ambiguous", ["2qdmc5i9byxi79ry1pxdkqzea", "d3slsxy3zlg", "tt6gm2a0463x9wmnx7rn6gugc"])
+    assert ask(type="bedroom", floor_reported=2)["status"] == "none"  # upstairs has no bedroom
+
+    eng = FusionEngine("inc_s6")
+    eng.ingest(CallSegment(**script["segments"][1]))
+    assert find_candidates(eng.record)[0].building_id == "209217448"
