@@ -63,6 +63,16 @@ The viewer recomputes stairs and evacuation at load time with the same modules. 
 identifying data was removed: model id, address, coordinates, listing and agent data. Matterport
 element ids were replaced with short opaque ids (`f1`, `r1`, `w1`, `o1`).
 
+## Oblique views (Vexcel, local only)
+
+Under the 2D plan the viewer shows the Vexcel oblique aerial views (N / E / S / W = the direction the camera
+faces; the straight-down view is left out on purpose). The images are **never committed**: Vexcel's
+license and the anonymized samples (a photo of the real house reveals where it is) keep them out.
+They live in `local-imagery/<sample>/` (`oblique-<dir>.jpg` plus `meta.json` with capture date and
+copyright only), which its own `.gitignore` keeps out of git. On a fresh clone the section says
+"No oblique imagery for this sample". Note that `vite build` copies `public/` as-is, so a build made
+on a machine that has the images includes them.
+
 ## postMessage API
 
 Messages are accepted only from the same origin and only from `window.parent`. Outgoing messages

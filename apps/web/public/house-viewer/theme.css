@@ -174,3 +174,15 @@ html.tema-app label.fila, html.tema-app .ctl-fila { font-family: var(--fontUi); 
 html.tema-app #inspector h3 { font-family: var(--fontUi); letter-spacing: .06em; }
 html.tema-app input[type=checkbox], html.tema-app input[type=range] { accent-color: var(--accent); }
 html.tema-app :focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+
+/* Vistas oblicuas (Vexcel, solo locales) bajo el plano 2D */
+#oblicuas { flex: none; }
+#oblicuas-body { padding: 6px 8px 8px; }
+.obl-tabs { display: flex; align-items: center; gap: 4px; margin: 0 0 6px; }
+.obl-tabs .hint { margin-left: 4px; }
+.obl-tabs button:disabled { opacity: .35; cursor: default; }
+.obl-img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--bg0); border: 1px solid var(--border); }
+.obl-pie { margin-top: 4px; line-height: 1.5; }
+.obl-vacio { padding: 14px 8px; text-align: center; color: var(--textDim); border: 1px dashed var(--border); font-size: 11px; }
+html.embed.modo-2d #oblicuas, html.embed.modo-3d #oblicuas { display: none; }
+html.tema-app .obl-img { border-color: var(--border); }

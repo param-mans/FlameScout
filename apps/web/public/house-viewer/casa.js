@@ -889,6 +889,37 @@ function zoomPan2D() {
   cont.addEventListener('mouseleave', () => ponerHover(null))
 }
 
+// ---------------------------------------------------------------- vistas oblicuas (Vexcel) bajo el plano 2D
+// Solo las diagonales N/E/S/W (sin la vista cenital). Las imagenes son locales: local-imagery/<sample>/ esta fuera de git
+// (licencia y privacidad), asi que en un clon nuevo no hay imagenes y se muestra el aviso. Mismo origen, sin red externa.
+const OBL = { id: null, meta: null, dir: 'north', estado: '' }
+const OBL_DIRS = [['north', 'N'], ['east', 'E'], ['south', 'S'], ['west', 'W']]
+const OBL_ARCHIVO = /^oblique-(north|east|south|west)\.jpg$/
+async function cargarOblicuas(id) {
+  OBL.id = id; OBL.meta = null; OBL.estado = 'cargando'; pintarOblicuas()
+  try {
+    const r = await fetch('local-imagery/' + id + '/meta.json')
+    if (!r.ok) throw new Error()
+    const m = await r.json()
+    if (OBL.id !== id) return
+    const vistas = Object.fromEntries(OBL_DIRS.map(([d]) => [d, m && m.views && m.views[d]]).filter(([, v]) => v && OBL_ARCHIVO.test(v.file || '')))
+    if (!Object.keys(vistas).length) throw new Error()
+    OBL.meta = { ...m, views: vistas }; OBL.estado = 'ok'
+    if (!vistas[OBL.dir]) OBL.dir = Object.keys(vistas)[0]
+  } catch (e) { if (OBL.id === id) OBL.estado = 'nada' }
+  pintarOblicuas()
+}
+function pintarOblicuas() {
+  const el = $('oblicuas-body'); if (!el) return
+  if (OBL.estado === 'cargando') { el.innerHTML = '<div class="obl-vacio">Loading oblique views…</div>'; return }
+  if (OBL.estado !== 'ok') { el.innerHTML = '<div class="obl-vacio">No oblique imagery for this sample.<br><span class="hint">Local only: Vexcel images are not stored in the repository.</span></div>'; return }
+  const m = OBL.meta, v = m.views[OBL.dir], url = 'local-imagery/' + encodeURIComponent(OBL.id) + '/' + v.file
+  el.innerHTML = '<div class="obl-tabs fila-btn">' + OBL_DIRS.map(([d, t]) => `<button data-obl="${d}" class="${d === OBL.dir ? 'on' : ''}" ${m.views[d] ? '' : 'disabled title="no image"'}>${t}</button>`).join('') +
+    '<span class="hint">camera facing</span></div>' +
+    `<a href="${esc(url)}" target="_blank" rel="noopener"><img class="obl-img" src="${esc(url)}" alt="Oblique aerial view, camera facing ${esc(OBL.dir)}"></a>` +
+    `<div class="obl-pie hint">Capture ${esc(v.captureDate ? String(v.captureDate).slice(0, 10) : 'date unknown')} · ${esc(m.copyright || '© Vexcel Imaging')}<br>Aircraft photos at an angle, not street level. S = camera facing south (shows north-facing facades).</div>`
+}
+
 // ---------------------------------------------------------------- leyendas (la misma en 3D y 2D)
 function leyendaHTML(corta) {
   const it = (cls, estilo, t) => `<div class="it"><span class="sw ${cls}" style="${estilo}"></span>${t}</div>`
@@ -1045,6 +1076,7 @@ function eventos() {
   })
   $('tabla').addEventListener('click', (e) => { const tr = e.target.closest('tr.fila'); if (tr) seleccionar({ kind: tr.dataset.kind, id: tr.dataset.id, fi: Number(tr.dataset.fi) }) })
   $('inspector').addEventListener('click', (e) => { if (e.target.id === 'cerrar-insp') seleccionar(null) })
+  $('oblicuas-body').addEventListener('click', (e) => { const b = e.target.closest('[data-obl]'); if (b && !b.disabled) { OBL.dir = b.dataset.obl; pintarOblicuas() } })
   $('modelo').addEventListener('change', () => { history.replaceState(null, '', '?sample=' + encodeURIComponent($('modelo').value)); cargar($('modelo').value) })
   window.addEventListener('message', mensaje)
 }
@@ -1117,6 +1149,7 @@ async function cargar(id) {
   if (!okCasa) return fallo('This sample did not pass the house quality check')
   $('vista3d').style.opacity = 1; $('der').style.opacity = 1
   S.plan = plan
+  cargarOblicuas(id)
   S.f2d = primeraPlanta(plan); S.foco = 'all' // abre con todas las plantas; el 2D muestra la planta mas baja con habitaciones
   S.ev = evacuacion(plan); const t2 = performance.now()
   ;({ niv: S.niveles, est: S.nivelEst, alt: S.alturas } = calcularNiveles(plan))
