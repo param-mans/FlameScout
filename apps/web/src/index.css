@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+/* System font stacks: no hosted fonts, so the demo works offline. */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  /* Cool slate surfaces, hairline borders. Flat: no radius, no shadows. */
+  --color-bg: #0a0d11;
+  --color-panel: #10151b;
+  --color-panel-hi: #161c24;
+  --color-line: #222b36;
+  --color-line-hi: #364353;
+  --color-ink: #d3dbe6;
+  --color-dim: #7e8a9a;
+  --color-faint: #525d6b;
+  --color-accent: #4c90f0;
+
+  /* Color means status only. Always paired with a glyph shape + code text. */
+  --color-verified: #3fae6e;
+  --color-inferred: #4c90f0;
+  --color-reported: #d9a21b;
+  --color-unverified: #8d97a6;
+  --color-contradicted: #ec6a6e;
+}
+
+html, body, #root { height: 100%; }
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+button { cursor: pointer; }
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.label { font-size: 10px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--color-dim); font-weight: 600; }
+:focus-visible { outline: 1px solid var(--color-accent); outline-offset: -1px; }
