@@ -913,3 +913,49 @@ def test_mapper_on_a_building_without_a_scan_uses_floors_only(depot):
     garbled = tools["submit_overlay"].invoke({"overlay": {"fire": [{"id": "x"}]}})
     assert garbled.startswith("Rejected") and "(0 tries left)" in garbled  # a draft that does not parse counts
     assert tools["submit_overlay"].invoke({"overlay": on_floor}) == "Error: submission budget used up. Do not resubmit."
+
+
+def test_critic_cannot_call_an_existing_evidence_id_missing(session, incident):
+    tools = make_tools(session)
+    incident.confirm()
+    tools["submit_considerations"].invoke({"considerations": [GOOD]})
+    out = tools["submit_critique"].invoke({"verdict": "revise", "issues": [
+        "c1: rationale cites ev_scan_fp_1 but this evidence is not present in the brief"]})
+    assert out.startswith("Error: nothing recorded") and "ev_scan_fp_1 (matterport" in out
+    assert not session.ws.exists("critique_v1.json") and session.rejections == 0
+    out = tools["submit_critique"].invoke({"verdict": "revise", "issues": [  # a support issue is fine
+        "c1: ev_scan_fp_1 shows Stair B on floor 2, not that it discharges to the alley"]})
+    assert out == "Recorded verdict: revise."
+
+
+def test_critic_issues_must_say_what_is_wrong(session, incident):
+    tools = make_tools(session)
+    incident.confirm()
+    tools["submit_considerations"].invoke({"considerations": [GOOD]})
+    out = tools["submit_critique"].invoke({"verdict": "revise", "issues": ["c2"]})
+    assert out.startswith("Error: nothing recorded") and not session.ws.exists("critique_v1.json")
+
+
+def test_spent_budget_stops_redrafts_and_publishing(session, incident):
+    from langchain_core.messages import ToolMessage
+
+    tools = make_tools(session)
+    incident.confirm()
+    stop = orchestrator.BudgetStopMiddleware(session)
+
+    class Req:
+        def __init__(self, agent):
+            self.tool_call = {"name": "task", "id": "t1", "args": {"subagent_type": agent}}
+
+    ran = []
+    for _ in range(orchestrator.MAX_SUBMISSIONS):
+        assert stop.wrap_tool_call(Req("strategy"), lambda r: ran.append("strategy") or "ran") == "ran"
+        tools["submit_considerations"].invoke({"considerations": [GOOD]})
+        assert stop.wrap_tool_call(Req("critic"), lambda r: ran.append("critic") or "ran") == "ran"
+        tools["submit_critique"].invoke({"verdict": "revise", "issues": ["c1: Stair B is not shown on the scan."]})
+    assert ran == ["strategy", "critic"] * orchestrator.MAX_SUBMISSIONS  # the third draft is still critiqued
+    refused = stop.wrap_tool_call(Req("strategy"), lambda r: pytest.fail("strategy ran after the budget"))
+    assert isinstance(refused, ToolMessage) and refused.content == orchestrator.BUDGET_SPENT
+    assert tools["publish_brief"].invoke({}) == orchestrator.BUDGET_SPENT
+    assert "Do not resubmit" in tools["submit_considerations"].invoke({"considerations": [GOOD]})
+    assert stop.wrap_tool_call(Req("costar"), lambda r: "ran") == "ran"  # other subagents are not blocked

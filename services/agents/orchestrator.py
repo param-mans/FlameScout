@@ -58,6 +58,7 @@ See docs/agents-api.md.
 from __future__ import annotations
 
 import json
+import re
 import logging
 import os
 import threading
@@ -70,7 +71,8 @@ from typing import Any, Callable, Iterable, Literal, Optional, Sequence
 
 from deepagents import FilesystemPermission, create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
-from langchain.agents.middleware import TodoListMiddleware
+from langchain.agents.middleware import AgentMiddleware, TodoListMiddleware
+from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool, StructuredTool, tool
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
@@ -98,6 +100,9 @@ WORKSPACE = WORKSPACE_ROOT
 INCIDENT, DOSSIER, CANDIDATES, TODOS = "incident.json", "dossier.json", "candidates.json", "todos.json"
 MAX_SUBMISSIONS = 3  # per brief version: first draft + 2 regenerations (PRD FR-6)
 MAX_OVERLAY_SUBMISSIONS = 3  # per overlay version: first submission + 2 retries
+BUDGET_SPENT = ("Stop: the regeneration budget for this brief is used up and the critic did not pass the last "
+                "draft. Do not call strategy or critic again and do not publish: the considerations will be "
+                "withheld and the facts published. Finish your remaining todos and end your turn.")
 SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"  # mounted read-only at /skills/
 NOTE_HEADER = ("> Unverified agent notes, written by the {layer} subagent. Not checked against the data: "
                "the source of truth is layers/{layer}.json.\n\n")
@@ -296,12 +301,16 @@ Check every item in "considerations" against the brief's own "size_up", "markers
 "exposures", "gaps" and "evidence":
 - The wording is advisory ("Consider ..."), never an order.
 - Each cited evidence id supports the title and rationale: find the facts or markers that cite it.
+  Every cited id already exists in "evidence" (code checks that before the brief is written), so never
+  report an id as missing or not present; judge only whether what it says supports the consideration.
 - Nothing is stated that the brief does not contain. No invented numbers, locations or tenants.
 - Caller reports are described as reported, and a contradiction listed in "gaps" is not silently
   resolved in favour of one caller.
 - Nothing relies on a fact whose status is "unverified".
 - Where "cross_layer" is true, the pieces of evidence from different sources are about the same place
-  or route and fit together physically.
+  or route and fit together physically. Coming from different sources is what cross_layer means: never an
+  issue by itself.
+- Each issue names the consideration id and says in one sentence what is unsupported or wrong.
 verdict "pass" only if every consideration passes. Otherwise "revise", with one specific issue per
 problem that names the consideration id (c1, c2, ...). Do not ask for stylistic changes.
 
@@ -654,6 +663,8 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
             return f"Error: /workspace/{s.brief_rel} does not exist yet."
         if brief.published:
             return f"/workspace/{s.brief_rel} is already published."
+        if _budget_spent(s):
+            return BUDGET_SPENT
         if not critique or critique["verdict"] != "pass":
             return "Error: the critic has not passed this brief. Do not publish it."
         try:
@@ -690,7 +701,7 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
             considerations: At most 5, most important first. Each title starts with "Consider ".
         """
         if s.accepted >= MAX_SUBMISSIONS:
-            return "Error: regeneration budget used up. Do not resubmit."
+            return "Error: regeneration budget used up. Do not resubmit. " + BUDGET_SPENT
         if not _building_id(s):
             return "Error: the dispatcher has not confirmed a building yet."
         _ensure_dossier(s)
@@ -723,6 +734,13 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
             return f"Error: /workspace/{s.brief_rel} does not exist yet."
         if verdict == "revise" and not issues:
             return 'Error: "revise" needs at least one issue.'
+        if verdict == "revise" and (vague := [i for i in issues if not _specific_issue(i)]):
+            return (f"Error: nothing recorded. Each issue must name the consideration id and say what is wrong "
+                    f"in a sentence; these do not: {vague}. Call submit_critique again.")
+        if verdict == "revise" and (wrong := _missing_evidence_claims(issues, ws.read(s.brief_rel))):
+            return ("Error: nothing recorded. These evidence ids are in the brief's \"evidence\" (code checks "
+                    "every cited id exists): " + "; ".join(wrong) + ". Judge only whether each one supports "
+                    "its consideration, then call submit_critique again.")
         if verdict == "revise":
             s.rejections += len(issues)
         ws.write(s.critique_rel, json.dumps(
@@ -794,6 +812,55 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
     return {t.name: t for t in (confirm_building, write_copilot_question, publish_brief,
                                 *map(pull_tool, LAYERS), pull_vexcel_entries, submit_considerations,
                                 submit_critique, get_transcript, get_plan_index, submit_overlay)}
+
+
+def _budget_spent(s: Session) -> bool:
+    """All drafts for this version are used and the critic sent the last one back: nothing more to do."""
+    critique = _critique(s)
+    return s.accepted >= MAX_SUBMISSIONS and bool(critique) and critique["verdict"] == "revise"
+
+
+def _specific_issue(issue: str) -> bool:
+    """Names a consideration (c1, c2, ...) and says something about it, not just the id."""
+    return bool(re.search(r"\bc\d+\b", issue)) and len(re.sub(r"\bc\d+\b|[\W_]", "", issue)) >= 8
+
+
+class BudgetStopMiddleware(AgentMiddleware):
+    """Once the budget is spent (_budget_spent), the orchestrator's calls to the strategy or critic
+    subagent are answered with BUDGET_SPENT instead of run. Without this the agent kept delegating
+    redrafts that could only be refused until it hit the recursion limit."""
+
+    def __init__(self, s: Session):
+        super().__init__()
+        self.s = s
+
+    def wrap_tool_call(self, request, handler):
+        call = request.tool_call
+        if (call.get("name") == "task" and (call.get("args") or {}).get("subagent_type") in ("strategy", "critic")
+                and _budget_spent(self.s)):
+            log.warning("Budget spent for %s v%d: refused task(%s)", self.s.incident_id, self.s.version,
+                        call["args"]["subagent_type"])
+            return ToolMessage(content=BUDGET_SPENT, tool_call_id=call["id"], name="task")
+        return handler(request)
+
+
+_MISSING = re.compile(r"\b(not (present|found|listed|included|contained)|missing|absent|"
+                      r"does(n't| not) exist|not in (the )?(brief|evidence|size_up|markers))", re.I)
+
+
+def _missing_evidence_claims(issues: list[str], brief_json: str) -> list[str]:
+    """Critic issues that call an evidence id missing although the brief's evidence has it, as
+    "<id> (<source> <kind>)". Existence is checked in code; the critic judges support only."""
+    evidence = json.loads(brief_json).get("evidence", {})
+    wrong: list[str] = []
+    for issue in issues:
+        if not _MISSING.search(issue):
+            continue
+        for eid, ev in evidence.items():
+            if re.search(rf"\b{re.escape(eid)}\b", issue) and eid not in {w.split(" ")[0] for w in wrong}:
+                ev = ev if isinstance(ev, dict) else {}
+                wrong.append(f"{eid} ({ev.get('source', '?')} {ev.get('kind', 'evidence')})")
+    return wrong
 
 
 # ---------- agent ----------
@@ -907,7 +974,7 @@ def build_orchestrator(s: Session, model: Any = None, checkpointer: Any = None):
         tools=[tools["confirm_building"], tools["write_copilot_question"], tools["publish_brief"]],
         system_prompt=ORCHESTRATOR_PROMPT,
         middleware=[TodoListMiddleware(),  # write_todos is opt-in in deepagents 0.7
-                    *m.middleware("orchestrator", m.main_backup)],
+                    *m.middleware("orchestrator", m.main_backup), BudgetStopMiddleware(s)],
         subagents=subagents,
         # Only /workspace/ is persistent (MongoDB or disk); offloaded tool results etc. stay in ephemeral state.
         backend=CompositeBackend(default=StateBackend(), routes={
