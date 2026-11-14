@@ -85,7 +85,7 @@ On the server, from `/opt/flamescout`:
 ```bash
 docker compose logs -f api        # API and agent logs
 docker compose logs -f web        # Caddy (certificates, proxy errors)
-docker compose restart api        # after editing .env on the server
+docker compose up -d              # after editing .env (restart does NOT reload .env)
 docker compose ps                 # status and health
 docker system prune -f            # reclaim disk after many rebuilds
 ```
