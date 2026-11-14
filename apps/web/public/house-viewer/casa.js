@@ -581,14 +581,14 @@ function aplicarPlantas() {
 }
 
 // Rotulos. Calmado: solo planta enfocada, 70 %, con colisiones (gana la sala mas grande; la oculta sale al pasar el raton).
-// ALL: sin rotulos de habitacion. Detalle: en todas las plantas, sin ocultar.
+// ALL: rotulos de todas las plantas, con colisiones. Detalle: en todas las plantas, sin ocultar.
 const _v = new THREE.Vector3(), _w = new THREE.Vector3()
 function rotulos() {
   const w = renderer.domElement.clientWidth, h = renderer.domElement.clientHeight, cajas = [], cand = []
   P.forEach((F) => F.labels.forEach((sp) => {
     const { room } = sp.userData
     let ok = S.capas.labels && visibleSala(room) && !!sp.material.map
-    ok = ok && (S.detalle ? F.cur.v.slab > 0.5 : enfocada(F.fi))
+    ok = ok && (S.detalle || S.foco === 'all' ? F.cur.v.slab > 0.5 : enfocada(F.fi)) // ALL: rotulos de todas las plantas, con colisiones
     if (ok) cand.push(sp); else { sp.visible = false; sp.material.opacity = 0; sp.userData.oculto = false }
   }))
   cand.sort((a, b) => b.userData.area - a.userData.area)
@@ -1117,7 +1117,7 @@ async function cargar(id) {
   if (!okCasa) return fallo('This sample did not pass the house quality check')
   $('vista3d').style.opacity = 1; $('der').style.opacity = 1
   S.plan = plan
-  S.foco = primeraPlanta(plan); S.f2d = S.foco // abre enfocada en la planta mas baja con habitaciones
+  S.f2d = primeraPlanta(plan); S.foco = 'all' // abre con todas las plantas; el 2D muestra la planta mas baja con habitaciones
   S.ev = evacuacion(plan); const t2 = performance.now()
   ;({ niv: S.niveles, est: S.nivelEst, alt: S.alturas } = calcularNiveles(plan))
   S.tipos = new Set(plan.floors.flatMap((f) => salasDe(f).map(tipoKey)))
