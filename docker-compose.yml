@@ -1,0 +1,35 @@
+# FlameScout on one host (Vultr Cloud Compute). See docs/deploy-vultr.md.
+#   docker compose up -d --build
+# Databases stay managed: Postgres on Tiger Data (TIGER_DATABASE_URL), workspace on MongoDB Atlas (MONGODB_URI).
+services:
+  api:
+    build: .
+    env_file: .env                         # read at runtime, never baked into the image
+    volumes:
+      - ./workspace:/app/workspace          # FileWorkspace when MongoDB is off
+      - ./data/cache:/app/data/cache       # 24 h prefetch cache when MongoDB is off
+      - ./data/costar:/app/data/costar:ro  # licensed CoStar index, copied to the server by hand
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data                   # TLS certificates; keep across rebuilds
+      - caddy_config:/config
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

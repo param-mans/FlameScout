@@ -1,0 +1,17 @@
+# One origin for UI + API, so the browser needs no CORS and the WebSocket is same-origin wss://.
+# SITE_ADDRESS: a domain (e.g. flamescout.example.com, or <ip-with-dashes>.sslip.io) -> automatic HTTPS;
+# ":80" -> plain HTTP (local testing).
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	@backend path /api/* /ws/* /health /docs /docs/* /openapi.json /redoc
+	handle @backend {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
