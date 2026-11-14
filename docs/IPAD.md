@@ -31,6 +31,8 @@ npm run dev                                   # in another terminal
 node scripts/ipad-webkit.mjs                  # add --shots ../../docs/capturas/ui to save screenshots
 ```
 
+Screenshots are not included in the repository (`docs/capturas/` stays local).
+
 The script opens Fairdale (`?sample=209217448&debug=1`) at 1180x820, 1366x1024, 1080x810 and 1024x768 in landscape,
 and at 820x1180 and 810x1080 in portrait. In landscape it taps through these steps:
 
