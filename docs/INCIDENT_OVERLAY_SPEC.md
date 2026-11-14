@@ -109,6 +109,29 @@ Colors are the only saturated colors in the scene. Always paired with an icon an
 Not drawn: fire spread, smoke movement, any occupant that nobody reported.
 No simulation, no inference of people from room types.
 
+## Plan index v2: size and spatial relations (no orientation)
+
+The plan has no orientation: no north, no street side, no front/back/left/right. Rooms are described by size and by
+relations between rooms, computed once in the plan enrichment (`apps/web/server/plan-extras.mjs`), stored in
+`plan.json`, and copied, never recomputed, by `scripts/make_plan_index.py` and the viewer's `incident/plan-index.js`.
+A test checks that the two indexes are identical. The index has `"version": 2`. Each room that is not Void has:
+
+| Field | Meaning |
+|---|---|
+| `area_m2` | Room area from the API (m²) |
+| `size_rank` | Rank by area among rooms of the same type on its floor. 1 is the largest; areas within 5 % of the first room of a rank share that rank (competition ranking). |
+| `size_of` | Number of rooms of that type on that floor |
+| `next_to` | Rooms on the same floor that share a wall of at least 0.5 m: the outline is sampled every 0.25 m with a 0.3 m tolerance, and the shared length is averaged from both sides. The relation is mutual. |
+| `over` | Rooms on the floor directly below whose overlap is at least 30 % of the smaller room's area. Overlap is sampled at the centres of a 0.5 m grid and works for non-convex outlines. |
+| `under` | The inverse of `over`. Both are computed once per pair, so they are always symmetric. |
+| `at_stairs` | Shares a wall or an opening with a Staircase room on its floor. Absent on Staircase rooms. |
+
+Rooms whose `polygonQuality` is not `ok` get empty lists and `at_stairs: false`, and they never appear in other rooms'
+lists. Relations do not change when the house is turned 90, 180 or 270 degrees; a test checks this.
+`packages/schemas/overlay/resolve_place.py` resolves a spoken place to one room only when exactly one room matches.
+Otherwise it returns the candidates and a clarifying question, and the location stays at floor level. See
+`plan_index.example.json` for the format.
+
 ## Buildings without a scan
 
 If there is no interior scan, the plan index is empty (`incident_overlay.noscan.example.json` and
