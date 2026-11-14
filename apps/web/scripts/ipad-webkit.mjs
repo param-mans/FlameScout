@@ -3,7 +3,8 @@
 //   npm run dev   (in another terminal)
 //   node scripts/ipad-webkit.mjs [--base http://localhost:5173] [--shots ../../docs/capturas/ui]
 // For each landscape size: choose a floor, open LAYERS, tap a room, "Show on plan", switch the Vexcel tab and, with
-// ?debug=1, switch the incident scenario. Every visible interactive element must be at least 44 x 44 px; no horizontal
+// ?debug=1, switch the incident scenario (S4 v1, then v2) and open and close the incident banner (48 px at most when
+// closed, closed by default at 1180 px and below). Every visible interactive element must be at least 44 x 44 px; no horizontal
 // page scroll (also in portrait); no console errors. Exit code 1 on any failure.
 import { webkit } from "playwright";
 import fs from "node:fs";
@@ -69,7 +70,16 @@ for (const [name, w, h] of [...LANDSCAPE, ...PORTRAIT]) {
       step = "debug scenario"; await v.locator("#inc-debug [data-tog]").tap(); await page.waitForTimeout(200);
       await v.locator('[data-esc="S4"]').tap(); await page.waitForTimeout(1200);
       if (!/Smoke|Fire/.test(await page.locator(".hv-card").first().innerText())) fail("debug scenario S4 did not reach the incident card");
+      await v.locator('#inc-debug [data-next]').tap(); await page.waitForTimeout(1200); // S4 v2
       await v.locator("#inc-debug [data-tog]").tap(); await page.waitForTimeout(200); // collapse the debug bar again
+      step = "incident banner";
+      const banH = async () => (await v.locator("#inc-banner").boundingBox()).height;
+      if (!(await v.locator('#inc-banner [data-incv="2"].on').count())) fail("incident banner does not show v2 as current");
+      if (w <= 1180 && (await banH()) > 48) fail(`incident banner is ${Math.round(await banH())} px tall by default (max 48)`);
+      await v.locator("#inc-banner [data-inctog]").tap(); await page.waitForTimeout(200);
+      const openH = await banH(); await measure("banner open");
+      await v.locator("#inc-banner [data-inctog]").tap(); await page.waitForTimeout(200);
+      if (w <= 1180 && !(openH > 48 && (await banH()) <= 48)) fail("incident banner does not open and close on tap");
     } catch (e) { fail(`interaction (${step}): ${String(e).split("\n")[0]}`); }
   }
   await measure("final");

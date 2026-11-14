@@ -14,6 +14,9 @@ and no other syntax newer than Safari 16.
 - Performance: on touch devices the glow effect is off by default. The 3D pixel ratio is capped at 2. If the 3D view
   runs below 30 fps for about 2 s, glow, point markers and heavy transparency are turned off, and the HUD shows
   "REDUCED EFFECTS".
+- The incident banner is one line (INCIDENT, version, number of items, version buttons) at most 48 px tall. Tap
+  it to open the details. At 1180 px and below it starts closed so it does not cover the 3D view; the choice is kept
+  when a new version arrives.
 - With `?debug=1`, the scenario bar is collapsed into a **DEBUG** toggle so it does not cover the plan.
 
 ## Testing with WebKit (Safari's engine) on a Mac
@@ -69,7 +72,5 @@ without Safari's bars, and the layout keeps clear of the status bar and home ind
 
 ## Known limits
 
-- The incident banner sits over the top left of the 3D view and hides part of it on iPad-sized screens (it scrolls
-  inside itself). The 2D plan below is not covered.
 - Below 1040 px in landscape, the size-up column is narrow and long values wrap onto several lines.
 - The fps check runs once, about 2 s after load. Effects are not turned back on if the device later speeds up.
