@@ -9,6 +9,7 @@ dependencies = [
   "deepagents",
   "langchain-google-genai",
   "langchain-openai",
+  "langchain-xai",
   "langsmith",
   "python-dotenv",
   "pyyaml",

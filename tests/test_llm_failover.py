@@ -122,3 +122,13 @@ def test_models_without_a_second_provider_or_with_a_test_model(two_providers):
     m = _Models(StallCounter(), fake)
     assert m.main is m.critic is fake and m.critic_provider is None
 
+
+def test_xai_as_critic_and_failover(two_providers):
+    from services.agents.orchestrator import _Models
+
+    for k, v in {"XAI_API_KEY": "x-key", "XAI_FAST_MODEL": "grok-test",
+                 "LLM_FALLBACK_PROVIDER": "xai", "CRITIC_PROVIDER": "xai"}.items():
+        two_providers.setenv(k, v)
+    m = _Models(StallCounter())
+    assert type(m.critic).__name__ == type(m.main_backup).__name__ == "ChatXAI"
+    assert m.critic.model_name == "grok-test" and type(m.main).__name__ == "ChatGoogleGenerativeAI"

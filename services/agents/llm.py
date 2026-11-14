@@ -1,4 +1,5 @@
-"""Chat models for every LLM call: Gemini (langchain-google-genai) or OpenAI (langchain-openai).
+"""Chat models for every LLM call: Gemini (langchain-google-genai), OpenAI (langchain-openai) or
+xAI Grok (langchain-xai).
 Model IDs come from env, never hard-coded.
 
     LLM_PROVIDER=gemini (default)  GEMINI_API_KEY, GEMINI_FAST_MODEL (extraction/copilot/agents),
@@ -6,11 +7,12 @@ Model IDs come from env, never hard-coded.
     LLM_PROVIDER=openai            OPENAI_API_KEY, OPENAI_FAST_MODEL, OPENAI_VISION_MODEL,
                                    OPENAI_REASONING_EFFORT (optional; only for reasoning models),
                                    OPENAI_BASE_URL (optional; any OpenAI-compatible endpoint)
+    LLM_PROVIDER=xai               XAI_API_KEY, XAI_FAST_MODEL, XAI_VISION_MODEL
 
 Two providers at once (both optional, each needs its own key + model IDs above):
-    LLM_FALLBACK_PROVIDER=openai   failover: a call that fails on LLM_PROVIDER (quota, outage, timeout,
+    LLM_FALLBACK_PROVIDER=xai      failover: a call that fails on LLM_PROVIDER (quota, outage, timeout,
                                    schema error) is retried once on this provider.
-    CRITIC_PROVIDER=openai         the orchestrator's critic runs on this provider, so the brief is checked
+    CRITIC_PROVIDER=xai            the orchestrator's critic runs on this provider, so the brief is checked
                                    by a different model than the one that drafted it (default: LLM_PROVIDER).
 
 `structured()` = with_structured_output(schema) + retry on schema/validation
@@ -32,7 +34,7 @@ Kind = Literal["fast", "vision"]
 Thinking = Literal["low", "none", "default"]
 
 
-PROVIDERS = ("gemini", "openai")
+PROVIDERS = ("gemini", "openai", "xai")
 
 
 def _check(var: str, p: str) -> str:
@@ -96,11 +98,16 @@ def make_chat(kind: Kind = "fast", *, timeout: float = 20, max_retries: int = 1,
     configured.
 
     thinking: Gemini's thinking level ("low" = thinking_level low, "none" = thinking_budget 0).
-    OpenAI ignores it and uses OPENAI_REASONING_EFFORT when set (reasoning models only).
+    OpenAI ignores it and uses OPENAI_REASONING_EFFORT when set (reasoning models only); xAI ignores it.
     """
     prov = prov or provider()
     key, model = _env(kind, prov)
     extra: dict[str, Any] = {} if temperature is None else {"temperature": temperature}
+    if prov == "xai":
+        from langchain_xai import ChatXAI
+
+        return ChatXAI(model=os.environ[model], api_key=os.environ[key],
+                       timeout=timeout, max_retries=max_retries, **extra)
     if prov == "openai":
         from langchain_openai import ChatOpenAI
 
