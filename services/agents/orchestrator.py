@@ -78,6 +78,7 @@ from .brief import (ConsiderationDraft, build_brief, check_considerations, low_c
                     merge_evidence, publish, rejected_count)
 from .dossier import LAYERS, Layer, LayerData
 from .locator import find_candidates
+from .stalls import MODEL_TIMEOUT_S, StallCounter, StallRetryMiddleware
 from .workspace import WORKSPACE_ROOT, Workspace, incident_workspace
 
 log = logging.getLogger(__name__)
@@ -262,6 +263,8 @@ class RunResult:
     seconds: float                       # wall clock of this call
     trace_run_id: Optional[str]          # LangSmith run id of this call, None when tracing is off
     needs_review: list[str] = field(default_factory=list)  # low-confidence consideration ids (awaiting_approval)
+    model_stalls: int = 0                # model calls in this call that hit the 12 s timeout
+    model_retries: int = 0               # retries made in this call (each stall is retried once)
 
 
 @dataclass
@@ -285,6 +288,8 @@ class Session:
     prefetched_at: Optional[datetime] = None   # set when the layers came from the cache
     publish: bool = True                       # write todos.json / call on_todos (off for prefetch)
     layer_tasks: dict = field(default_factory=dict)  # task tool_call_id -> layer, to save its reply
+    stalls: StallCounter = field(default_factory=StallCounter)  # model timeouts and retries, all agents
+    leg_stalls: tuple[int, int] = (0, 0)       # (stalls, retries) of the leg that just ran
     start_seconds: float = 0.0                 # start_incident's wall clock, for time-to-brief
 
     @staticmethod
@@ -603,13 +608,17 @@ def _model(thinking: bool = True):
     # switch: in an 8-call A/B on the layer-note turn the model still reasoned in 6 of 8 calls
     # (3 of 8 at "low"). There is no setting that reliably turns thinking off on this model.
     effort = {"thinking_level": "low"} if thinking else {"thinking_budget": 0}
+    # A call that has not answered in MODEL_TIMEOUT_S is cut off; max_retries=1 means one attempt in
+    # the SDK, so the only retry is StallRetryMiddleware's, which logs it with the agent's name.
     return ChatGoogleGenerativeAI(model=os.environ["GEMINI_FAST_MODEL"],
-                                  google_api_key=os.environ["GEMINI_API_KEY"], **effort)
+                                  google_api_key=os.environ["GEMINI_API_KEY"],
+                                  timeout=MODEL_TIMEOUT_S, max_retries=1, **effort)
 
 
-def _layer_subagents(tools: dict[str, BaseTool], quick: Any) -> list[dict]:
+def _layer_subagents(tools: dict[str, BaseTool], quick: Any, stalls: StallCounter) -> list[dict]:
     """The costar / matterport / vexcel subagents: one pull, one short summary. Two model calls each."""
     return [{"name": layer,
+             "middleware": [StallRetryMiddleware(layer, stalls)],
              "description": f"Pulls {LAYERS_INFO[layer][0]} for the building and returns a short summary. "
                             "Independent of the other data layers.",
              "system_prompt": LAYER_PROMPT.format(layer=layer, what=LAYERS_INFO[layer][0],
@@ -624,7 +633,8 @@ def build_prefetcher(s: Session, model: Any = None):
     return create_deep_agent(
         model=model or _model(),
         system_prompt=PREFETCH_PROMPT,
-        subagents=_layer_subagents(make_tools(s), model or _model(thinking=False)),
+        middleware=[StallRetryMiddleware("prefetch", s.stalls)],
+        subagents=_layer_subagents(make_tools(s), model or _model(thinking=False), s.stalls),
         name="flamescout-prefetch",
     )
 
@@ -635,8 +645,9 @@ def build_orchestrator(s: Session, model: Any = None, checkpointer: Any = None):
     # a turn sometimes spent 1000+ reasoning tokens (13 s).
     quick = model or _model(thinking=False)
     subagents = [
-        *_layer_subagents(tools, quick),
+        *_layer_subagents(tools, quick, s.stalls),
         {"name": "strategy",
+         "middleware": [StallRetryMiddleware("strategy", s.stalls)],
          "description": "Drafts up to 5 advisory considerations from incident.json and dossier.json and "
                         "writes the brief for the version it is told. Can revise given critic issues.",
          "system_prompt": STRATEGY_PROMPT, "tools": [tools["submit_considerations"]],
@@ -644,6 +655,7 @@ def build_orchestrator(s: Session, model: Any = None, checkpointer: Any = None):
          # it needs (occupancy-hazards, size-up-format) with read_file.
          "skills": ["/skills/"]},
         {"name": "critic",
+         "middleware": [StallRetryMiddleware("critic", s.stalls)],
          "description": "Checks a brief file (advisory wording, evidence support; returns pass or revise) "
                         "and, when asked, the layer notes against the layer JSON.",
          "system_prompt": CRITIC_PROMPT, "tools": [tools["submit_critique"]], "model": quick},
@@ -652,7 +664,8 @@ def build_orchestrator(s: Session, model: Any = None, checkpointer: Any = None):
         model=model or _model(),
         tools=[tools["confirm_building"], tools["write_copilot_question"], tools["publish_brief"]],
         system_prompt=ORCHESTRATOR_PROMPT,
-        middleware=[TodoListMiddleware()],  # write_todos is opt-in in deepagents 0.7
+        middleware=[TodoListMiddleware(),  # write_todos is opt-in in deepagents 0.7
+                    StallRetryMiddleware("orchestrator", s.stalls)],
         subagents=subagents,
         # Only /workspace/ is persistent (MongoDB or disk); offloaded tool results etc. stay in ephemeral state.
         backend=CompositeBackend(default=StateBackend(), routes={
@@ -739,6 +752,7 @@ def _run(s: Session, agent_input: Any, phase: str, t0: float) -> None:
     run_id = uuid.uuid4()
     s.trace_run_id = str(run_id) if _enable_tracing() else None
     s.error = None
+    stalls_before, retries_before = s.stalls.snapshot()
     _publish(s, "running")
     try:
         if s.agent is None:
@@ -762,6 +776,8 @@ def _run(s: Session, agent_input: Any, phase: str, t0: float) -> None:
     except Exception as e:  # the crew still gets the facts
         log.exception("Orchestrator %s failed for %s", phase, s.incident_id)
         s.error = f"the orchestrator run failed ({type(e).__name__})"
+    stalls_after, retries_after = s.stalls.snapshot()
+    s.leg_stalls = (stalls_after - stalls_before, retries_after - retries_before)
 
 
 def _result(s: Session, t0: float, phase: str, brief: Optional[Brief] = None, critique: Optional[dict] = None,
@@ -772,7 +788,8 @@ def _result(s: Session, t0: float, phase: str, brief: Optional[Brief] = None, cr
     if s.publish:
         _save_state(s)
         detail: dict[str, Any] = {"status": s.status, "version": s.version, "error": s.error,
-                                  "trace_run_id": s.trace_run_id}
+                                  "trace_run_id": s.trace_run_id, "model_stalls": s.leg_stalls[0],
+                                  "model_retries": s.leg_stalls[1]}
         if brief is not None:
             detail |= {"considerations": len(brief.considerations), "fallback": fallback_reason is not None,
                        "prefetched": s.prefetched_at is not None, "published": published}
@@ -785,10 +802,11 @@ def _result(s: Session, t0: float, phase: str, brief: Optional[Brief] = None, cr
                 s.start_seconds += seconds  # awaiting approval: the review leg completes the count
         db.log_event(s.incident_id, phase, seconds, **detail)
     needs_review = [c.id for c in low_confidence(brief)] if brief and s.status == "awaiting_approval" else []
+    (stalls, retries), s.leg_stalls = s.leg_stalls, (0, 0)  # a later call that runs no agent reports none
     return RunResult(incident_id=s.incident_id, status=s.status, version=s.version, brief=brief,
                      candidates=s.candidates, todos=s.todos, critique=critique,
                      fallback_reason=fallback_reason, seconds=seconds, trace_run_id=s.trace_run_id,
-                     needs_review=needs_review)
+                     needs_review=needs_review, model_stalls=stalls, model_retries=retries)
 
 
 def _finish_brief(s: Session, t0: float, phase: str) -> RunResult:

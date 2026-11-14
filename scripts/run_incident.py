@@ -80,6 +80,7 @@ def show_todos(p: Progress) -> None:  # where the API would push to the UI's pro
 
 
 review_seconds: dict[int, float] = {}
+legs: list[RunResult] = []  # every orchestrator call, for the stall count
 
 
 def reviewed(r: RunResult) -> RunResult:
@@ -93,6 +94,7 @@ def reviewed(r: RunResult) -> RunResult:
     drop = r.needs_review if args.drop_low else []
     print("dispatcher " + (f"drops: {', '.join(drop)}" if drop else "approves them") + "\n")
     done = review_brief(incident_id, drop=drop)
+    legs.append(done)
     review_seconds[done.version] = done.seconds
     return done
 
@@ -131,6 +133,7 @@ choice = started.candidates[0].building_id
 eng.confirm(choice)
 print(f"dispatcher confirms: {choice}\n")
 resumed = resume_incident(incident_id, choice)
+legs += [started, resumed]
 v1 = reviewed(resumed)
 ok = report(v1)
 warm = v1.brief.freshness["prefetched"]
@@ -146,6 +149,7 @@ for call_id in call_ids[1:]:
     if not notes:
         continue
     updated = update_incident(incident_id, notes)
+    legs.append(updated)
     update = reviewed(updated)
     ok = report(update) and ok
     held = (f" + {review_seconds[update.version]:.1f} s after the dispatcher's review"
@@ -155,6 +159,8 @@ for call_id in call_ids[1:]:
 flush_traces()
 print(f"\nworkspace {ws.location}:", *ws.list(), sep="\n  ")
 print("\nwall clock:", *timings, sep="\n  ")
+print(f"model stalls (no answer in 12 s): {sum(r.model_stalls for r in legs)}, "
+      f"retries: {sum(r.model_retries for r in legs)}")
 print("LangSmith thread:", incident_id if v1.trace_run_id else "tracing off")
 if db.enabled():
     print("Tiger time-to-brief (all runs):", db.time_to_brief_stats())

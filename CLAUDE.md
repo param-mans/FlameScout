@@ -37,6 +37,8 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - `services/agents/locator.py` - candidate buildings for an incident via the CoStar adapter. No LLM.
 - `services/agents/brief.py` - deterministic Brief assembly, consideration checks (incl. at least one
   cross-layer consideration), `changes_since_last` diff. No LLM.
+- `services/agents/stalls.py` - 12 s client timeout on every orchestrator / subagent model call, one retry,
+  each stall and retry logged with the agent name and counted in `RunResult`.
 - `services/agents/copilot.py` - also holds the orchestrator's dispatcher questions for life-safety
   contradictions (`copilot_questions.json` in the incident workspace; `copilot.json` is the API's status map).
 - `skills/<name>/SKILL.md` - deepagents skills the strategy subagent loads on demand (mounted read-only at

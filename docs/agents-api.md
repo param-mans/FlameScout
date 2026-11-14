@@ -96,8 +96,8 @@ The dispatcher's answer. Maps to `POST /api/incidents/{id}/confirm-location`.
   - `brief_v1.json`, `critique_v1.json`, `notes/strategy_reasoning.md`
   - `copilot_questions.json` if callers contradict each other on the floor or on trapped occupants (see below)
   - `todos.json`: ends with `status="done"`, or `"awaiting_approval"`
-- Takes roughly 35-40 s cold, less when the building was prefetched; 50-70 s for a building with no
-  interior scan (one extra planning step). Single model calls occasionally stall for 20-45 s.
+- Takes roughly 35-40 s cold, 25-30 s when the building was prefetched, 40-50 s for a building with
+  no interior scan (one extra planning step). A stalled model call adds up to about 12 s before its retry.
 
 The plan in `todos.json` depends on the situation. For a building with no interior scan the
 "Matterport interior scan" todo becomes "No interior scan on file: interior steps skipped", an
@@ -184,6 +184,8 @@ same schema `/api/incidents/{id}/copilot` returns):
 | `fallback_reason` | set when the brief is facts-only (see below) |
 | `seconds` | wall clock of this call |
 | `trace_run_id` | LangSmith run id of this call; `None` when tracing is off |
+| `model_stalls` | model calls in this call that got no answer within the 12 s client timeout |
+| `model_retries` | retries made in this call (each stall or transient API error is retried once) |
 
 In the `Brief`: `considerations` (0-5, each "Consider ...", with `evidence_ids` that resolve in
 `evidence`), `changes_since_last`, `gaps`, and `verifier_rejections` (how many draft considerations
@@ -212,6 +214,12 @@ being pulled for this incident.
 Building data comes through the adapters in `services/agents/providers.py`. `DATA_MODE=fixture`
 (default) reads `data/fixtures/<building_id>/{costar,matterport,vexcel}.json`; `DATA_MODE=live` is
 not implemented yet and logs "live adapter not configured; using fixtures".
+
+Every orchestrator and subagent model call has a 12 s client timeout and one automatic retry
+(`services/agents/stalls.py`). Each stall and retry is logged at WARNING on the logger
+`services.agents.stalls` with the agent's name ("Model stall: critic got no answer in 10.5 s; retrying
+once"), and counted in `RunResult.model_stalls` / `model_retries` and in Tiger's `pipeline_events`
+detail. If the retry stalls too, that agent's step fails and the usual fallbacks apply.
 
 **The functions do not raise when the agent or the model fails.** The crew still gets a brief with
 every deterministic fact and no considerations; `fallback_reason` says why and `gaps[0]` starts with

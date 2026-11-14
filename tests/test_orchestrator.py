@@ -253,6 +253,7 @@ class RuleModel(BaseChatModel):
     main_script: Any            # iterator of the orchestrator's turns, shared by every bound copy
     drafts: Any                 # one considerations list per strategy run
     seen: Any                   # agent name -> its system prompt, shared by every bound copy
+    stall: Any                  # agent name -> how many of its next calls time out, shared
     tool_names: tuple = ()
 
     @property
@@ -263,7 +264,19 @@ class RuleModel(BaseChatModel):
         names = tuple(getattr(t, "name", None) or t.get("name") or t["function"]["name"] for t in tools)
         return self.model_copy(update={"tool_names": names})
 
+    def _who(self) -> str:
+        if "task" in self.tool_names:
+            return "orchestrator"
+        for name, tool_name in [*((layer, f"pull_{layer}") for layer in LAYERS),
+                                ("strategy", "submit_considerations"), ("critic", "submit_critique")]:
+            if tool_name in self.tool_names:
+                return name
+        return "other"
+
     def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        if self.stall.get(self._who(), 0) > 0:  # like the API: no answer before the client timeout
+            self.stall[self._who()] -= 1
+            raise TimeoutError("simulated model stall")
         return ChatResult(generations=[ChatGeneration(message=self._reply(messages))])
 
     def _reply(self, messages) -> AIMessage:
@@ -302,9 +315,9 @@ def task(subagent: str, ask: str = "") -> tuple[str, dict]:
     return "task", {"subagent_type": subagent, "description": f"Incident: do the {subagent} step. {ask}"}
 
 
-def fake_model(*main_turns, drafts=None) -> RuleModel:
+def fake_model(*main_turns, drafts=None, stall=None) -> RuleModel:
     drafts = drafts or [[GOOD, SINGLE_LAYER], [{**GOOD, "title": "Consider Stair B (back stairs) from the alley"}]]
-    return RuleModel(main_script=iter(main_turns), drafts=drafts, seen={})
+    return RuleModel(main_script=iter(main_turns), drafts=drafts, seen={}, stall=stall or {})
 
 
 START = [calls(todos("in_progress", *["pending"] * 6)),
@@ -550,6 +563,36 @@ def test_a_brief_awaiting_approval_survives_a_restart_with_tiger(depot, monkeypa
     assert done.status == "briefed" and [c.id for c in done.brief.considerations] == ["c2"]
     assert rows["inc_s4b"]["status"] == "briefed" and [b.published for b in saved_briefs] == [True]
     assert all(t.status == "completed" for t in done.todos)  # the paused agent turn ran after the restart
+
+
+def test_a_stalled_model_call_is_retried_once_and_logged_with_the_agent(incident, caplog):
+    stall = {"orchestrator": 1}
+    with caplog.at_level("WARNING", logger="services.agents.stalls"):
+        started = start_incident("inc_s2", workspace_root=incident.root,
+                                 model=fake_model(*START, *RESUME, stall=stall))
+        assert (started.status, started.model_stalls, started.model_retries) == ("awaiting_confirmation", 1, 1)
+
+        stall.update(strategy=1, vexcel=1)
+        incident.eng.confirm(BUILDING)
+        v1 = resume_incident("inc_s2", BUILDING)
+    assert (v1.status, v1.fallback_reason, v1.model_stalls, v1.model_retries) == ("briefed", None, 2, 2)
+    assert v1.critique["verdict"] == "pass" and len(v1.brief.considerations) == 2  # nothing was lost
+    messages = [r.getMessage() for r in caplog.records]
+    for agent in ("orchestrator", "strategy", "vexcel"):
+        assert any(m.startswith(f"Model stall: {agent} got no answer") for m in messages)
+        assert any(m.startswith(f"Model retry: {agent} answered on the retry") for m in messages)
+    assert orchestrator._SESSIONS["inc_s2"].stalls.by_agent == {"orchestrator": 1, "strategy": 1, "vexcel": 1}
+
+
+def test_a_second_stall_gives_up_and_the_brief_says_what_was_skipped(incident, caplog):
+    start_incident("inc_s2", workspace_root=incident.root, model=fake_model(*START, *RESUME, stall={"critic": 2}))
+    incident.eng.confirm(BUILDING)
+    with caplog.at_level("WARNING", logger="services.agents.stalls"):
+        v1 = resume_incident("inc_s2", BUILDING)
+    assert (v1.model_stalls, v1.model_retries) == (2, 1)  # one retry, never a third attempt
+    assert any(r.getMessage().startswith("Model stall: critic stalled again on the retry") for r in caplog.records)
+    assert v1.status == "briefed" and v1.critique is None
+    assert v1.brief.gaps[0] == "Considerations were not checked by the critic"
 
 
 def test_dispatcher_can_reject_every_candidate(incident):
