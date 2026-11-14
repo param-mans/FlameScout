@@ -120,6 +120,3 @@ export const markerXY: Record<string, [number, number]> = {
   m3: [360, 334], // Main lobby entry
   m4: [340, 250], // Roof hatch
 };
-
-// Mock time axis for the timeline strip (seconds into the demo) and when each brief version was issued.
-export const briefIssuedAt: Record<number, number> = { 1: 12.5, 2: 25.0 };

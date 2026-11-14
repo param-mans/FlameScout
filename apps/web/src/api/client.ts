@@ -29,12 +29,6 @@ async function request<T>(method: string, path: string, body?: unknown, timeoutM
   }
 }
 
-export interface Health {
-  ok: boolean;
-  data_mode: string;
-  pipeline: string;
-  extractor: string;
-}
 export interface ScriptInfo { script_id: string; description?: string | null; segments: number }
 
 export const api = {

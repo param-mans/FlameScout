@@ -4,6 +4,7 @@ import { DemoControls } from "./components/DemoControls";
 import { DispatcherConsole } from "./components/DispatcherConsole";
 import { MdtView, type IncidentInfo } from "./components/MdtView";
 import { Btn } from "./components/ui";
+import { humanizeKeys } from "./labels";
 import { readSampleParam, setSampleParam, useSampleHouses } from "./components/viewer/BuildingViewer";
 import { briefNoScan, briefV1, briefV2, candidates as mockCandidates, incident as mockIncident, segments as mockSegments } from "./mock/s2";
 import type { IncidentRecord } from "./types/schemas";
@@ -15,6 +16,8 @@ const BRIEF_KEYS = Object.keys(BRIEFS) as BriefKey[];
 
 // ?mock=1 never talks to the API. Otherwise the app uses the API when /health answers and falls back to mock data.
 const FORCE_MOCK = new URLSearchParams(window.location.search).get("mock") === "1";
+// ?admin=1 shows the demo scaffolding (mock brief toggle, sample-house picker). Hidden by default.
+const ADMIN = new URLSearchParams(window.location.search).get("admin") === "1";
 
 const EMPTY_INCIDENT: IncidentRecord = {
   incident_id: "", status: "listening", call_ids: [], facts: {}, evidence: {}, contradictions: [], open_questions: [],
@@ -43,7 +46,7 @@ export default function App() {
   const candidates = isLive ? st.candidates : mockCandidates;
   const confirmedId = isLive ? incident.confirmed_building_id ?? null : mockConfirmed;
   const brief = isLive ? st.brief : BRIEFS[briefKey];
-  const questions = isLive ? st.suggestions.map((x) => x.question) : undefined;
+  const questions = isLive ? st.suggestions.map((x) => humanizeKeys(x.question)) : undefined;
 
   const info = useMemo<IncidentInfo>(() => {
     const c = candidates.find((x) => x.building_id === confirmedId) ?? (isLive ? undefined : candidates[0]);
@@ -89,6 +92,7 @@ export default function App() {
             </>
           )}
           {st.mode === "mock" && <Btn onClick={live.retryApi}>Retry API</Btn>}
+          <span className="num text-[10px] font-semibold tracking-wider text-dim" title="Simulation only: no real emergency lines are called">SIMULATION</span>
           <span
             className={`num border px-1.5 py-0.5 text-[10px] font-semibold tracking-wider ${
               isLive ? (st.conn === "open" || !st.incidentId ? "border-verified/60 text-verified" : "border-reported/60 text-reported")
@@ -118,10 +122,10 @@ export default function App() {
             busy={isLive ? st.busy : null}
             held={isLive ? st.held : null}
             onApproveHeld={isLive ? () => void live.approveHeld() : undefined}
-            demo={
+            demo={ADMIN ? (
               <DemoControls briefKeys={isLive ? [] : BRIEF_KEYS} briefKey={briefKey} onBriefKey={setBriefKey}
                 samples={samples} samplesError={samplesError} sampleId={sampleId} onSample={pickSample} />
-            }
+            ) : undefined}
           />
         ) : (
           <MdtView key={isLive ? st.incidentId ?? "none" : briefKey} brief={brief} info={info} sampleId={sampleId} sampleError={samplesError}

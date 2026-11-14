@@ -19,3 +19,10 @@ export function factLabel(key: string): string {
   const words = last.replace(/_/g, " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
+
+const FACT_KEY = /\b(?:incident|building|people|location|smoke|alarm|hazards|access)\.[a-z_]+\b/g;
+
+/** Backend texts mention fact keys ("Callers disagree on incident.floor"): show their labels instead. */
+export function humanizeKeys(text: string): string {
+  return text.replace(FACT_KEY, (k) => factLabel(k).toLowerCase());
+}
