@@ -39,6 +39,7 @@ const CASES = [
   ["anchor ref does not exist", (o) => { o.fire[1].location.anchor.ref_id = "w99"; }, "anchor.ref_id"],
   ["objective target does not resolve", (o) => { o.objectives[0].target.ref_id = "nope"; }, "does not resolve"],
   ["duplicate id", (o) => { o.hazards[0].id = "fire-1"; }, "duplicate id"],
+  ["cardinal anchor (no orientation in the contract)", (o) => { o.fire[1].location.anchor.position = "north_side"; }, "anchor.position must be one of"],
 ];
 for (const [name, f, expect] of CASES) {
   const errs = validate(mut(OVERLAY, f), PLAN);
@@ -51,7 +52,7 @@ let seed = 20261114;
 const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
 const pick = (a) => a[Math.floor(rnd() * a.length)];
 const VALUES = [null, "", 0, 1, 2, -1, 0.5, 1.4, true, false, [], {}, "r99", "r9", "r4", "w7", "d1", "s1", "f1", "f2", "f9", "occ-loc-1", "fire-1",
-  "room", "anchor", "floor", "unknown", "occupant", "occupant_group", "near_window", "near_stairs", "center", "planner", "agent",
+  "room", "anchor", "floor", "unknown", "occupant", "occupant_group", "near_window", "near_stairs", "center", "north_side", "west_side", "planner", "agent",
   "reported", "contradicted", "unverified", "verified", "smoke", "gas", "rescue", "recon", "exterior", "stairs",
   "Consider it", "Consider this, it is guaranteed", "Consider 100% now", "Consider 100%x", "Consider musty air", "Send a crew",
   "2026-11-15T03:10:05Z", "2026-11-15", "20261115T031005", "2026-W46-3T03:10", "2026-11-15 03:10:05.123456+01:00", "2026-02-30T00:00:00Z",

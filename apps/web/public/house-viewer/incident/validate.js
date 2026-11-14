@@ -6,7 +6,7 @@
 
 const STATUS = new Set(['verified', 'inferred', 'reported', 'unverified', 'contradicted'])
 const LOC_KINDS = new Set(['room', 'anchor', 'floor', 'unknown'])
-const ANCHOR_POS = new Set(['center', 'near_door', 'near_window', 'near_stairs', 'north_side', 'south_side', 'east_side', 'west_side'])
+const ANCHOR_POS = new Set(['center', 'near_door', 'near_window', 'near_stairs']) // no orientation in the contract (no cardinal sides)
 const NEAR_NEEDS_REF = { near_door: 'openings', near_window: 'openings', near_stairs: 'stairs' }
 const FIRE_KINDS = new Set(['smoke', 'fire', 'heat'])
 const HAZARD_KINDS = new Set(['gas', 'chemical', 'battery', 'electrical', 'structural', 'other'])

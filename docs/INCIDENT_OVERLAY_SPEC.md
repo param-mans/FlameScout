@@ -61,7 +61,7 @@ Common to occupants, fire, hazards and blocked:
 | `floor` | `floor_id` or `floor_reported` (caller's floor number, ground floor = 1) | Floor known, room unknown |
 | `unknown` | none | Reported but not locatable |
 
-`anchor.position`: center, near_door, near_window, near_stairs, north_side, south_side, east_side, west_side.
+`anchor.position`: center, near_door, near_window, near_stairs. There is no orientation in the contract: no cardinal sides (north/south/east/west) and no front/back/left/right.
 Map `floor_reported` to `floor_id` only when the scan covers that floor, otherwise keep only the reported number.
 
 ### Contradictions

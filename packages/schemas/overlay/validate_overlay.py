@@ -8,7 +8,7 @@ from datetime import datetime
 
 STATUS = {"verified", "inferred", "reported", "unverified", "contradicted"}
 LOC_KINDS = {"room", "anchor", "floor", "unknown"}
-ANCHOR_POS = {"center", "near_door", "near_window", "near_stairs", "north_side", "south_side", "east_side", "west_side"}
+ANCHOR_POS = {"center", "near_door", "near_window", "near_stairs"}
 NEAR_NEEDS_REF = {"near_door": "openings", "near_window": "openings", "near_stairs": "stairs"}
 FIRE_KINDS = {"smoke", "fire", "heat"}
 HAZARD_KINDS = {"gas", "chemical", "battery", "electrical", "structural", "other"}

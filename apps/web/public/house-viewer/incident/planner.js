@@ -27,7 +27,7 @@ export function floorOf(plan, loc) {
   }
   return null
 }
-/** Point inside the room for an anchor (near a window, door or stairs, or a side), or null. */
+/** Point inside the room for an anchor (near a window, door or stairs, else its center), or null. */
 export function anchorPoint(plan, ev, loc) {
   const a = loc.anchor || {}, fi = floorOf(plan, loc), node = fi === null ? null : ev.nodos.get(ev.clave(fi, { id: a.room_id }))
   if (!node) return null
@@ -35,9 +35,7 @@ export function anchorPoint(plan, ev, loc) {
   if (op) { const t = 0.55; return [op.center[0] + (node.c[0] - op.center[0]) * Math.min(1, t / Math.max(0.01, dist(op.center, node.c))), op.center[1] + (node.c[1] - op.center[1]) * Math.min(1, t / Math.max(0.01, dist(op.center, node.c)))] }
   const st = a.ref_id && (plan.stairs || []).find((s) => s.id === a.ref_id)
   if (st) { const n = ev.nodos.get(ev.clave(fi, { id: fi === plan.floors.findIndex((f) => f.id === st.lower_floor_id) ? st.lower_room_id : st.upper_room_id })); if (n) return n.c }
-  const room = node.room, xs = room.polygon.map((p) => p[0]), ys = room.polygon.map((p) => p[1])
-  const side = { north_side: [node.c[0], Math.max(...ys) - 0.6], south_side: [node.c[0], Math.min(...ys) + 0.6], east_side: [Math.max(...xs) - 0.6, node.c[1]], west_side: [Math.min(...xs) + 0.6, node.c[1]] }[a.position]
-  return side && dentroSala(side, room) ? side : node.c
+  return node.c // center (the contract has no orientation: no cardinal sides)
 }
 
 export function planRoutes(plan, overlay, ev = evacuacion(plan)) {

@@ -56,6 +56,7 @@ CASES = [
     ("anchor ref does not exist", lambda o: o["fire"][1]["location"]["anchor"].update(ref_id="w99"), "anchor.ref_id"),
     ("objective target does not resolve", lambda o: o["objectives"][0]["target"].update(ref_id="nope"), "does not resolve"),
     ("duplicate id", lambda o: o["hazards"][0].update(id="fire-1"), "duplicate id"),
+    ("cardinal anchor (no orientation in the contract)", lambda o: o["fire"][1]["location"]["anchor"].update(position="north_side"), "anchor.position must be one of"),
 ]
 
 
