@@ -6,6 +6,7 @@ import { PlanList } from "./PlanList";
 import { SitePlan, type Layers } from "./SitePlan";
 import { Btn, KV, Panel, StatusTag, fmt } from "./ui";
 import { BuildingViewer, HOUSE_VIEWER_DEFAULT } from "./viewer/BuildingViewer";
+import { HouseMdtView } from "../house/HouseMdtView";
 
 // House viewer mode (HOUSE_VIEWER_DEFAULT or ?viewer=1; ?viewer=0 turns it off): one central "Floor plan + 3D" view
 // instead of the Map / Floor 2D / 3D scan tabs. It loads the incident building (sampleId) directly; the temporary

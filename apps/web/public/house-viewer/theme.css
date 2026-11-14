@@ -186,3 +186,68 @@ html.tema-app :focus-visible { outline: 1px solid var(--accent); outline-offset:
 .obl-vacio { padding: 14px 8px; text-align: center; color: var(--textDim); border: 1px dashed var(--border); font-size: 11px; }
 html.embed.modo-2d #oblicuas, html.embed.modo-3d #oblicuas { display: none; }
 html.tema-app .obl-img { border-color: var(--border); }
+
+/* Capa de incidente: banner, consideraciones, aviso sin escaneo y chip DEBUG (unico sitio con colores saturados) */
+#inc-banner { display: none; left: 10px; top: 48px; width: min(420px, 46%); max-height: 46%; overflow-y: auto; font-size: 10.5px; line-height: 1.35; z-index: 6; border-color: var(--borderHi); }
+html.embed.layout-split #inc-banner { top: 10px; }
+#inc-banner .inc-fila { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+#inc-banner .inc-tog { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 4px; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; }
+#inc-banner .inc-tog .hint { overflow: hidden; text-overflow: ellipsis; }
+#inc-banner .inc-flecha { margin-left: auto; color: var(--textDim); }
+/* plegado: una franja de 48 px como mucho */
+#inc-banner.plegado { max-height: 48px; overflow: hidden; padding-top: 2px; padding-bottom: 2px; }
+#inc-banner.plegado .inc-cuerpo { display: none; }
+html.compacto #inc-banner { width: min(420px, calc(100% - 20px)); }
+#inc-banner .inc-fila b { letter-spacing: .14em; color: #fff; }
+#inc-banner .inc-vers { display: inline-flex; gap: 3px; margin-left: auto; }
+#inc-banner .inc-vers button { padding: 0 6px; }
+#inc-banner .inc-cambios { margin-top: 5px; padding: 4px 6px; border-left: 3px solid #f59e0b; background: rgba(245, 158, 11, .12); color: #fcd34d; }
+#inc-banner .inc-aviso { margin-top: 4px; padding: 2px 6px; border-left: 3px solid; }
+#inc-banner .inc-advisory { margin-top: 5px; color: var(--textDim); font-style: italic; }
+#inc-panel-body { padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 6px; }
+.inc-card, html.tema-app button.inc-card { display: block; width: 100%; text-align: left; text-transform: none; letter-spacing: 0; font: 400 11.5px/1.4 var(--fontUi); white-space: normal; padding: 6px 8px; }
+.inc-card.on { border-color: #fff !important; box-shadow: 0 0 0 1px #fff inset; }
+.inc-card-t { color: var(--text); margin-bottom: 3px; }
+.inc-card-m { margin-top: 3px; font-size: 10px; color: var(--textDim); }
+#sin-escaneo { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 20px; }
+#sin-escaneo b { font-size: 15px; letter-spacing: .14em; text-transform: uppercase; color: var(--unverified, var(--textDim)); }
+#inc-debug { position: fixed; left: 8px; bottom: 8px; z-index: 50; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; max-width: 70vw;
+  padding: 5px 6px; background: rgba(8, 10, 14, .9); border: 1px solid #f59e0b; }
+#inc-debug .inc-chip { font: 700 12px/1 var(--font); letter-spacing: .16em; color: #111; background: #f59e0b; padding: 3px 6px; border: 0; }
+/* collapsed by default (only the DEBUG toggle) so it never covers the plan; tap DEBUG to show the scenarios */
+#inc-debug:not(.abierto) > :not(.inc-chip) { display: none; }
+#inc-debug button { padding: 1px 6px; }
+
+/* Inspector: seccion plegable "Data quality" y boton "Show on plan" */
+#inspector .calidad-datos { margin: 6px 0 2px; border: 1px solid var(--border); }
+#inspector .calidad-datos > summary { cursor: pointer; padding: 6px 8px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--textDim); }
+#inspector .ver-salida { margin-top: 4px; }
+#inspector td.relaciones { color: var(--text); font-size: 12px; }
+
+/* ---------------------------------------------------------------- Tactil (iPad) dentro de la UI: objetivos de 44 x 44 px,
+   letra de 12 px como minimo, sin zoom de la pagina por doble toque; los lienzos 3D y 2D gestionan sus gestos */
+html.embed body { touch-action: manipulation; -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+html.embed #vista2d, html.embed #vista3d canvas { touch-action: none; }
+html.embed button, html.embed .plegable > summary, html.embed #inspector .calidad-datos > summary, html.embed select { min-height: 44px; min-width: 44px; font-size: 12px; }
+html.embed #barra-split { gap: 6px; padding: 4px 8px; }
+html.embed .etq, html.embed .hint, html.embed #aviso3d, html.embed #escala, html.embed .leyenda, html.embed .obl-pie, html.embed #inc-banner,
+html.embed #inspector td, html.embed .st, html.embed label.fila, html.embed .ctl-fila { font-size: 12px !important; }
+html.embed label.fila { min-height: 44px; }
+html.embed input[type=checkbox] { width: 20px; height: 20px; }
+html.embed input[type=range] { height: 44px; }
+html.embed #inspector .cerrar { min-height: 44px; min-width: 44px; top: 2px; right: 2px; }
+html.embed #inc-debug button { min-height: 44px; }
+html.embed #inc-banner .inc-vers button { min-height: 44px; min-width: 44px; padding: 0 10px; }
+/* Pestanas Plan / Surroundings: solo en modo compacto (pantalla de 1180 px o menos) */
+#der-tabs { display: none; }
+html.compacto #der-tabs { display: flex; gap: 4px; margin: 8px 8px 0; }
+html.compacto #der-tabs button { flex: 1; }
+html.compacto:not(.der-entorno) #oblicuas { display: none; }
+html.compacto.der-entorno #vista2d, html.compacto.der-entorno #leyenda2d { display: none; }
+html.compacto.der-entorno #oblicuas { flex: 1; }
+/* Inspector como hoja inferior en modo compacto: se abre al tocar una sala, una puerta o una ventana */
+html.embed.layout-split.compacto #insp-split { position: fixed; left: 0; right: 0; bottom: 0; margin: 0; z-index: 30; max-height: 55%; overflow-y: auto;
+  transform: translateY(100%); transition: transform .2s ease; border-top: 1px solid var(--borderHi); background: var(--panel);
+  padding-bottom: env(safe-area-inset-bottom); }
+html.embed.layout-split.compacto #insp-split.hoja-abierta { transform: none; z-index: 60; }
+html.embed.layout-split.compacto #insp-split > summary { display: none; }

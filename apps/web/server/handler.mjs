@@ -13,7 +13,7 @@
 // Matterport is read-only (queries only, see matterport-plan.mjs).
 import fs from "node:fs";
 import path from "node:path";
-import { generar, planDesdeRespuesta, MPError } from "./matterport-plan.mjs";
+import { generar, planDesdeRespuesta, fechasModelo, MPError } from "./matterport-plan.mjs";
 import { evaluar } from "./house-quality.mjs";
 import { obliques, VXError } from "./vexcel.mjs";
 import { withPlanExtras } from "./plan-extras.mjs";
@@ -65,12 +65,42 @@ export function createHouseDataHandler({ getEnv, catalogFile, storedDir = null, 
     if (f && fs.existsSync(f)) return { plan: withPlanExtras(planDesdeRespuesta(s.matterportModelId, JSON.parse(fs.readFileSync(f, "utf8")))), source: "stored" };
     throw new MPError("Matterport API token is not set and no stored plan exists for this sample", 503);
   }
+  // scan dates: stored data/raw/<id>/matterport/scan_meta.json, else (star buildings only) a read-only API query
+  const heroDir = (id) => (storedDir && fs.existsSync(path.join(storedDir, id)) ? path.join(storedDir, id) : null);
+  async function loadScan(s) {
+    const dir = heroDir(s.id);
+    if (!dir || !s.matterportModelId) return null; // samples without stored data: "Scan date: not available"
+    const f = path.join(dir, "matterport", "scan_meta.json");
+    if (fs.existsSync(f)) { const m = JSON.parse(fs.readFileSync(f, "utf8")); return { created: m.created ?? null, modified: m.modified ?? null, source: "stored" }; }
+    const auth = matterportAuth();
+    if (!auth) return null;
+    const m = await fechasModelo(s.matterportModelId, auth);
+    return m ? { ...m, source: "live" } : null;
+  }
+  // listing record (star buildings): only the fields the house view uses; no agent, office or media data
+  function listingRecord(s) {
+    const dir = heroDir(s.id), f = dir && path.join(dir, "costar", "listing.json");
+    if (!f || !fs.existsSync(f)) return null;
+    const j = JSON.parse(fs.readFileSync(f, "utf8")), p = j.property || {}, a = p.address || {};
+    const ff = path.join(dir, "costar", "listing_features.json"), feats = fs.existsSync(ff) ? JSON.parse(fs.readFileSync(ff, "utf8")) : null;
+    return {
+      listing_id: String(j.id), stories: j.resoValues?.structure?.stories ?? null, state: a.state ?? null, zip: a.zip ?? null,
+      street: a.fullStreetAddress ?? null, city: a.city ?? null, mls_property_type: p.mlsPropertyType ?? null,
+      baths_full: p.bathsFull ?? null, baths_half: p.bathsHalf ?? null, remarks: j.remarks ?? null,
+      features: (feats?.features || []).map((x) => ({ name: x.name, category: x.category ?? null, subcategory1: x.subcategory1 ?? null, subcategory2: x.subcategory2 ?? null })),
+    };
+  }
   async function sampleDoc(s) {
+    if (!s.matterportModelId) { // building without an interior scan: no plan, never a guessed one
+      const { id, address, location, city, market, listing } = s;
+      return { id, address, location: location ? { ...location, city, market } : null, matterportModelId: null, listing: listing ?? null, listing_record: null, scan: null, no_scan: true, plan: null, quality: null, stairs: null };
+    }
     // plan (live API, or the stored raw response without credentials) + extras computed once (plan-extras.mjs)
     const { plan, source } = await memo(`plan:${s.id}`, () => loadPlan(s));
+    const scan = await memo(`scan:${s.id}`, () => loadScan(s)).catch(() => null);
     const { quality, stairs } = evaluar(plan, { sqft: s.listing?.sqft ?? null, beds: s.listing?.beds ?? null });
     const { id, address, location, city, market, matterportModelId, listing } = s;
-    return { id, address, location: { ...location, city, market }, matterportModelId, listing, plan_source: source, quality, stairs, plan };
+    return { id, address, location: { ...location, city, market }, matterportModelId, listing, listing_record: listingRecord(s), scan, plan_source: source, quality, stairs, plan };
   }
   function limited(req) {
     const xff = trustProxy && String(req.headers?.["x-forwarded-for"] || "").split(",").map((x) => x.trim()).filter(Boolean).pop();
@@ -95,8 +125,8 @@ export function createHouseDataHandler({ getEnv, catalogFile, storedDir = null, 
       if (!s.location) return send(res, 404, { error: "no location for this sample" });
       const vx = await memo(`vexcel:${s.id}`, () => obliques(secret("VEXCEL_API_KEY"), s.location.lat, s.location.lon));
       if (!file) { const { source, copyright, convention, views } = vx.meta; return send(res, 200, { source, copyright, convention, views }); }
-      const m = /^oblique-(north|east|south|west)\.jpg$/.exec(file);
-      const img = m && vx.images[m[1]];
+      const m = /^(?:oblique-(north|east|south|west)|(aerial))\.jpg$/.exec(file);
+      const img = m && vx.images[m[1] || m[2]];
       return img ? send(res, 200, img, "image/jpeg") : send(res, 404, { error: "no image for this view" });
     } catch (e) {
       // messages never include credentials

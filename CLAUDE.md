@@ -50,7 +50,9 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
   per brief version. No LLM in this module.
 - `services/agents/stalls.py` - 12 s client timeout on every orchestrator / subagent model call, one retry,
   each stall and retry logged with the agent name and counted in `RunResult`. `FailoverMiddleware`: a failed
-  call goes once to the backup provider.
+  call goes once to the backup provider. A subagent that still fails gives up alone (the run goes on).
+  `RUN_DEADLINE_S` (default 90 s for v1, 75 s after): past it the run is cancelled and the best partial
+  brief is published (`Brief.partial`, `partial_reason`). Nothing may make a run hang.
 - `services/agents/llm.py` - every chat model. `LLM_PROVIDER=gemini|openai|xai` (xAI via langchain-xai); `LLM_FALLBACK_PROVIDER` = failover
   for agents, `structured()` and extraction; `CRITIC_PROVIDER` = the orchestrator's critic on a different model
   than the drafter (backed by LLM_PROVIDER), recorded as `critic_model` in critique_vN.json. Both unset = one provider.

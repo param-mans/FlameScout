@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { validate, isoOk } from "../../public/house-viewer/incident/validate.js";
+import { validate, isoOk, DIRECTIVE } from "../../public/house-viewer/incident/validate.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const OV_DIR = path.join(ROOT, "packages", "schemas", "overlay");
@@ -39,6 +39,7 @@ const CASES = [
   ["anchor ref does not exist", (o) => { o.fire[1].location.anchor.ref_id = "w99"; }, "anchor.ref_id"],
   ["objective target does not resolve", (o) => { o.objectives[0].target.ref_id = "nope"; }, "does not resolve"],
   ["duplicate id", (o) => { o.hazards[0].id = "fire-1"; }, "duplicate id"],
+  ["cardinal anchor (no orientation in the contract)", (o) => { o.fire[1].location.anchor.position = "north_side"; }, "anchor.position must be one of"],
 ];
 for (const [name, f, expect] of CASES) {
   const errs = validate(mut(OVERLAY, f), PLAN);
@@ -51,7 +52,7 @@ let seed = 20261114;
 const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
 const pick = (a) => a[Math.floor(rnd() * a.length)];
 const VALUES = [null, "", 0, 1, 2, -1, 0.5, 1.4, true, false, [], {}, "r99", "r9", "r4", "w7", "d1", "s1", "f1", "f2", "f9", "occ-loc-1", "fire-1",
-  "room", "anchor", "floor", "unknown", "occupant", "occupant_group", "near_window", "near_stairs", "center", "planner", "agent",
+  "room", "anchor", "floor", "unknown", "occupant", "occupant_group", "near_window", "near_stairs", "center", "north_side", "west_side", "planner", "agent",
   "reported", "contradicted", "unverified", "verified", "smoke", "gas", "rescue", "recon", "exterior", "stairs",
   "Consider it", "Consider this, it is guaranteed", "Consider 100% now", "Consider 100%x", "Consider musty air", "Send a crew",
   "2026-11-15T03:10:05Z", "2026-11-15", "20261115T031005", "2026-W46-3T03:10", "2026-11-15 03:10:05.123456+01:00", "2026-02-30T00:00:00Z",
@@ -130,6 +131,21 @@ print(json.dumps(out))`], { input: JSON.stringify(strs), maxBuffer: 1 << 26 });
   const pyOk = JSON.parse(r.stdout.toString());
   const bad = strs.filter((x, i) => isoOk(x) !== pyOk[i]);
   console.log(`timestamps: ${strs.length} strings, ${bad.length} disagreements` + (bad.length ? " e.g. " + JSON.stringify(bad.slice(0, 8)) : ""));
+  if (bad.length) fail++;
+}
+// 5) directive wording: DIRECTIVE.test must agree with Python's re.search(r"\b(...)\b", re.I) on every string
+if (py.status === 0) {
+  const words = ["must", "MUST", "Must", "immediately", "do it now", "do  it now", "ordered", "100%", "100 %", "100\t%", "100%x", "guaranteed", "ſuſt"];
+  const around = ["", " ", "x", "_", "1", "é", "ñ", "-", ".", "%", "日", "𝒜", "\n"];
+  const strs = [];
+  for (const w of words) for (const a of around) for (const b of around) strs.push(a + w + b);
+  strs.push("Consider this but you must go now", "mustmust", "a must-have", "musty", "admust", "100%%", "1100%", "x100% y", "Consider 100% sure", "ordered.", "disordered", "guaranteed!");
+  const r = spawnSync("python3", ["-B", "-c", `
+import json, re, sys
+D = re.compile(r"\\b(must|immediately|do it now|ordered|100\\s*%|guaranteed)\\b", re.I)
+print(json.dumps([bool(D.search(s)) for s in json.loads(sys.stdin.read())]))`], { input: JSON.stringify(strs), maxBuffer: 1 << 24 });
+  const pyD = JSON.parse(r.stdout.toString()), bad = strs.filter((x, i) => DIRECTIVE.test(x) !== pyD[i]);
+  console.log(`directive wording: ${strs.length} strings, ${bad.length} disagreements` + (bad.length ? " e.g. " + JSON.stringify(bad.slice(0, 8)) : ""));
   if (bad.length) fail++;
 }
 console.log(fail ? `${fail} FAILED` : "OK all validator tests");

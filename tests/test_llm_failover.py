@@ -5,7 +5,7 @@ from langgraph.errors import GraphInterrupt
 from pydantic import BaseModel
 
 from services.agents import llm
-from services.agents.stalls import FailoverMiddleware, StallCounter, StallRetryMiddleware
+from services.agents.stalls import CancelMiddleware, FailoverMiddleware, StallCounter, StallRetryMiddleware
 
 
 @pytest.fixture
@@ -109,7 +109,8 @@ def test_models_wire_failover_and_an_independent_critic(two_providers):
     m = _Models(StallCounter())
     assert type(m.main).__name__ == "ChatGoogleGenerativeAI" and type(m.main_backup).__name__ == "ChatOpenAI"
     assert type(m.critic).__name__ == "ChatOpenAI" and m.critic_backup is m.quick  # backed by the drafter's provider
-    assert [type(x) for x in m.middleware("critic", m.critic_backup)] == [StallRetryMiddleware, FailoverMiddleware]
+    assert [type(x) for x in m.middleware("critic", m.critic_backup)] == [CancelMiddleware, StallRetryMiddleware,
+                                                                     FailoverMiddleware]
 
 
 def test_models_without_a_second_provider_or_with_a_test_model(two_providers):
@@ -117,7 +118,7 @@ def test_models_without_a_second_provider_or_with_a_test_model(two_providers):
 
     m = _Models(StallCounter())
     assert m.main_backup is None and m.critic is m.quick and m.critic_provider == "gemini"
-    assert [type(x) for x in m.middleware("critic", m.critic_backup)] == [StallRetryMiddleware]
+    assert [type(x) for x in m.middleware("critic", m.critic_backup)] == [CancelMiddleware, StallRetryMiddleware]
     fake = object()
     m = _Models(StallCounter(), fake)
     assert m.main is m.critic is fake and m.critic_provider is None

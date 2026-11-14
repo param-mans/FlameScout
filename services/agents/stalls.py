@@ -4,6 +4,11 @@ Single Gemini calls occasionally sat for 20-45 s with no error and nothing in th
 logs. Every orchestrator and subagent model is now built with MODEL_TIMEOUT_S (the
 API refuses deadlines under 10 s) and no SDK retries; StallRetryMiddleware is the
 one place that retries, once, and says which agent stalled.
+
+Run deadline: every orchestrator run has a wall-clock cap (orchestrator.run_deadline_s). When it
+passes, the run's cancel event is set; CancelMiddleware, on every agent of that run, raises
+RunCancelled at the next model or tool call, and neither the retry nor the failover start another
+attempt. The event travels in a ContextVar, so the parallel subagents (tool threads) see it too.
 """
 from __future__ import annotations
 
@@ -11,6 +16,7 @@ import logging
 import re
 import threading
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -20,6 +26,24 @@ from langgraph.errors import GraphBubbleUp
 log = logging.getLogger(__name__)
 
 MODEL_TIMEOUT_S = 12.0
+
+
+class RunCancelled(Exception):
+    """The run's deadline passed: the agent stops at its next model or tool call."""
+
+
+RUN_CANCEL: ContextVar[Optional[threading.Event]] = ContextVar("flamescout_run_cancel", default=None)
+
+
+def cancelled() -> bool:
+    """True once the current run's deadline has passed (always False outside a run)."""
+    event = RUN_CANCEL.get()
+    return event is not None and event.is_set()
+
+
+def stop_if_cancelled(where: str) -> None:
+    if cancelled():
+        raise RunCancelled(f"run deadline reached: {where} not started")
 _STALL = re.compile(r"\b504 [A-Z_]+|DEADLINE_EXCEEDED")           # "504 DEADLINE_EXCEEDED. {...}"
 _TRANSIENT = re.compile(r"\b(429|500|503) [A-Z_]+")               # "429 RESOURCE_EXHAUSTED. {...}"
 
@@ -68,6 +92,22 @@ def classify(error: BaseException) -> Optional[str]:
     return None
 
 
+class CancelMiddleware(AgentMiddleware):
+    """Outermost on every agent: after the run deadline, no new model or tool call starts."""
+
+    def __init__(self, agent: str):
+        super().__init__()
+        self.agent = agent
+
+    def wrap_model_call(self, request, handler):
+        stop_if_cancelled(f"{self.agent} model call")
+        return handler(request)
+
+    def wrap_tool_call(self, request, handler):
+        stop_if_cancelled(f"{self.agent} tool call {request.tool_call.get('name')}")
+        return handler(request)
+
+
 class StallRetryMiddleware(AgentMiddleware):
     """Retry a model call once when it times out (or fails transiently), and log it with the agent's name."""
 
@@ -81,7 +121,7 @@ class StallRetryMiddleware(AgentMiddleware):
             return handler(request)
         except Exception as first:
             kind = classify(first)
-            if kind is None:
+            if kind is None or cancelled():  # past the deadline: no second attempt
                 raise
             waited = time.perf_counter() - t0
             if kind == "stall":
@@ -129,9 +169,11 @@ class FailoverMiddleware(AgentMiddleware):
             return handler(request.override(model=self.fallback))
         try:
             return handler(request)
-        except GraphBubbleUp:
+        except (GraphBubbleUp, RunCancelled):
             raise
         except Exception as first:
+            if cancelled():  # past the deadline: do not start a call on the backup
+                raise
             self.counter.failed_over(self.agent)
             if is_permanent(first):
                 BREAKER.trip(primary, first)

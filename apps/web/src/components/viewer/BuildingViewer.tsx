@@ -5,16 +5,26 @@ import { useEffect, useRef, useState } from "react";
 // The viewer reports "ready" / "error" via postMessage.
 // The MDT shows the incident building directly (sampleId); the temporary sample-house picker lives in the
 // Dispatcher view's Demo / Controls section and keeps its choice in ?sample=<id>.
-type Props = { mode?: "floor" | "scan3d"; layout?: "single" | "split"; sampleId: string | null; sampleError?: string | null };
+/** Incident state reported by the viewer (validated by the host before use). */
+export type ViewerIncidentState = { overlay: Record<string, unknown> | null; version: number | null; versions: number[]; routes: Record<string, unknown>[]; noRoute: string[]; plannerMs: number | null };
+type Props = {
+  mode?: "floor" | "scan3d"; layout?: "single" | "split"; sampleId: string | null; sampleError?: string | null;
+  /** inside the MDT house view: the host shows the considerations panel (the viewer hides its own) */
+  host?: boolean;
+  onIncidentState?: (s: ViewerIncidentState) => void;
+  onPlanIndex?: (index: unknown) => void;
+  /** overlay ids to highlight in the viewer (a consideration's refs) */
+  highlightRefs?: string[];
+};
 
 /** House viewer in the MDT by default (true); ?viewer=0 shows the previous Map / Floor 2D / 3D scan tabs. */
 export const HOUSE_VIEWER_DEFAULT = true;
 type Status = { kind: "idle" } | { kind: "loading" } | { kind: "ready" } | { kind: "error"; message: string };
 export type SampleHouse = {
-  id: string; address: string; city?: string; matterportModelId: string; location?: { lat: number; lon: number };
+  id: string; address: string; city?: string; matterportModelId: string | null; no_scan?: boolean; location?: { lat: number; lon: number };
   listing?: { beds?: number; baths?: number; sqft?: number; yearBuilt?: number; homeType?: string };
 };
-const facts = (s: SampleHouse) => [s.listing?.beds != null && `${s.listing.beds} bd`, s.listing?.sqft && `${s.listing.sqft.toLocaleString("en-US")} sq ft`].filter(Boolean).join(" · ");
+const facts = (s: SampleHouse) => [s.no_scan && "no interior scan", s.listing?.beds != null && `${s.listing.beds} bd`, s.listing?.sqft && `${s.listing.sqft.toLocaleString("en-US")} sq ft`].filter(Boolean).join(" · ");
 
 const BASE = `${import.meta.env.BASE_URL}house-viewer/`;
 const TIMEOUT_MS = 15000;
@@ -127,7 +137,7 @@ export function SamplePicker({ samples, value, onChange }: { samples: SampleHous
   );
 }
 
-export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId, sampleError }: Props) {
+export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId, sampleError, host = false, onIncidentState, onPlanIndex, highlightRefs }: Props) {
   const frame = useRef<HTMLIFrameElement>(null);
   // Sample in the iframe URL: fixed once the iframe exists; later changes go by postMessage (no reload).
   const [frameSample, setFrameSample] = useState<string | null>(sampleId);
@@ -137,7 +147,14 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId, s
 
   const split = layout === "split";
   const view = split ? "layout=split" : `mode=${mode === "floor" ? "2d" : "3d"}`;
-  const src = frameSample ? `${BASE}casa.html?embed=1&sample=${encodeURIComponent(frameSample)}&${view}` : null;
+  // ?debug=1 (and the optional scenario / v) on the page is forwarded to the viewer (incident scenario selector)
+  const page = new URLSearchParams(window.location.search);
+  const debug = page.get("debug") === "1"
+    ? "&debug=1" + ["scenario", "v"].filter((k) => /^[A-Za-z0-9]{1,8}$/.test(page.get(k) ?? "")).map((k) => `&${k}=${page.get(k)}`).join("")
+    : "";
+  const src = frameSample ? `${BASE}casa.html?embed=1&sample=${encodeURIComponent(frameSample)}&${view}${debug}${host ? "&host=1" : ""}` : null;
+  const cb = useRef({ onIncidentState, onPlanIndex });
+  cb.current = { onIncidentState, onPlanIndex };
   const what = split ? "FLOOR PLAN + 3D" : mode === "floor" ? "FLOOR PLAN" : "3D SCAN";
 
   // Viewer replies from our own iframe only. On the first "ready" of each iframe document the app theme is sent and
@@ -150,7 +167,7 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId, s
     const onMessage = (e: MessageEvent) => {
       const win = frame.current?.contentWindow;
       if (e.origin !== window.location.origin || !win || e.source !== win) return;
-      const d = e.data as { type?: string; message?: string; version?: number; errors?: string[]; index?: unknown } | null;
+      const d = e.data as ({ type?: string; message?: string; version?: number; errors?: string[]; index?: unknown } & Partial<ViewerIncidentState>) | null;
       if (d?.type === "ready") {
         if (themed.current) return show();
         win.postMessage({ type: "theme", vars: readThemeTokens() }, window.location.origin);
@@ -162,11 +179,20 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId, s
       } else if (d?.type === "error") setStatus({ kind: "error", message: d.message ?? "Viewer error" });
       // incident layer (docs/INCIDENT_OVERLAY_SPEC.md): the host logs rejected overlays; the plan index is kept for the agents
       else if (d?.type === "incidentRejected") console.warn("[house-viewer] incident overlay rejected", { version: d.version, errors: d.errors });
-      else if (d?.type === "planIndex") planIndex.current = d.index ?? null;
+      else if (d?.type === "planIndex") { planIndex.current = d.index ?? null; cb.current.onPlanIndex?.(d.index ?? null); }
+      else if (d?.type === "incidentState" && cb.current.onIncidentState)
+        cb.current.onIncidentState({ overlay: (d.overlay as ViewerIncidentState["overlay"]) ?? null, version: d.version ?? null, versions: Array.isArray(d.versions) ? d.versions : [],
+          routes: Array.isArray(d.routes) ? d.routes : [], noRoute: Array.isArray(d.noRoute) ? d.noRoute : [], plannerMs: typeof d.plannerMs === "number" ? d.plannerMs : null });
     };
     window.addEventListener("message", onMessage);
     return () => { window.removeEventListener("message", onMessage); window.clearTimeout(themeTimer.current); };
   }, []);
+
+  // highlight a consideration's refs in the viewer
+  const refsKey = JSON.stringify(highlightRefs ?? []);
+  useEffect(() => {
+    if (status.kind === "ready") frame.current?.contentWindow?.postMessage({ type: "highlightRefs", refs: JSON.parse(refsKey) }, window.location.origin);
+  }, [refsKey, status.kind]);
 
   useEffect(() => {
     if (status.kind !== "loading") return;

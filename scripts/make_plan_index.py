@@ -3,8 +3,8 @@
 The plan index is what the incident agent receives to resolve phrases like "the back bedroom upstairs" into ids
 (docs/INCIDENT_OVERLAY_SPEC.md):
 
-    {"floors": [floor ids], "rooms": {id: {floor_id, label, type}}, "openings": {id: {type, exterior, floor_id}},
-     "stairs": [stair ids]}
+    {"version": 2, "floors": [floor ids], "rooms": {id: {floor_id, label, type, area_m2, size_rank, size_of, next_to, over,
+     under, at_stairs (absent on staircases)}}, "openings": {id: {type, exterior, floor_id}}, "stairs": [stair ids]}
 
 It only reads plan.json: stairs ids and opening exterior flags must already be stored there (they are computed once
 with the viewer's logic; see data/raw/FIELD_NOTES.md). Void rooms are left out. Accepted plan.json layouts:
@@ -27,10 +27,17 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 
-class RoomEntry(TypedDict):
+class RoomEntry(TypedDict, total=False):
     floor_id: str
     label: str
     type: str | None
+    area_m2: float | None
+    size_rank: int | None
+    size_of: int
+    next_to: list[str]
+    over: list[str]
+    under: list[str]
+    at_stairs: bool  # absent on Staircase rooms
 
 
 class OpeningEntry(TypedDict):
@@ -39,7 +46,8 @@ class OpeningEntry(TypedDict):
     floor_id: str
 
 
-class PlanIndex(TypedDict):
+class PlanIndex(TypedDict, total=False):
+    version: int
     floors: list[str]
     rooms: dict[str, RoomEntry]
     openings: dict[str, OpeningEntry]
@@ -49,6 +57,9 @@ class PlanIndex(TypedDict):
 OPENING_TYPES = {"doors": "doorway", "windows": "window", "dividers": "divider"}
 
 
+REL = ("area_m2", "size_rank", "size_of", "next_to", "over", "under")  # stored in plan.json; copied, never recomputed
+
+
 def empty_index() -> PlanIndex:
     return {"floors": [], "rooms": {}, "openings": {}, "stairs": []}
 
@@ -56,7 +67,14 @@ def empty_index() -> PlanIndex:
 def _room(r: dict[str, Any], floor_id: str) -> RoomEntry:
     rtype = r.get("type")
     label = (r.get("label") or rtype or "Room").upper()
-    return {"floor_id": floor_id, "label": label, "type": rtype.lower() if rtype else None}
+    if any(k not in r for k in REL):
+        raise ValueError("room %r has no stored size / relations; compute them first (see data/raw/FIELD_NOTES.md)" % r.get("id"))
+    out: RoomEntry = {"floor_id": floor_id, "label": label, "type": rtype.lower() if rtype else None}
+    for k in REL:
+        out[k] = list(r[k]) if isinstance(r[k], list) else r[k]  # type: ignore[literal-required]
+    if "at_stairs" in r:
+        out["at_stairs"] = r["at_stairs"]
+    return out
 
 
 def _stairs(plan: dict[str, Any]) -> list[str]:
@@ -91,7 +109,7 @@ def build_index(plan: dict[str, Any]) -> PlanIndex:
                     rooms[r["id"]] = _room(r, f["id"])
             for o in f.get("openings", []):
                 openings[o["id"]] = {"type": o["type"], "exterior": _exterior(o), "floor_id": f["id"]}
-    return {"floors": floors, "rooms": rooms, "openings": openings, "stairs": _stairs(plan)}
+    return {"version": 2, "floors": floors, "rooms": rooms, "openings": openings, "stairs": _stairs(plan)}
 
 
 def main(argv: list[str] | None = None) -> int:

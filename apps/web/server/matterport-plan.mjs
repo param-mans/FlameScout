@@ -328,5 +328,14 @@ export async function generar(mid, auth) {
   }
 }
 
+/** Model dates (read-only query): { created, modified } as ISO strings, or null when the API does not give them. */
+export async function fechasModelo(mid, auth) {
+  if (!ID_RE.test(mid || "")) throw new MPError("invalid model id", 400);
+  const r = await gql("query($id:ID!){ model(id:$id){ created modified } }", { id: mid }, auth);
+  if (r.errors) throw new MPError(`incomplete data from the API (${errores(r)})`, 502);
+  const m = (r.data || {}).model;
+  return m ? { created: m.created ?? null, modified: m.modified ?? null } : null;
+}
+
 /** Same query, raw response (for the exactness check script). */
 export const consultar = (mid, auth) => gql(Q_FLOORS, { id: mid }, auth);

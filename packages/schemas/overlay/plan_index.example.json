@@ -1,15 +1,16 @@
 {
+  "version": 2,
   "floors": ["f1", "f2"],
   "rooms": {
-    "r1": {"floor_id": "f1", "label": "ENTRANCE", "type": "entrance"},
-    "r2": {"floor_id": "f1", "label": "LIVING ROOM", "type": "living room"},
-    "r4": {"floor_id": "f1", "label": "KITCHEN", "type": "kitchen"},
-    "r5": {"floor_id": "f1", "label": "GARAGE", "type": "garage"},
-    "r6": {"floor_id": "f1", "label": "STAIRCASE", "type": "staircase"},
-    "r8": {"floor_id": "f2", "label": "HALLWAY", "type": "hallway"},
-    "r9": {"floor_id": "f2", "label": "BEDROOM", "type": "bedroom"},
-    "r10": {"floor_id": "f2", "label": "BEDROOM", "type": "bedroom"},
-    "r11": {"floor_id": "f2", "label": "STAIRCASE", "type": "staircase"}
+    "r1":  {"floor_id": "f1", "label": "ENTRANCE",    "type": "entrance",    "area_m2": 9.0,  "size_rank": 1, "size_of": 1, "next_to": ["r2"],             "over": [],     "under": [],           "at_stairs": false},
+    "r2":  {"floor_id": "f1", "label": "LIVING ROOM", "type": "living room", "area_m2": 32.0, "size_rank": 1, "size_of": 1, "next_to": ["r1", "r4", "r6"], "over": [],     "under": ["r8", "r9"], "at_stairs": true},
+    "r4":  {"floor_id": "f1", "label": "KITCHEN",     "type": "kitchen",     "area_m2": 18.5, "size_rank": 1, "size_of": 1, "next_to": ["r2", "r5"],       "over": [],     "under": ["r10"],      "at_stairs": false},
+    "r5":  {"floor_id": "f1", "label": "GARAGE",      "type": "garage",      "area_m2": 36.0, "size_rank": 1, "size_of": 1, "next_to": ["r4"],             "over": [],     "under": [],           "at_stairs": false},
+    "r6":  {"floor_id": "f1", "label": "STAIRCASE",   "type": "staircase",   "area_m2": 4.5,  "size_rank": 1, "size_of": 1, "next_to": ["r2"],             "over": [],     "under": ["r11"]},
+    "r8":  {"floor_id": "f2", "label": "HALLWAY",     "type": "hallway",     "area_m2": 8.0,  "size_rank": 1, "size_of": 1, "next_to": ["r9", "r10", "r11"], "over": ["r2"], "under": [],          "at_stairs": true},
+    "r9":  {"floor_id": "f2", "label": "BEDROOM",     "type": "bedroom",     "area_m2": 14.2, "size_rank": 2, "size_of": 2, "next_to": ["r8", "r11"],      "over": ["r2"], "under": [],           "at_stairs": true},
+    "r10": {"floor_id": "f2", "label": "BEDROOM",     "type": "bedroom",     "area_m2": 18.6, "size_rank": 1, "size_of": 2, "next_to": ["r8"],             "over": ["r4"], "under": [],           "at_stairs": false},
+    "r11": {"floor_id": "f2", "label": "STAIRCASE",   "type": "staircase",   "area_m2": 4.5,  "size_rank": 1, "size_of": 1, "next_to": ["r8", "r9"],       "over": ["r6"], "under": []}
   },
   "openings": {
     "d1": {"type": "doorway", "exterior": true, "floor_id": "f1"},

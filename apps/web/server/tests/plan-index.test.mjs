@@ -14,6 +14,10 @@ import { buildPlanIndex } from "../../public/house-viewer/incident/plan-index.js
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const BUILDINGS = ["209217448", "214905148", "199958956"];
 const LIVE = process.env.LIVE === "1";
+if (!fs.existsSync(path.join(ROOT, "data", "raw"))) {
+  console.log("SKIP: data/raw/ does not exist (sponsor data, not in git). Copy it into the repo to run this test.");
+  process.exit(0);
+}
 const envFile = path.join(ROOT, ".env");
 const env = fs.existsSync(envFile) ? Object.fromEntries(fs.readFileSync(envFile, "utf8").split("\n")
   .map((l) => l.match(/^\s*(?:export\s+)?([A-Z_]+)\s*=\s*(.*)$/)).filter(Boolean).map((m) => [m[1], m[2].trim().replace(/^['"]|['"]$/g, "")])) : {};
