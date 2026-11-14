@@ -17,7 +17,7 @@ from typing import Iterable, Optional
 from flamescout_schemas import (CallSegment, Contradiction, ContradictionValue, Evidence,
                                 Fact, IncidentRecord, now)
 
-from .extract import ExtractedFact, Extractor, KeywordExtractor
+from .extract import ExtractedFact, Extractor, get_extractor
 
 REPORTED_CAP = 0.6
 BASE_CONF = 0.5
@@ -45,7 +45,7 @@ def _norm(v):
 class FusionEngine:
     def __init__(self, incident_id: str, extractor: Optional[Extractor] = None):
         self.record = IncidentRecord(incident_id=incident_id)
-        self.extractor = extractor or KeywordExtractor()
+        self.extractor = extractor or get_extractor()
         self._ev_counter = 0
         self._last_call_for_key: dict[str, str] = {}
         self._span_for_key: dict[str, dict] = {}

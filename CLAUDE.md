@@ -6,14 +6,15 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 
 ## Commands
 - Install: `python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"`
-- Tests: `pytest -q`
+- Tests: `pytest -q` (offline). Live API tests: `RUN_LIVE=1 pytest -q -m live`
 - Replay a call script through fusion: `python scripts/run_fusion.py S2`
 - Export JSON Schema for the frontend: `python scripts/export_schemas.py`
 
 ## Layout
 - `packages/schemas/flamescout_schemas/` - Pydantic models. The contract between agents, API and UI.
   Change a model -> run export_schemas.py and tell the frontend person.
-- `services/agents/extract.py` - per-utterance fact extraction (KeywordExtractor stub; Gemini TODO).
+- `services/agents/extract.py` - per-utterance fact extraction (KeywordExtractor stub, GeminiExtractor;
+  `EXTRACTOR=keyword|gemini`, default keyword; `EXTRACT_TIMEOUT_S`, default 4.0).
 - `services/agents/fusion.py` - deterministic merge, contradictions, open questions. No LLM.
 - `data/fixtures/calls/` - scripted calls S1-S4. `data/fixtures/<building_id>/` - dossier fixtures.
 - `workspace/<incident_id>/` - incident files (incident.json, dossier.json, brief_vN.json).

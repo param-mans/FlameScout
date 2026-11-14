@@ -6,16 +6,23 @@ code in fusion.py, never the LLM.
 
 - KeywordExtractor: regex stub. No API key needed. Used by tests and as the
   demo fallback. Good enough for the scripted S1-S4 calls.
-- GeminiExtractor: TODO (person A) - same interface, using
-  model.with_structured_output(ExtractionResult). Keep the prompt to
-  "extract only what the caller literally said; omit anything not stated".
+- GeminiExtractor: same interface, using
+  model.with_structured_output(ExtractionResult). Never raises: any error, or
+  a call slower than EXTRACT_TIMEOUT_S (default 4 s), falls back to
+  KeywordExtractor for that utterance.
+- get_extractor(): picks one from EXTRACTOR=keyword|gemini (default keyword).
 """
 from __future__ import annotations
 
+import logging
+import os
 import re
-from typing import Any, Protocol
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Optional, Protocol
 
 from pydantic import BaseModel
+
+log = logging.getLogger(__name__)
 
 # Keys the fusion layer understands. Keep in sync with fusion.LIST_KEYS / QUESTIONS.
 KEYS = [
@@ -81,3 +88,105 @@ class KeywordExtractor:
             if note in low:
                 out.append(ExtractedFact(key="access.notes", value=note, quote=note))
         return out
+
+
+PROMPT = f"""You extract facts from ONE utterance spoken by a caller on a fire emergency call.
+
+- Extract only what the caller literally said. Omit anything not stated; never infer or guess.
+- Use only these keys: {", ".join(KEYS)}. Never use any other key.
+- For every fact include the exact quote: the caller's words that support it, copied verbatim
+  from the utterance.
+- If the utterance states none of these, return an empty facts list.
+
+Values:
+- location.address: the street address as said. location.name: the building name as said.
+- incident.floor: the floor number as an integer ("third floor" -> 3).
+- incident.visible: "smoke" or "flames".
+- people.reported, people.trapped, alarm.sounding: true or false.
+- hazards.reported: one fact per hazard, a single lowercase word ("gas", "propane").
+- access.notes: one fact per note, a short phrase as said ("back stairs")."""
+
+
+def _squash(s: str) -> str:
+    """Lowercase words only: no punctuation, single spaces, padded so matches are whole-word."""
+    s = re.sub(r"['\u2018\u2019]", "", s.lower())  # someone's == someones
+    return f" {' '.join(re.sub(r'[^a-z0-9]+', ' ', s).split())} "
+
+
+def _timeout_from_env() -> float:
+    raw = os.environ.get("EXTRACT_TIMEOUT_S", "")
+    try:
+        return float(raw) if raw.strip() else GeminiExtractor.TIMEOUT_S
+    except ValueError:
+        log.warning("Bad EXTRACT_TIMEOUT_S=%r, using %s", raw, GeminiExtractor.TIMEOUT_S)
+        return GeminiExtractor.TIMEOUT_S
+
+
+class GeminiExtractor:
+    TIMEOUT_S = 4.0  # default; override with EXTRACT_TIMEOUT_S
+    MIN_API_DEADLINE_S = 10.0  # the API rejects shorter request deadlines with a 400
+
+    def __init__(self, timeout_s: Optional[float] = None, fallback: Optional[Extractor] = None):
+        self.timeout_s = _timeout_from_env() if timeout_s is None else timeout_s
+        self.fallback = fallback or KeywordExtractor()
+        self._chain = None
+        self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="gemini-extract")
+
+    def extract(self, text: str) -> list[ExtractedFact]:
+        fut = None
+        try:
+            # Wall-clock cap enforced here; the client's own (longer) deadline only
+            # reaps the abandoned thread.
+            fut = self._pool.submit(self._ask, self._get_chain(), text)
+            facts = fut.result(timeout=self.timeout_s)
+        except Exception as e:  # incl. TimeoutError, missing env, quota, schema error
+            if fut is not None:
+                fut.cancel()
+            log.warning("GeminiExtractor fell back to keywords: %r", e)
+            return self.fallback.extract(text)
+        return self._grounded(facts, text)
+
+    def _get_chain(self):
+        if self._chain is None:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            llm = ChatGoogleGenerativeAI(
+                model=os.environ["GEMINI_FAST_MODEL"],
+                google_api_key=os.environ["GEMINI_API_KEY"],
+                timeout=max(self.timeout_s, self.MIN_API_DEADLINE_S),
+                max_retries=1,  # = attempts; a network retry can't fit in the budget
+                thinking_level="low",  # default thinking takes ~4.5 s per utterance
+            )
+            self._chain = llm.with_structured_output(ExtractionResult, include_raw=True)
+        return self._chain
+
+    def _ask(self, chain, text: str) -> list[ExtractedFact]:
+        out: dict = {}
+        for _ in range(2):  # one retry on schema error
+            out = chain.invoke([("system", PROMPT), ("human", text)])
+            if out["parsed"] is not None:
+                return out["parsed"].facts
+        # content is a list of blocks on this model; .text is the plain string
+        raise ValueError(f"schema error: {out['raw'].text[:200]!r}")
+
+    @staticmethod
+    def _grounded(facts: list[ExtractedFact], text: str) -> list[ExtractedFact]:
+        """Drop anything the prompt forbids: unknown keys, quotes the caller didn't say."""
+        said = _squash(text)
+        kept = []
+        for f in facts:
+            if f.key in KEYS and _squash(f.quote).strip() and _squash(f.quote) in said:
+                kept.append(f)
+            else:
+                log.warning("GeminiExtractor dropped ungrounded fact: %r", f)
+        return kept
+
+
+def get_extractor() -> Extractor:
+    """EXTRACTOR=keyword|gemini (default keyword)."""
+    name = os.environ.get("EXTRACTOR", "keyword").strip().lower()
+    if name == "gemini":
+        return GeminiExtractor()
+    if name != "keyword":
+        log.warning("Unknown EXTRACTOR=%r, using keyword", name)
+    return KeywordExtractor()

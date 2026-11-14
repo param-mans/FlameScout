@@ -10,9 +10,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "packages" / "schemas")]
 
+from dotenv import load_dotenv  # noqa: E402
 from flamescout_schemas import CallSegment  # noqa: E402
 from services.agents.fusion import FusionEngine  # noqa: E402
 
+load_dotenv(ROOT / ".env")  # EXTRACTOR, GEMINI_*
 script_id = (sys.argv[1] if len(sys.argv) > 1 else "S2").upper()
 data = json.loads((ROOT / "data/fixtures/calls" / f"{script_id.lower()}.json").read_text())
 eng = FusionEngine(f"inc_{script_id.lower()}")
