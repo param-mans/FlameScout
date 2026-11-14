@@ -32,12 +32,19 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
   cross-layer consideration), `changes_since_last` diff. No LLM.
 - `services/agents/dossier.py` - pulls the costar / matterport / vexcel layers through the adapters and
   merges them into a BuildingDossier. No LLM.
-- `services/agents/cache.py` - prefetch cache under `data/cache/<building_id>/` (24 h, not committed).
+- `services/agents/cache.py` - prefetch cache (24 h): MongoDB namespace `["cache", <building_id>]`, or
+  `data/cache/<building_id>/` (not committed) when MongoDB is off.
+- `services/agents/workspace.py` - `Workspace`: where incident documents live. `StoreWorkspace` on MongoDB
+  Atlas when `MONGODB_URI` is set (`mongo_store.py`, a LangGraph BaseStore that deepagents' StoreBackend
+  mounts at /workspace/), else `FileWorkspace` under `workspace/`. Never read/write those files directly.
+- `services/agents/db.py` - Postgres on Tiger Data (`TIGER_DATABASE_URL`): incidents, facts, call_segments
+  and pipeline_events (hypertables), briefs, `time_to_brief` view, and the LangGraph `PostgresSaver`
+  (incidents survive a restart). Best-effort writes; every function is a no-op when the URL is unset.
 - `data/fixtures/calls/` - scripted calls S1-S4. `data/fixtures/<building_id>/{costar,matterport,vexcel}.json`
   - per-layer fixtures, our own normalized fields only.
-- `workspace/<incident_id>/` - incident files (incident.json, candidates.json, layers/*.json, dossier.json, brief_vN.json,
-  critique_vN.json, todos.json = the orchestrator's plan + status for the UI progress strip, notes/*.md).
-  This is the deepagent filesystem AND what the UI renders. Not committed.
+- Incident workspace (MongoDB, or `workspace/<incident_id>/`): incident.json, candidates.json, layers/*.json,
+  dossier.json, brief_vN.json, critique_vN.json, todos.json = the orchestrator's plan + status for the UI
+  progress strip, notes/*.md. This is the deepagent filesystem AND what the UI renders. Not committed.
 
 ## Non-negotiable rules
 - Advisory only: considerations say "Consider ...", never orders.

@@ -24,49 +24,55 @@ artifacts are written only by tools (deterministic, schema-checked); the
 built-in filesystem tools can read /workspace/ but write only under
 /workspace/notes/.
 
-The todo list is exposed three ways: workspace/<incident_id>/todos.json
-(rewritten on every change), the on_todos callback, and RunResult.todos.
+The todo list is exposed three ways: todos.json in the workspace (rewritten on every
+change), the on_todos callback, and RunResult.todos.
 
-prefetch_building() runs the same three layer subagents ahead of time into
-data/cache/<building_id>/. An incident at a building with a cache under 24 h
-old copies it in at confirmation and skips the layer phase.
+prefetch_building() runs the same three layer subagents ahead of time into the
+building's prefetch cache (cache.py). An incident at a building with a cache under
+24 h old copies it in at confirmation and skips the layer phase.
 
-Sessions live in this process (InMemorySaver). See docs/agents-api.md.
+Storage (see workspace.py and db.py):
+  - the workspace (the documents above) is MongoDB Atlas when MONGODB_URI is set,
+    else local files under workspace/<incident_id>/
+  - incidents, facts, call segments, published briefs, timings and the agent threads
+    (PostgresSaver) are in Postgres on Tiger Data when TIGER_DATABASE_URL is set, so an
+    incident survives a restart. Without it, threads live in this process (InMemorySaver).
+See docs/agents-api.md.
 """
 from __future__ import annotations
 
 import json
 import logging
 import os
-import shutil
 import threading
 import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Callable, Iterable, Literal, Optional
 
 from deepagents import FilesystemPermission, create_deep_agent
-from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
+from deepagents.backends import CompositeBackend, StateBackend
 from langchain.agents.middleware import TodoListMiddleware
 from langchain_core.tools import BaseTool, StructuredTool, tool
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
-from flamescout_schemas import (Brief, BuildingCandidate, BuildingDossier, IncidentRecord, Progress,
-                                TodoItem, now)
+from flamescout_schemas import (Brief, BuildingCandidate, BuildingDossier, CallSegment, IncidentRecord,
+                                Progress, TodoItem, now)
 
-from . import cache
+from . import cache, db
 from . import dossier as dossier_mod
 from .brief import (ConsiderationDraft, build_brief, check_considerations, merge_evidence,
                     rejected_count)
 from .dossier import LAYERS, LayerData
 from .locator import find_candidates
+from .workspace import WORKSPACE_ROOT, Workspace, incident_workspace
 
 log = logging.getLogger(__name__)
 
-WORKSPACE = Path(__file__).resolve().parents[2] / "workspace"
+WORKSPACE = WORKSPACE_ROOT
 INCIDENT, DOSSIER, CANDIDATES, TODOS = "incident.json", "dossier.json", "candidates.json", "todos.json"
 MAX_SUBMISSIONS = 3  # per brief version: first draft + 2 regenerations (PRD FR-6)
 
@@ -206,7 +212,7 @@ class RunResult:
 class Session:
     """One incident's persistent agent and the state its tools share."""
     incident_id: str
-    ws: Path
+    ws: Workspace
     candidates: list[BuildingCandidate] = field(default_factory=list)
     status: Status = "awaiting_confirmation"
     building_id: Optional[str] = None  # what the dispatcher confirmed
@@ -223,17 +229,19 @@ class Session:
     prefetched_at: Optional[datetime] = None   # set when the layers came from the cache
     publish: bool = True                       # write todos.json / call on_todos (off for prefetch)
     layer_tasks: dict = field(default_factory=dict)  # task tool_call_id -> layer, to save its reply
+    start_seconds: float = 0.0                 # start_incident's wall clock, for time-to-brief
 
-    def layer_path(self, layer: str) -> Path:
-        return self.ws / "layers" / f"{layer}.json"
-
-    @property
-    def brief_path(self) -> Path:
-        return self.ws / f"brief_v{self.version}.json"
+    @staticmethod
+    def layer_rel(layer: str) -> str:
+        return f"layers/{layer}.json"
 
     @property
-    def critique_path(self) -> Path:
-        return self.ws / f"critique_v{self.version}.json"
+    def brief_rel(self) -> str:
+        return f"brief_v{self.version}.json"
+
+    @property
+    def critique_rel(self) -> str:
+        return f"critique_v{self.version}.json"
 
     @property
     def config(self) -> dict:
@@ -241,31 +249,27 @@ class Session:
 
 
 _SESSIONS: dict[str, Session] = {}
-_CHECKPOINTER = InMemorySaver()  # in-process: a restart loses paused incidents
+_MEMORY_SAVER = InMemorySaver()  # without Tiger: in-process, a restart loses paused incidents
+
+
+def _checkpointer():
+    return db.checkpointer() if db.enabled() else _MEMORY_SAVER
 
 
 # ---------- workspace helpers ----------
 
-def _write(path: Path, text: str) -> None:
-    """Atomic, so the UI never reads a half-written file."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text)
-    tmp.replace(path)
+def _incident(ws: Workspace) -> IncidentRecord:
+    return IncidentRecord.model_validate_json(ws.read(INCIDENT))
 
 
-def _incident(ws: Path) -> IncidentRecord:
-    return IncidentRecord.model_validate_json((ws / INCIDENT).read_text())
+def _dossier(ws: Workspace) -> BuildingDossier:
+    return BuildingDossier.model_validate_json(ws.read(DOSSIER))
 
 
-def _dossier(ws: Path) -> BuildingDossier:
-    return BuildingDossier.model_validate_json((ws / DOSSIER).read_text())
-
-
-def _confirm(ws: Path, building_id: str) -> None:
+def _confirm(ws: Workspace, building_id: str) -> None:
     incident = _incident(ws)
     incident.confirmed_building_id, incident.status = building_id, "confirmed"
-    _write(ws / INCIDENT, incident.model_dump_json(indent=2))
+    ws.write(INCIDENT, incident.model_dump_json(indent=2))
 
 
 def _building_id(s: Session) -> str:
@@ -273,10 +277,10 @@ def _building_id(s: Session) -> str:
 
 
 def _layer_on_disk(s: Session, layer: str, building_id: str) -> Optional[LayerData]:
-    path = s.layer_path(layer)
-    if not path.exists():
+    text = s.ws.read_or_none(s.layer_rel(layer))
+    if text is None:
         return None
-    data = LayerData.model_validate_json(path.read_text())
+    data = LayerData.model_validate_json(text)
     return data if data.building_id == building_id else None
 
 
@@ -292,10 +296,10 @@ def _pull(s: Session, layer: str) -> str:
     except (OSError, ValueError, KeyError) as e:
         return f"Error: {e}"
     with s.lock:
-        _write(s.layer_path(layer), data.model_dump_json(indent=2))
+        s.ws.write(s.layer_rel(layer), data.model_dump_json(indent=2))
         layers = [_layer_on_disk(s, name, building_id) for name in LAYERS]
         if all(layers):
-            _write(s.ws / DOSSIER, dossier_mod.merge_layers(building_id, layers).model_dump_json(indent=2))
+            s.ws.write(DOSSIER, dossier_mod.merge_layers(building_id, layers).model_dump_json(indent=2))
     return dossier_mod.digest(data)
 
 
@@ -307,11 +311,11 @@ def _load_prefetched(s: Session) -> bool:
         return False
     with s.lock:
         for name, data in hit.layers.items():
-            _write(s.layer_path(name), data.model_dump_json(indent=2))
+            s.ws.write(s.layer_rel(name), data.model_dump_json(indent=2))
         for name, note in hit.notes.items():
-            _write(s.ws / "notes" / f"{name}_summary.md", note)
+            s.ws.write(f"notes/{name}_summary.md", note)
         dossier = dossier_mod.merge_layers(building_id, hit.layers.values())
-        _write(s.ws / DOSSIER, dossier.model_dump_json(indent=2))
+        s.ws.write(DOSSIER, dossier.model_dump_json(indent=2))
         s.prefetched_at = hit.prefetched_at
     log.info("Incident %s: using data layers prefetched at %s", s.incident_id, hit.prefetched_at.isoformat())
     return True
@@ -321,7 +325,7 @@ def _ensure_dossier(s: Session) -> None:
     """dossier.json must exist before a brief is built: pull in code whatever a subagent did not."""
     building_id = _building_id(s)
     with s.lock:
-        if (s.ws / DOSSIER).exists() and _dossier(s.ws).building_id == building_id:
+        if s.ws.exists(DOSSIER) and _dossier(s.ws).building_id == building_id:
             return
         if not any(_layer_on_disk(s, name, building_id) for name in LAYERS) and _load_prefetched(s):
             return
@@ -332,17 +336,17 @@ def _ensure_dossier(s: Session) -> None:
                 log.warning("Incident %s: %s layer was not pulled by its subagent; pulling it in code",
                             s.incident_id, name)
                 data = dossier_mod.pull_layer(name, building_id)
-                _write(s.layer_path(name), data.model_dump_json(indent=2))
+                s.ws.write(s.layer_rel(name), data.model_dump_json(indent=2))
             layers.append(data)
-        _write(s.ws / DOSSIER, dossier_mod.merge_layers(building_id, layers).model_dump_json(indent=2))
+        s.ws.write(DOSSIER, dossier_mod.merge_layers(building_id, layers).model_dump_json(indent=2))
 
 
 def _write_brief(s: Session, drafts: list[ConsiderationDraft], extra_gaps: tuple[str, ...] = ()) -> Brief:
-    prev_path = s.ws / f"brief_v{s.version - 1}.json"
-    previous = Brief.model_validate_json(prev_path.read_text()) if prev_path.exists() else None
+    prev_text = s.ws.read_or_none(f"brief_v{s.version - 1}.json")
+    previous = Brief.model_validate_json(prev_text) if prev_text else None
     brief = build_brief(_incident(s.ws), _dossier(s.ws), drafts, version=s.version, extra_gaps=extra_gaps,
                         previous=previous, verifier_rejections=s.rejections, prefetched_at=s.prefetched_at)
-    _write(s.brief_path, brief.model_dump_json(indent=2))
+    s.ws.write(s.brief_rel, brief.model_dump_json(indent=2))
     return brief
 
 
@@ -351,9 +355,16 @@ def _publish(s: Session, progress_status: str) -> None:
         return
     progress = Progress(incident_id=s.incident_id, status=progress_status, version=s.version,
                         candidates=s.candidates, todos=s.todos, trace_run_id=s.trace_run_id)
-    _write(s.ws / TODOS, progress.model_dump_json(indent=2))
+    s.ws.write(TODOS, progress.model_dump_json(indent=2))
     if s.on_todos:
         s.on_todos(progress)
+
+
+def _save_state(s: Session) -> None:
+    """The incidents row in Tiger: what _session() needs to pick the incident up after a restart."""
+    if s.publish:
+        db.save_incident_state(s.incident_id, s.status, [c.model_dump() for c in s.candidates],
+                               s.building_id, s.version, s.prefetched_at)
 
 
 # ---------- tools (the only writers of the JSON artifacts) ----------
@@ -406,9 +417,9 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
             s.rejections += rejected_count(considerations, evidence)
             return "Rejected, nothing written. Fix these and resubmit:\n- " + "\n- ".join(errors)
         _write_brief(s, considerations)
-        s.critique_path.unlink(missing_ok=True)  # any earlier critique is about an older draft
+        ws.delete(s.critique_rel)  # any earlier critique is about an older draft
         s.accepted += 1
-        return (f"Accepted: /workspace/{s.brief_path.name} written with "
+        return (f"Accepted: /workspace/{s.brief_rel} written with "
                 f"{len(considerations)} considerations.")
 
     @tool(parse_docstring=True)  # not return_direct: task() would hand the orchestrator an empty result
@@ -419,13 +430,13 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
             verdict: "pass" if every consideration is advisory and supported, otherwise "revise".
             issues: One specific issue per problem, naming the consideration id. Empty for "pass".
         """
-        if not s.brief_path.exists():
-            return f"Error: /workspace/{s.brief_path.name} does not exist yet."
+        if not ws.exists(s.brief_rel):
+            return f"Error: /workspace/{s.brief_rel} does not exist yet."
         if verdict == "revise" and not issues:
             return 'Error: "revise" needs at least one issue.'
         if verdict == "revise":
             s.rejections += len(issues)
-        _write(s.critique_path, json.dumps(
+        ws.write(s.critique_rel, json.dumps(
             {"brief_id": f"{s.incident_id}_v{s.version}", "verdict": verdict, "issues": issues,
              "checked_at": now().isoformat()}, indent=2))
         return f"Recorded verdict: {verdict}."
@@ -489,9 +500,8 @@ def build_orchestrator(s: Session, model: Any = None, checkpointer: Any = None):
         system_prompt=ORCHESTRATOR_PROMPT,
         middleware=[TodoListMiddleware()],  # write_todos is opt-in in deepagents 0.7
         subagents=subagents,
-        # Only /workspace/ is real disk; offloaded tool results etc. stay in ephemeral state.
-        backend=CompositeBackend(default=StateBackend(),
-                                 routes={"/workspace/": FilesystemBackend(root_dir=s.ws, virtual_mode=True)}),
+        # Only /workspace/ is persistent (MongoDB or disk); offloaded tool results etc. stay in ephemeral state.
+        backend=CompositeBackend(default=StateBackend(), routes={"/workspace/": s.ws.backend()}),
         # First match wins: the model may write notes, nothing else in the workspace.
         permissions=[
             FilesystemPermission(operations=["write"], paths=["/workspace/notes/**"], mode="allow"),
@@ -499,7 +509,7 @@ def build_orchestrator(s: Session, model: Any = None, checkpointer: Any = None):
         ],
         # The dispatcher picks the building: the answer is an "edit" that fills chosen_building_id.
         interrupt_on={"confirm_building": {"allowed_decisions": ["edit", "reject"]}},
-        checkpointer=checkpointer or _CHECKPOINTER,
+        checkpointer=checkpointer or _checkpointer(),
         name="flamescout-orchestrator",
     )
 
@@ -541,7 +551,7 @@ def _save_layer_notes(s: Session, update: dict) -> None:
                 s.layer_tasks[call["id"]] = call["args"]["subagent_type"]
         layer = s.layer_tasks.pop(getattr(m, "tool_call_id", None), None)
         if layer and (text := m.text.strip()):
-            _write(s.ws / "notes" / f"{layer}_summary.md", text + "\n")
+            s.ws.write(f"notes/{layer}_summary.md", text + "\n")
 
 
 def _pending_confirmation(s: Session) -> Optional[dict]:
@@ -585,20 +595,33 @@ def _run(s: Session, agent_input: Any, phase: str, t0: float) -> None:
         s.error = f"the orchestrator run failed ({type(e).__name__})"
 
 
-def _result(s: Session, t0: float, brief: Optional[Brief] = None, critique: Optional[dict] = None,
+def _result(s: Session, t0: float, phase: str, brief: Optional[Brief] = None, critique: Optional[dict] = None,
             fallback_reason: Optional[str] = None) -> RunResult:
     _publish(s, "done" if s.status == "briefed" else s.status)
+    seconds = time.perf_counter() - t0
+    if s.publish:
+        _save_state(s)
+        detail: dict[str, Any] = {"status": s.status, "version": s.version, "error": s.error,
+                                  "trace_run_id": s.trace_run_id}
+        if brief is not None:
+            detail |= {"considerations": len(brief.considerations), "fallback": fallback_reason is not None,
+                       "prefetched": s.prefetched_at is not None}
+            db.save_brief(brief, critique, fallback_reason, seconds, s.trace_run_id)
+        if phase == "resume" and brief is not None and s.start_seconds:  # unknown after a restart
+            detail["time_to_brief_s"] = s.start_seconds + seconds  # agent work only, not the dispatcher's wait
+        db.log_event(s.incident_id, phase, seconds, **detail)
     return RunResult(incident_id=s.incident_id, status=s.status, version=s.version, brief=brief,
                      candidates=s.candidates, todos=s.todos, critique=critique,
-                     fallback_reason=fallback_reason, seconds=time.perf_counter() - t0,
-                     trace_run_id=s.trace_run_id)
+                     fallback_reason=fallback_reason, seconds=seconds, trace_run_id=s.trace_run_id)
 
 
-def _finish_brief(s: Session, t0: float) -> RunResult:
+def _finish_brief(s: Session, t0: float, phase: str) -> RunResult:
     """Settle the current version: keep the agent's brief, or fall back to facts only (PRD FR-6)."""
-    critique = json.loads(s.critique_path.read_text()) if s.critique_path.exists() else None
+    critique_text = s.ws.read_or_none(s.critique_rel)
+    critique = json.loads(critique_text) if critique_text else None
+    brief_text = s.ws.read_or_none(s.brief_rel)
     fallback_reason: Optional[str] = None
-    if not s.brief_path.exists():
+    if brief_text is None:
         fallback_reason = s.error or "the strategy agent produced no accepted considerations"
     elif critique and critique["verdict"] == "revise":
         fallback_reason = "the critic still flagged issues: " + "; ".join(critique["issues"])
@@ -607,46 +630,75 @@ def _finish_brief(s: Session, t0: float) -> RunResult:
         _ensure_dossier(s)
         brief = _write_brief(s, [], extra_gaps=(f"Considerations withheld: {fallback_reason}",))
     else:
-        brief = Brief.model_validate_json(s.brief_path.read_text())
+        brief = Brief.model_validate_json(brief_text)
         if critique is None:
             brief.gaps.insert(0, "Considerations were not checked by the critic")
-            _write(s.brief_path, brief.model_dump_json(indent=2))
+            s.ws.write(s.brief_rel, brief.model_dump_json(indent=2))
     s.status = "briefed"
-    return _result(s, t0, brief, critique, fallback_reason)
+    return _result(s, t0, phase, brief, critique, fallback_reason)
+
+
+def _rehydrate(incident_id: str) -> Optional[Session]:
+    """After a restart: rebuild the session from Tiger (incidents row + agent thread) and the workspace."""
+    row = db.load_incident_state(incident_id)
+    if row is None:
+        return None
+    s = Session(incident_id=incident_id, ws=incident_workspace(incident_id),
+                candidates=[BuildingCandidate(**c) for c in row["candidates"]], status=row["status"],
+                building_id=row["building_id"], version=row["version"], prefetched_at=row["prefetched_at"])
+    try:
+        s.agent = build_orchestrator(s)
+    except Exception:
+        log.exception("Could not rebuild the orchestrator for %s", incident_id)
+    log.info("Incident %s: session restored from Tiger (status %s, v%d)", incident_id, s.status, s.version)
+    _SESSIONS[incident_id] = s
+    return s
 
 
 def _session(incident_id: str) -> Session:
-    if incident_id not in _SESSIONS:
-        raise ValueError(f"No session for incident {incident_id}: call start_incident first "
-                         "(sessions do not survive a process restart)")
-    return _SESSIONS[incident_id]
+    if incident_id in _SESSIONS:
+        return _SESSIONS[incident_id]
+    if s := _rehydrate(incident_id):
+        return s
+    raise ValueError(f"No session for incident {incident_id}: call start_incident first "
+                     "(without TIGER_DATABASE_URL, sessions do not survive a process restart)")
 
 
 # ---------- public API (see docs/agents-api.md) ----------
 
-def start_incident(incident_id: str, workspace_root: Path = WORKSPACE,
+def save_incident(record: IncidentRecord, new_segments: Iterable[CallSegment] = (),
+                  workspace_root: Optional[Path] = None) -> None:
+    """Save fusion's record as the incident's incident.json, and its facts and new segments to Tiger.
+
+    Call after every FusionEngine.ingest (pass the segments just ingested). workspace_root=None
+    means MongoDB when configured, else workspace/.
+    """
+    incident_workspace(record.incident_id, workspace_root).write(INCIDENT, record.model_dump_json(indent=2))
+    db.save_segments(record.incident_id, new_segments)
+    db.save_facts(record)
+
+
+def start_incident(incident_id: str, workspace_root: Optional[Path] = None,
                    on_todos: Optional[Callable[[Progress], None]] = None,
                    model: Any = None, checkpointer: Any = None, use_cache: bool = True) -> RunResult:
     """Start the incident's agent. It plans, then pauses until the dispatcher confirms a building.
 
-    use_cache=False ignores prefetched building data (data/cache) for this incident.
+    workspace_root=None: MongoDB when MONGODB_URI is set, else workspace/. A path means local files.
+    use_cache=False ignores prefetched building data for this incident.
     """
     t0 = time.perf_counter()
-    ws = Path(workspace_root) / incident_id
+    ws = incident_workspace(incident_id, workspace_root)
     candidates = find_candidates(_incident(ws))
     if not candidates:
         raise ValueError(f"Incident {incident_id} has no candidate buildings yet: "
                          "callers gave no location that matches a known building")
 
-    for stale in [ws / DOSSIER, ws / CANDIDATES, ws / TODOS,
-                  *ws.glob("brief_v*.json"), *ws.glob("critique_v*.json")]:
-        stale.unlink(missing_ok=True)
-    for folder in ("notes", "layers"):
-        shutil.rmtree(ws / folder, ignore_errors=True)
-    _write(ws / CANDIDATES, json.dumps([c.model_dump() for c in candidates], indent=2))
+    ws.clear(keep=(INCIDENT,))  # earlier output for this incident (briefs, layers, notes, ...)
+    ws.write(CANDIDATES, json.dumps([c.model_dump() for c in candidates], indent=2))
 
-    saver = checkpointer or _CHECKPOINTER
+    saver = checkpointer or _checkpointer()
     saver.delete_thread(incident_id)  # one thread per incident; starting again starts it clean
+    db.forget_briefs(incident_id)
     s = _SESSIONS[incident_id] = Session(incident_id=incident_id, ws=ws, candidates=candidates,
                                          on_todos=on_todos, use_cache=use_cache)
     try:
@@ -661,7 +713,8 @@ def start_incident(incident_id: str, workspace_root: Path = WORKSPACE,
         # Still hand the dispatcher the candidates; resume_incident then confirms without the agent.
         s.error = s.error or "the orchestrator did not pause for confirmation"
         log.warning("Incident %s: %s", incident_id, s.error)
-    return _result(s, t0)
+    s.start_seconds = time.perf_counter() - t0
+    return _result(s, t0, "start")
 
 
 def resume_incident(incident_id: str, building_id: Optional[str]) -> RunResult:
@@ -679,7 +732,7 @@ def resume_incident(incident_id: str, building_id: Optional[str]) -> RunResult:
             _run(s, Command(resume={"decisions": [{"type": "reject", "message": REJECT_MESSAGE}]}),
                  "reject", t0)
         s.status = "rejected"
-        return _result(s, t0)
+        return _result(s, t0, "reject")
 
     if pending:
         # Built here, not taken from the caller: the tool name and candidate list stay pinned.
@@ -692,7 +745,7 @@ def resume_incident(incident_id: str, building_id: Optional[str]) -> RunResult:
     s.building_id = building_id
     if _incident(s.ws).confirmed_building_id != building_id:
         _confirm(s.ws, building_id)  # the agent never got there; the dispatcher's choice still stands
-    return _finish_brief(s, t0)
+    return _finish_brief(s, t0, "resume")
 
 
 def update_incident(incident_id: str, notes: list[str]) -> RunResult:
@@ -712,14 +765,14 @@ def update_incident(incident_id: str, notes: list[str]) -> RunResult:
               f"New information from the calls:\n{listing}\n"
               f"Produce brief version {s.version}: /workspace/brief_v{s.version}.json.")
     _run(s, {"messages": [{"role": "user", "content": prompt}]}, "update", t0)
-    return _finish_brief(s, t0)
+    return _finish_brief(s, t0, "update")
 
 
 @dataclass
 class PrefetchResult:
     building_id: str
     prefetched_at: datetime
-    path: Path                # data/cache/<building_id>/
+    workspace: Workspace      # the building's prefetch cache (cache.cache_workspace)
     notes: dict[str, str]     # layer -> summary written by its subagent
     seconds: float
 
@@ -731,10 +784,9 @@ def prefetch_building(building_id: str, model: Any = None) -> PrefetchResult:
     layer phase. Raises if the building has no data (unknown building id).
     """
     t0 = time.perf_counter()
-    folder = cache.cache_dir(building_id)
+    folder = cache.cache_workspace(building_id)
     dossier_mod.pull_layer("costar", building_id)  # fail now, before any model call, if the building is unknown
-    shutil.rmtree(folder, ignore_errors=True)
-    folder.mkdir(parents=True)
+    folder.clear()
     s = Session(incident_id=f"prefetch-{building_id}", ws=folder, building_id=building_id,
                 use_cache=False, publish=False)
     try:
@@ -745,5 +797,7 @@ def prefetch_building(building_id: str, model: Any = None) -> PrefetchResult:
     _ensure_dossier(s)  # any layer a subagent did not pull is pulled in code; raises for an unknown building
     at = cache.stamp(building_id)
     hit = cache.load_fresh(building_id)
-    return PrefetchResult(building_id=building_id, prefetched_at=at, path=folder,
-                          notes=hit.notes if hit else {}, seconds=time.perf_counter() - t0)
+    seconds = time.perf_counter() - t0
+    db.log_event(f"prefetch-{building_id}", "prefetch", seconds, building_id=building_id, error=s.error)
+    return PrefetchResult(building_id=building_id, prefetched_at=at, workspace=folder,
+                          notes=hit.notes if hit else {}, seconds=seconds)

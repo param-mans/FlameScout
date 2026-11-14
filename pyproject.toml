@@ -11,10 +11,13 @@ dependencies = [
   "langsmith",
   "python-dotenv",
   "pyyaml",
+  "pymongo>=4.6",
+  "psycopg[binary,pool]>=3.2",
+  "langgraph-checkpoint-postgres",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "mongomock"]
 
 [tool.pytest.ini_options]
 pythonpath = [".", "packages/schemas"]

@@ -18,19 +18,41 @@ def pytest_collection_modifyitems(config, items):
 
 @pytest.fixture(autouse=True)
 def _offline_by_default(request, monkeypatch, tmp_path):
-    """Unless a test is marked live: keyword extractor and no LangSmith uploads, whatever .env says.
-    Every test gets an empty prefetch cache, so a real data/cache never changes a test's path."""
+    """Unless a test is marked live: keyword extractor, no LangSmith uploads and no databases (Tiger,
+    MongoDB), whatever .env says. Every test gets an empty prefetch cache, so a real data/cache
+    never changes a test's path."""
     from langsmith import utils
 
-    from services.agents import cache
+    from services.agents import cache, db, mongo_store
 
     monkeypatch.setattr(cache, "CACHE_ROOT", tmp_path / "prefetch_cache")
     if "live" not in request.keywords:
         monkeypatch.setenv("EXTRACTOR", "keyword")
         monkeypatch.setenv("LANGSMITH_TRACING", "false")
+        monkeypatch.delenv("TIGER_DATABASE_URL", raising=False)
+        monkeypatch.delenv("MONGODB_URI", raising=False)
     utils.get_env_var.cache_clear()  # langsmith caches env lookups
+    db.reset()
+    mongo_store.reset()
     yield
     utils.get_env_var.cache_clear()
+    db.reset()
+    mongo_store.reset()
+
+
+@pytest.fixture(params=["files", "mongo"])
+def storage(request, monkeypatch, tmp_path):
+    """Run a test on both workspace kinds. Returns the workspace_root to pass: a tmp folder for
+    "files", None for "mongo" (MONGODB_URI is set and the store is an in-memory mongomock)."""
+    if request.param == "files":
+        return tmp_path / "workspace"
+    import mongomock
+
+    from services.agents import mongo_store
+
+    monkeypatch.setenv("MONGODB_URI", "mongodb://mongomock")
+    monkeypatch.setattr(mongo_store, "_STORE", mongo_store.MongoStore(mongomock.MongoClient().flamescout.files))
+    return None
 
 
 @pytest.fixture
@@ -40,12 +62,10 @@ def make_cache():
     from services.agents.dossier import LAYERS, pull_layer
 
     def _make(building_id: str, at=None):
-        folder = cache.cache_dir(building_id)
+        ws = cache.cache_workspace(building_id)
         for name in LAYERS:
-            (folder / "layers").mkdir(parents=True, exist_ok=True)
-            (folder / "layers" / f"{name}.json").write_text(pull_layer(name, building_id).model_dump_json())
-        (folder / "notes").mkdir(exist_ok=True)
-        (folder / "notes" / "costar_summary.md").write_text("cached costar note\n")
+            ws.write(f"layers/{name}.json", pull_layer(name, building_id).model_dump_json())
+        ws.write("notes/costar_summary.md", "cached costar note\n")
         return cache.stamp(building_id, at)
 
     return _make

@@ -10,8 +10,10 @@
 Building data prefetched with scripts/prefetch.py (under 24 h old) is reused and the layer subagents
 are skipped; --cold ignores that cache.
 
-Writes workspace/<incident_id>/: incident.json, candidates.json, layers/{costar,matterport,vexcel}.json,
-dossier.json, brief_vN.json, critique_vN.json, todos.json and notes/*.md.
+Writes the incident's workspace (MongoDB when MONGODB_URI is set, else workspace/<incident_id>/):
+incident.json, candidates.json, layers/{costar,matterport,vexcel}.json, dossier.json, brief_vN.json,
+critique_vN.json, todos.json and notes/*.md. With TIGER_DATABASE_URL set, also records segments, facts,
+briefs and timings in Tiger and prints the time-to-brief stats.
 """
 import argparse
 import json
@@ -28,8 +30,10 @@ load_dotenv(ROOT / ".env")  # GEMINI_*, LANGSMITH_*, EXTRACTOR - before anything
 
 from flamescout_schemas import Brief, CallSegment, Progress  # noqa: E402
 from services.agents.fusion import FusionEngine  # noqa: E402
+from services.agents import db  # noqa: E402
 from services.agents.orchestrator import (RunResult, flush_traces, resume_incident,  # noqa: E402
-                                          start_incident, update_incident)
+                                          save_incident, start_incident, update_incident)
+from services.agents.workspace import incident_workspace  # noqa: E402
 
 MARKS = {"completed": "x", "in_progress": "~", "pending": " "}
 
@@ -48,14 +52,15 @@ call_ids = list(dict.fromkeys(s.call_id for s in segments))
 
 eng = FusionEngine(f"inc_{script_id}")
 incident_id = eng.record.incident_id
-ws = ROOT / "workspace" / incident_id
-ws.mkdir(parents=True, exist_ok=True)
+ws = incident_workspace(incident_id)
+db.reset_incident(incident_id)  # a re-run of the same script starts its Tiger rows over (timings are kept)
 
 
 def replay(call_id: str) -> list[str]:
     """Feed one call through fusion and save the record. Returns fusion's change notes."""
-    notes = [n for s in segments if s.call_id == call_id for n in eng.ingest(s)]
-    (ws / "incident.json").write_text(eng.record.model_dump_json(indent=2))
+    call_segments = [s for s in segments if s.call_id == call_id]
+    notes = [n for s in call_segments for n in eng.ingest(s)]
+    save_incident(eng.record, call_segments)
     print(f"\n=== {call_id}: {len(notes)} change(s) from fusion")
     for n in notes:
         print(f"  {n}")
@@ -68,7 +73,7 @@ def show_todos(p: Progress) -> None:  # where the API would push to the UI's pro
 
 
 def report(r: RunResult) -> bool:
-    brief = Brief.model_validate_json((ws / f"brief_v{r.version}.json").read_text())  # raises if invalid
+    brief = Brief.model_validate_json(ws.read(f"brief_v{r.version}.json"))  # raises if invalid
     print(f"\nbrief {brief.brief_id}: {len(brief.considerations)} consideration(s), "
           f"critic: {(r.critique or {}).get('verdict', 'did not run')}, "
           f"verifier_rejections: {brief.verifier_rejections}")
@@ -112,7 +117,9 @@ for call_id in call_ids[1:]:
     timings.append(f"v{update.version}: {update.seconds:.1f} s (data layers reused)")
 
 flush_traces()
-print("\nfiles:", *sorted(str(p.relative_to(ROOT)) for p in ws.rglob("*") if p.is_file()), sep="\n  ")
+print(f"\nworkspace {ws.location}:", *ws.list(), sep="\n  ")
 print("\nwall clock:", *timings, sep="\n  ")
 print("LangSmith thread:", incident_id if v1.trace_run_id else "tracing off")
+if db.enabled():
+    print("Tiger time-to-brief (all runs):", db.time_to_brief_stats())
 sys.exit(0 if ok else 1)

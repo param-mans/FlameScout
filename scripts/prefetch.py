@@ -2,8 +2,8 @@
 
     python scripts/prefetch.py fake_wilshire_tower
 
-Runs the costar / matterport / vexcel subagents in parallel and caches what they pull under
-data/cache/<building_id>/ with a timestamp. For 24 h, an incident confirmed at that building reuses
+Runs the costar / matterport / vexcel subagents in parallel and caches what they pull with a
+timestamp (MongoDB when MONGODB_URI is set, else data/cache/<building_id>/). For 24 h, an incident confirmed at that building reuses
 the cache and skips its layer phase (run_incident.py --cold ignores it).
 """
 import logging
@@ -29,5 +29,5 @@ result = prefetch_building(sys.argv[1])
 flush_traces()
 for layer, note in result.notes.items():
     print(f"\n[{layer}]\n{note.strip()}")
-print("\nfiles:", *sorted(str(p.relative_to(ROOT)) for p in result.path.rglob("*") if p.is_file()), sep="\n  ")
+print(f"\ncache {result.workspace.location}:", *result.workspace.list(), sep="\n  ")
 print(f"\nprefetched {result.building_id} at {result.prefetched_at.isoformat()} in {result.seconds:.1f} s")

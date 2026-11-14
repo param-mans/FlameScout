@@ -1,3 +1,4 @@
+import pytest
 from datetime import timedelta
 
 from flamescout_schemas import now
@@ -5,6 +6,11 @@ from services.agents import cache
 from services.agents.dossier import LAYERS
 
 BUILDING = "fake_wilshire_tower"
+
+
+@pytest.fixture(autouse=True)
+def _both_storages(storage):
+    """Every cache test runs on local files and on MongoDB."""
 
 
 def test_no_cache_means_nothing_to_reuse():
@@ -29,12 +35,12 @@ def test_cache_older_than_24_hours_is_ignored(make_cache):
 
 def test_incomplete_or_foreign_cache_is_ignored(make_cache):
     make_cache(BUILDING)
-    (cache.cache_dir(BUILDING) / "layers" / "vexcel.json").unlink()
+    ws = cache.cache_workspace(BUILDING)
+    ws.delete("layers/vexcel.json")
     assert cache.load_fresh(BUILDING) is None
 
     make_cache(BUILDING)
-    (cache.cache_dir(BUILDING) / "cache.json").write_text('{"building_id": "other", "prefetched_at": "%s"}'
-                                                          % now().isoformat())
+    ws.write("cache.json", '{"building_id": "other", "prefetched_at": "%s"}' % now().isoformat())
     assert cache.load_fresh(BUILDING) is None
-    (cache.cache_dir(BUILDING) / "cache.json").write_text("not json")
+    ws.write("cache.json", "not json")
     assert cache.load_fresh(BUILDING) is None

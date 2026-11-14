@@ -4,11 +4,12 @@ scripts/prefetch.py runs the three layer subagents ahead of time and saves what
 they produce here; an incident at that building then reuses it instead of
 pulling again, as long as it is under MAX_AGE old.
 
-  data/cache/<building_id>/cache.json                       building_id, prefetched_at
-  data/cache/<building_id>/layers/{costar,matterport,vexcel}.json
-  data/cache/<building_id>/notes/<layer>_summary.md
+  cache.json                       building_id, prefetched_at
+  layers/{costar,matterport,vexcel}.json
+  notes/<layer>_summary.md
 
-Not committed (see .gitignore).
+in MongoDB (namespace ("cache", <building_id>)) when MONGODB_URI is set, otherwise under
+data/cache/<building_id>/ (not committed, see .gitignore).
 """
 from __future__ import annotations
 
@@ -22,7 +23,9 @@ from typing import Optional
 
 from flamescout_schemas import now
 
+from . import mongo_store
 from .dossier import LAYERS, LayerData
+from .workspace import FileWorkspace, StoreWorkspace, Workspace
 
 log = logging.getLogger(__name__)
 
@@ -39,30 +42,38 @@ class Prefetched:
 
 
 def cache_dir(building_id: str) -> Path:
+    """The local cache folder (used when MongoDB is off)."""
     if not re.fullmatch(r"[A-Za-z0-9_-]+", building_id):
         raise ValueError(f"Bad building id {building_id!r}")
     return CACHE_ROOT / building_id
 
 
+def cache_workspace(building_id: str) -> Workspace:
+    """Where the building's prefetched layers live: MongoDB when configured, else cache_dir()."""
+    folder = cache_dir(building_id)  # validates the id either way
+    if mongo_store.enabled():
+        return StoreWorkspace(mongo_store.default_store(), ("cache", building_id))
+    return FileWorkspace(folder)
+
+
 def stamp(building_id: str, at: Optional[datetime] = None) -> datetime:
-    """Mark the layers currently in the building's cache folder as prefetched now."""
+    """Mark the layers currently in the building's cache as prefetched now."""
     at = at or now()
-    (cache_dir(building_id) / "cache.json").write_text(
-        json.dumps({"building_id": building_id, "prefetched_at": at.isoformat()}, indent=2))
+    cache_workspace(building_id).write(
+        "cache.json", json.dumps({"building_id": building_id, "prefetched_at": at.isoformat()}, indent=2))
     return at
 
 
 def load_fresh(building_id: str, max_age: timedelta = MAX_AGE) -> Optional[Prefetched]:
     """The cached layers, or None when there is no complete cache under max_age old."""
-    folder = cache_dir(building_id)
+    ws = cache_workspace(building_id)
     try:
-        meta = json.loads((folder / "cache.json").read_text())
+        meta = json.loads(ws.read("cache.json"))
         at = datetime.fromisoformat(meta["prefetched_at"])
-        layers = {name: LayerData.model_validate_json((folder / "layers" / f"{name}.json").read_text())
-                  for name in LAYERS}
+        layers = {name: LayerData.model_validate_json(ws.read(f"layers/{name}.json")) for name in LAYERS}
     except FileNotFoundError:
         return None
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError, TypeError) as e:
         log.warning("Ignoring unreadable prefetch cache for %s: %s", building_id, e)
         return None
     age = now() - at
@@ -72,6 +83,5 @@ def load_fresh(building_id: str, max_age: timedelta = MAX_AGE) -> Optional[Prefe
     if not timedelta(0) <= age < max_age:
         log.info("Prefetch cache for %s is %s old; not using it", building_id, age)
         return None
-    notes = {name: path.read_text() for name in LAYERS
-             if (path := folder / "notes" / f"{name}_summary.md").exists()}
+    notes = {name: note for name in LAYERS if (note := ws.read_or_none(f"notes/{name}_summary.md")) is not None}
     return Prefetched(building_id=building_id, prefetched_at=at, layers=layers, notes=notes)
