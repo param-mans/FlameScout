@@ -9,6 +9,7 @@ services:
       - ./workspace:/app/workspace          # FileWorkspace when MongoDB is off
       - ./data/cache:/app/data/cache       # 24 h prefetch cache when MongoDB is off
       - ./data/costar:/app/data/costar:ro  # licensed CoStar index, copied to the server by hand
+      - ./data/raw:/app/data/raw:ro        # hero buildings' stored API responses (sponsor data, deploy.sh copies it)
     expose:
       - "8000"
     restart: unless-stopped
@@ -20,6 +21,8 @@ services:
     env_file: .env                         # VEXCEL_API_KEY, MATTERPORT_API_KEY, MATTERPORT_API_SECRET at runtime
     environment:
       HOUSE_DATA_TRUST_PROXY: "1"          # behind Caddy: rate limit by the client IP in X-Forwarded-For
+    volumes:
+      - ./data/raw:/app/data/raw:ro        # stored raw Matterport responses, mounted (never built into the image)
     expose:
       - "8080"
     restart: unless-stopped

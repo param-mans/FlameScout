@@ -15,7 +15,7 @@ if [ "${1:-}" = "--sync" ]; then
 fi
 
 ssh "$VULTR_HOST" "cd $APP_DIR && git pull --ff-only"
-# data/raw is sponsor data and not in git; the web image copies it (apps/web/server/Dockerfile).
+# data/raw is sponsor data and not in git; docker-compose.yml mounts it read-only into api and house-data.
 # Copied after the pull: the pull that untracked it deletes the server's tracked copy.
 if [ -d data/raw ]; then
   ssh "$VULTR_HOST" "mkdir -p $APP_DIR/data"

@@ -14,7 +14,8 @@ import { HouseMdtView } from "../house/HouseMdtView";
 const viewerParam = new URLSearchParams(window.location.search).get("viewer");
 const VIEWER = viewerParam === "1" || (HOUSE_VIEWER_DEFAULT && viewerParam !== "0");
 
-type Exposure = { side: string; distance_m: number; band: string };
+// band: rules pipeline only; label / evidence_ids / confidence: orchestrator (aerial reading, distance computed in code)
+type Exposure = { side: string; distance_m: number; band?: string; label?: string; evidence_ids?: string[]; confidence?: number };
 
 /** What the header says about the incident: the confirmed building and a label built from reported facts only. */
 export interface IncidentInfo { name: string; address: string; label: string }
@@ -115,7 +116,7 @@ function MdtBrief({ brief, info, sampleId, sampleError }: MdtProps & { brief: Br
     } else {
       const e = exposures.find((x) => x.side === id)!;
       setSel({ key: `exposure:${id}`, title: `Exposure ${e.side}: ${e.distance_m} m`, kind: "Exposure", status: "inferred", evidence_ids: ["e_rule"],
-        fields: [["Band", e.band], ["Distance", `${e.distance_m} m`]], note: "Distance and band are computed by the rules engine (R-03), not estimated by a model." });
+        fields: [["Band", e.band ?? "—"], ["Distance", `${e.distance_m} m`]], note: "Distance and band are computed by the rules engine (R-03), not estimated by a model." });
     }
   };
 
@@ -139,7 +140,11 @@ function MdtBrief({ brief, info, sampleId, sampleError }: MdtProps & { brief: Br
           sub={noScan ? "interior not on file" : stairs < 2 ? "verify on arrival" : "from scan"} />
         <Readout label="Hazard flags" value={String(brief.hazards.length)} sub="from tenants (inferred)" />
         <Readout label="Closest exposure" value={closest ? `${closest.distance_m} m` : "—"} tone={closest?.band === "close" ? "text-reported" : "text-ink"}
-          sub={closest && `${closest.side} · ${closest.band}`} />
+          sub={closest && [closest.side, closest.band].filter(Boolean).join(" · ")}
+          onClick={() => closest?.evidence_ids && setSel({ key: `exposure:${closest.side}`, title: closest.label ?? `Exposure ${closest.side}`,
+            kind: "Exposure", status: "inferred", confidence: closest.confidence, evidence_ids: closest.evidence_ids,
+            fields: [["Side", closest.side], ["Distance", `${closest.distance_m} m`]],
+            note: "Read from the Vexcel aerial by a vision model; the distance is measured in code on the north-up ortho." })} />
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-[304px_1fr_340px] gap-px bg-line">

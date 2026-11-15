@@ -10,6 +10,7 @@
 workspace
 data/cache
 data/costar
+data/raw
 **/node_modules
 **/dist
 **/.next

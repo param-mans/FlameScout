@@ -369,10 +369,27 @@ it to the server): `209217448` 9660 Fairdale Lane, `214905148` 18107 Fairhope Oa
 scan). Every other id comes from `data/fixtures/`. No vendor API is called; `DATA_MODE=live` logs that
 this is not configured.
 
-`brief.data_contradictions` (and `dossier.contradictions`): the data layers disagree, today the
-listing (CoStar) and the scan (Matterport) on bedrooms, bathrooms (full + half) or floors (listed
-stories of 1.5 agree with 2 scanned floors: the half storey is scanned as a floor). Each has
-`key`, `message` (e.g. `"Listing: 4 bedrooms; scan: 5. Verify occupant count."`), `values` (one per
+Vexcel for the heroes: `scripts/fetch_vexcel.py <id>` downloads the ortho and the four obliques once (Vexcel API
+2.0, the same extract requests as the house viewer) and Gemini vision reads each image once
+(`services/agents/aerial.py` -> `data/raw/<id>/derived/aerial_reading.json`). The adapter turns that reading into:
+- markers (`m_vx_roof_*`: roof features, repeats counted in code, e.g. "18 x HVAC unit on the roof";
+  `m_vx_site_*`: driveway, gates, fences, pool, power lines, parking), each with `map_position` {lat, lon}
+  computed from its box on the north-up ortho;
+- exposures (`x_vx_*`): neighbouring buildings within 30 m, with `side` (8 compass sectors) and `distance_m`
+  measured in code as the gap between roof outlines, plus `label`, `map_position`, `confidence` (at most 0.6);
+- facts `building.stories_aerial` (the highest storey count two or more obliques agree on),
+  `building.roof_aerial`, `building.footprint_aerial_m` ([east-west, north-south] m; left out when the outline
+  is cut by the image edge);
+- exterior entries (`m_vx_<camera>_entry_*`, confidence at most 0.5) only when there is no interior scan.
+Each view's evidence (`ev_vx_ortho`, `ev_vx_oblique_<dir>`) has `uri` `/api/house-viewer/vexcel/<id>/aerial.jpg`
+or `oblique-<dir>.jpg` (the house-data server serves the same image) and `locator.vision_model` / `read_at`.
+Without a stored reading, Vexcel is coverage metadata only and backs no observation.
+
+`brief.data_contradictions` (and `dossier.contradictions`): the data layers disagree: the listing
+(CoStar) and the scan (Matterport) on bedrooms, bathrooms (full + half) or floors (listed stories of 1.5
+agree with 2 scanned floors: the half storey is scanned as a floor), and the storeys seen from the air
+(Vexcel) against the listing (`"Listing: 2 floors; aerial: 3. ..."`) or the scan (`"Scan: 2 floors; aerial: 3.
+..."`). Each has `key`, `message` (e.g. `"Listing: 4 bedrooms; scan: 5. Verify occupant count."`), `values` (one per
 layer, with `evidence_ids`) and `status: "contradicted"`. The listing fact in `size_up` is marked
 `contradicted` and the message is also in `gaps`. Code never picks a side.
 

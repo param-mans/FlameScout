@@ -268,7 +268,8 @@ Never state anything the callers did not say."""
 LAYERS_INFO = {
     "costar": ("the CoStar property record", "use, stories, tenants, tenant-related hazards"),
     "matterport": ("the Matterport interior scan", "entrances, stairs, elevator, key box, FDC, standpipes"),
-    "vexcel": ("Vexcel aerial imagery", "approach and rear access, roof, adjacent structures"),
+    "vexcel": ("Vexcel aerial imagery", "approach and access (driveway, gates, fences), roof (type, solar panels, "
+               "hatches), neighbouring buildings and their distance, storeys seen from the air, a pool as water"),
 }
 
 STRATEGY_PROMPT = """You draft advisory considerations for the first-arriving fire crew. Your task says \
@@ -300,7 +301,9 @@ Rules for every consideration:
   different sources among costar, matterport and vexcel (the "source" field of each evidence item),
   for example an aerial access point together with the interior stair it leads to. Only combine
   layers where both pieces of evidence really support the consideration, and only evidence that backs
-  a fact or marker in the dossier counts (imagery coverage with no analysed image does not).
+  a fact or marker in the dossier counts (imagery coverage with no analysed image does not). Its
+  rationale says what each layer adds ("scan: 5 exterior exits; air: west driveway"); never cite a layer
+  that adds nothing to it, just to make it cross-layer: the critic rejects that.
 - If the dossier has "scan_available": false there is no interior scan: say nothing about the
   interior. Markers of kind "entry" then come from aerial imagery and are the only entries known:
   use them where they matter, say they are seen from the air and not verified, and cite their
@@ -314,7 +317,12 @@ Rules for every consideration:
   group ids, objective ids): ids from that file only. Its evidence ids (like "c1:12.0-20.5") are
   transcript spans and may be cited too.
 - Say nothing about windows the plan does or does not show.
-- If the dossier has "contradictions" (the listing and the scan disagree, e.g. on bedrooms), make one
+- Vexcel markers, exposures and facts (storeys, roof, footprint) were read from the aerial images by a vision
+  model; the distances were measured in code from the north-up ortho. Say "seen from the air" and keep their
+  confidence in mind. They are what the outside looks like: combine them with the interior (matterport) or the
+  record (costar) where both really bear on the same point, e.g. a neighbour 4 m away and the building's floors.
+- If the dossier has "contradictions" (the listing, the scan and the aerial view disagree, e.g. on bedrooms or
+  floors), make one
   consideration about the one that matters most for the crew, citing the evidence of both sides,
   and do not pick a side."""
 
@@ -338,7 +346,8 @@ Check every item in "considerations" against the brief's own "size_up", "markers
 - Nothing relies on a fact whose status is "unverified".
 - Where "cross_layer" is true, the pieces of evidence from different sources are about the same place
   or route and fit together physically. Coming from different sources is what cross_layer means: never an
-  issue by itself.
+  issue by itself. But every cited source must add something the rationale uses: a source cited only to
+  make it cross-layer (e.g. the listing cited for power lines seen from the air) is an issue.
 - Each issue names the consideration id and says in one sentence what is unsupported or wrong.
 verdict "pass" only if every consideration passes. Otherwise "revise", with one specific issue per
 problem that names the consideration id (c1, c2, ...). Do not ask for stylistic changes.
