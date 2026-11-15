@@ -6,6 +6,7 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 
 ## Commands
 - Install: `python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"`
+- iMessage camera links outside Docker: `cd services/messenger && npm ci && npm start` (reads the repo `.env`)
 - Tests: `pytest -q` (offline). Live API tests: `RUN_LIVE=1 pytest -q -m live`
 - Replay a call script through fusion: `python scripts/run_fusion.py S2`
 - Run an incident end to end (call 1 -> dispatcher confirms -> brief v1, call 2 -> brief v2): `python scripts/run_incident.py S2`
@@ -99,6 +100,21 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
   transcribed in one go by LLM_PROVIDER, then LLM_FALLBACK_PROVIDER (Gemini structured output; OpenAI transcriptions; xAI `/v1/stt`) and each sentence becomes a caller segment. Every open
   web app follows the call via `/ws/calls` (`src/live/callFeed.ts`; bus topic `_calls`, active calls sent on connect).
   The incident socket replays the transcript so far to a client that joins late.
+  Caller camera: when a call starts (Call in, Run call / New call), the caller is texted a camera link by
+  iMessage (`_auto_invite` in main.py; the simulated calls have no caller ID, so `DEMO_CALLER_PHONE` stands in;
+  once per incident). The link opens `CameraLinkPage.tsx` on their phone, which streams into camera call `cam1`
+  (`services/api/cameras.py`, one JPEG at a time to `.../camera/cam1/frames`, `src/live/callerCamera.ts`).
+  `services/agents/camera.py`: one vision reading per frame (room type in plan-index names, smoke/flames, hazards,
+  people; no floors or sides), then in code only what's new becomes a `speaker="camera"` segment with `camera_frame`
+  evidence (frame served at `.../camera/frames/<name>`). Its facts are `inferred` (0.4) until a caller says the same;
+  a disagreement with a caller is a contradiction. New fact key `caller.room`.
+  The dispatcher can also send one by hand (Live calls panel, `CameraInvite.tsx`;
+  `POST /api/incidents/{id}/camera/invite {phone}`). Sending: iMessage via Photon Stable (spectrum-ts, TypeScript
+  only), so `services/api/messaging.py` asks the Node messenger service (`services/messenger/server.mjs`, its own
+  compose container; `POST /send {to, text}`, `MESSENGER_URL`, `PHOTON_PROJECT_ID` + `PHOTON_PROJECT_SECRET`), which
+  starts a DM (`im.user` -> `im.space.create` -> `send`; 50 new conversations per line per day). Not configured or
+  failed = the link is shown to share by hand. The link is `/?camera=<token>` (`CameraLinkPage.tsx`, base `https://$SITE_ADDRESS`, or with `:80`/unset the
+  dispatcher's origin); `GET /api/camera/{token}` opens the invited camera call.
   `services/api/calls.py`: the call registry (call -> incident + c1/c2; a call within `CALL_INCIDENT_WINDOW_S`, default
   600, of the last one joins its incident as the next caller).
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ApiEvent, Brief, BuildingCandidate, CallSegment, CopilotSuggestion, ExtractedFact, IncidentRecord, Progress } from "../types/schemas";
-import { api, ApiError, type ScriptInfo } from "./client";
+import { api, ApiError, type CameraInfo, type ScriptInfo } from "./client";
 
 // Live data for the Dispatcher console and the MDT: REST for actions and hydration, one WebSocket per incident
 // (/ws/incidents/{id}) for everything that changes. Falls back to mock data (see App) when the API is down.
@@ -19,6 +19,10 @@ export interface LiveState {
   segments: CallSegment[];
   /** What the extractor understood from each caller line, by segKey(). Only lines seen live; not kept across a reload. */
   extracted: Record<string, ExtractedFact[]>;
+  /** Camera lines: the frame they were read from (Evidence.uri), by segKey(). */
+  frames: Record<string, string>;
+  /** Camera calls in the incident, by call_id (camera.status events). */
+  cameras: Record<string, CameraInfo>;
   candidates: BuildingCandidate[];
   brief: Brief | null;
   held: HeldBrief | null;
@@ -31,7 +35,7 @@ export interface LiveState {
 
 const STORE_KEY = "flamescout.incident";
 const initialState = (mode: Mode): LiveState => ({
-  mode, conn: "idle", incidentId: null, incident: null, segments: [], extracted: {}, candidates: [], brief: null, held: null,
+  mode, conn: "idle", incidentId: null, incident: null, segments: [], extracted: {}, frames: {}, cameras: {}, candidates: [], brief: null, held: null,
   progress: null, suggestions: [], scripts: [], busy: null, error: null,
 });
 
@@ -69,8 +73,14 @@ export function useLiveIncident(forceMock: boolean) {
       case "transcript.segment": {
         const seg = p.segment as CallSegment;
         const extracted = (p.extracted as ExtractedFact[] | undefined) ?? [];
+        const frame = p.frame_uri as string | null | undefined;
         return patch((prev) => (prev.segments.some((x) => segKey(x) === segKey(seg)) ? {}
-          : { segments: [...prev.segments, seg], extracted: { ...prev.extracted, [segKey(seg)]: extracted } }));
+          : { segments: [...prev.segments, seg], extracted: { ...prev.extracted, [segKey(seg)]: extracted },
+              frames: frame ? { ...prev.frames, [segKey(seg)]: frame } : prev.frames }));
+      }
+      case "camera.status": {
+        const cam = p.camera as CameraInfo;
+        return patch((prev) => ({ cameras: { ...prev.cameras, [cam.call_id]: cam } }));
       }
       case "location.candidates":
         return patch({ candidates: p.candidates as BuildingCandidate[] });
@@ -166,14 +176,16 @@ export function useLiveIncident(forceMock: boolean) {
     return id;
   }, [connect]);
 
-  /** New incident, then replay a scripted call into it. An empty scriptId starts a blank incident to type into. */
-  const startCall = useCallback(async (scriptId: string) => {
+  /** New incident, then replay a scripted call into it. An empty scriptId starts a blank incident to type into.
+   * Resolves to the new incident id (null on failure). */
+  const startCall = useCallback(async (scriptId: string): Promise<string | null> => {
     patch({ busy: scriptId ? `Starting ${scriptId}…` : "Starting…", error: null });
     try {
       const id = await openIncident(scriptId ? `Starting ${scriptId}…` : null);
       if (scriptId) await api.simulate(id, scriptId);
       patch({ busy: null });
-    } catch (e) { fail(e); }
+      return id;
+    } catch (e) { fail(e); return null; }
   }, [openIncident, patch, fail]);
 
   /** One typed transcript line. Creates a blank incident first if there is none. Timing continues after the last line. */

@@ -246,7 +246,7 @@ def _gaps(inc: IncidentRecord, d: BuildingDossier, open_c: dict, cfg: dict) -> l
 def _last_call(f: Fact, evidence: dict[str, Evidence]) -> str:
     for eid in reversed(f.evidence_ids):
         ev = evidence.get(eid)
-        if ev and ev.source == "call" and ev.locator:
+        if ev and ev.source in ("call", "camera") and ev.locator:
             return f" ({ev.locator.get('call_id')})"
     return ""
 

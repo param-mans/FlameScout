@@ -3,6 +3,8 @@ import { factLabel } from "../labels";
 import { segKey } from "../api/useLiveIncident";
 import type { BuildingCandidate, CallSegment, ExtractedFact, IncidentRecord, Progress } from "../types/schemas";
 import { PlanList } from "./PlanList";
+import type { CameraInfo } from "../api/client";
+import { CameraInvite, type InviteResult } from "./CameraInvite";
 import { ExtractedChips, TranscriptComposer } from "./TranscriptComposer";
 import { Btn, KV, Panel, fmt } from "./ui";
 
@@ -24,11 +26,18 @@ interface Props {
   /** Live mode: type a transcript line, and see what the extractor understood from each caller line. */
   onSend?: (text: string, speaker: CallSegment["speaker"], callId: string) => void;
   extracted?: Record<string, ExtractedFact[]>;
+  /** Camera lines: the frame each was read from, by segKey(). */
+  frames?: Record<string, string>;
+  /** Live mode: text the caller a camera link; camera calls by call_id. */
+  onInviteCamera?: (phone: string | null) => Promise<InviteResult>;
+  cameras?: Record<string, CameraInfo>;
 }
+
+const SPEAKER = { caller: "CALLER", call_taker: "CALL-TAKER", camera: "CAMERA" } as const;
 
 export function DispatcherConsole({
   segments, incident, candidates, confirmedId, onConfirm, demo, onResolve, questions, progress, busy, held, onApproveHeld,
-  onSend, extracted,
+  onSend, extracted, frames, onInviteCamera, cameras,
 }: Props) {
   // Dispatcher's choice per contradicted key, shown at once; the API confirms it with incident.updated.
   const [resolved, setResolved] = useState<Record<string, unknown>>({});
@@ -51,22 +60,31 @@ export function DispatcherConsole({
             {segments.length === 0 && <div className="p-3 text-dim">{onSend ? "Listening… run a call, or type a line below." : "Listening…"}</div>}
             {segments.map((s, i) => {
               const ex = extracted?.[segKey(s)];
+              const frame = frames?.[segKey(s)];
               return (
                 <div key={i} className="grid grid-cols-[92px_1fr] gap-2 border-b border-line px-2.5 py-1.5">
                   <span className="num text-[11px] text-dim">
-                    {s.call_id.toUpperCase()} {s.speaker === "caller" ? "CALLER" : "CALL-TAKER"}
+                    {s.call_id.toUpperCase()} {SPEAKER[s.speaker] ?? s.speaker}
                     <br />
                     <span className="text-faint">{s.t_start.toFixed(1)}s</span>
                   </span>
-                  <span>
-                    <span className={s.speaker === "caller" ? "text-ink" : "text-dim"}>{s.text}</span>
-                    {s.speaker === "caller" && ex && <ExtractedChips facts={ex} />}
+                  <span className={frame ? "flex items-start gap-2" : undefined}>
+                    {frame && (
+                      <a href={frame} target="_blank" rel="noreferrer" className="shrink-0" title="Frame from the caller's camera">
+                        <img src={frame} alt="Caller camera frame" className="h-12 w-16 border border-line-hi object-cover" />
+                      </a>
+                    )}
+                    <span className="min-w-0">
+                      <span className={s.speaker === "call_taker" ? "text-dim" : "text-ink"}>{s.text}</span>
+                      {s.speaker !== "call_taker" && ex && <ExtractedChips facts={ex} />}
+                    </span>
                   </span>
                 </div>
               );
             })}
           </Panel>
-          {onSend && <TranscriptComposer callIds={incident.call_ids} onSend={onSend} />}
+          {onInviteCamera && incident.incident_id && <CameraInvite cameras={cameras ?? {}} onInvite={onInviteCamera} />}
+          {onSend && <TranscriptComposer callIds={incident.call_ids.filter((c) => !c.startsWith("cam"))} onSend={onSend} />}
         </div>
 
         <Panel title="Incident record" right={`${Object.keys(incident.facts).length} facts`} className="order-3 lg:order-none">
@@ -79,7 +97,7 @@ export function DispatcherConsole({
               <div key={c.key} className="border-b border-contradicted/50 bg-contradicted/10 px-2.5 py-2">
                 <div className="num text-[12px] font-semibold text-contradicted">▲ CONTRADICTION · {factLabel(c.key)}</div>
                 {c.values.map((v) => (
-                  <div key={v.call_id} className="mt-1.5 grid grid-cols-[28px_1fr_auto] items-start gap-2 text-[12px]">
+                  <div key={v.call_id} className="mt-1.5 grid grid-cols-[36px_1fr_auto] items-start gap-2 text-[12px]">
                     <span className="num text-dim">{v.call_id.toUpperCase()}</span>
                     <span>
                       <span className="num">{fmt(v.value)}</span>

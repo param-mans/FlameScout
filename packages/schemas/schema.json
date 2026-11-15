@@ -701,7 +701,8 @@
             "metric.tick",
             "overlay.updated",
             "call.status",
-            "calls.cleared"
+            "calls.cleared",
+            "camera.status"
           ],
           "title": "Type",
           "type": "string"
@@ -755,7 +756,8 @@
             "costar_record",
             "transcript_span",
             "rule_output",
-            "crew_feedback"
+            "crew_feedback",
+            "camera_frame"
           ],
           "title": "Kind",
           "type": "string"
@@ -767,7 +769,8 @@
             "costar",
             "call",
             "rules",
-            "crew"
+            "crew",
+            "camera"
           ],
           "title": "Source",
           "type": "string"

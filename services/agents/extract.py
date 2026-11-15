@@ -30,7 +30,7 @@ log = logging.getLogger(__name__)
 KEYS = [
     "location.address", "location.name", "incident.floor", "incident.visible",
     "people.reported", "people.trapped", "hazards.reported", "alarm.sounding",
-    "access.notes",
+    "access.notes", "caller.room",
 ]
 
 
@@ -106,7 +106,9 @@ Values:
 - incident.visible: "smoke" or "flames".
 - people.reported, people.trapped, alarm.sounding: true or false.
 - hazards.reported: one fact per hazard, a single lowercase word ("gas", "propane").
-- access.notes: one fact per note, a short phrase as said ("back stairs")."""
+- access.notes: one fact per note, a short phrase as said ("back stairs").
+- caller.room: the room the caller says they are in now, as a plain room type ("kitchen", "bedroom",
+  "staircase", "living room"); "outside" if they are out of the building."""
 
 
 def _squash(s: str) -> str:

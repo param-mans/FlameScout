@@ -6,8 +6,8 @@ export type FactStatus = "verified" | "inferred" | "reported" | "unverified" | "
 
 export interface Evidence {
   id: string;
-  kind: "scan_frame" | "scan_floorplan" | "aerial_crop" | "costar_record" | "transcript_span" | "rule_output";
-  source: "matterport" | "vexcel" | "costar" | "call" | "rules";
+  kind: "scan_frame" | "scan_floorplan" | "aerial_crop" | "costar_record" | "transcript_span" | "rule_output" | "crew_feedback" | "camera_frame";
+  source: "matterport" | "vexcel" | "costar" | "call" | "rules" | "crew" | "camera";
   uri?: string | null;
   captured_at?: string | null;
   locator?: Record<string, unknown> | null;
@@ -25,7 +25,8 @@ export interface Fact {
 
 export interface CallSegment {
   call_id: string;
-  speaker: "call_taker" | "caller";
+  /** camera: an observation read from a frame of the calling device's camera (call_id cam1, ...) */
+  speaker: "call_taker" | "caller" | "camera";
   text: string;
   t_start: number;
   t_end: number;

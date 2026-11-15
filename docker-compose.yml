@@ -5,6 +5,9 @@ services:
   api:
     build: .
     env_file: .env                         # read at runtime, never baked into the image
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}   # camera links; same value as Caddy's (SITE_ADDRESS=:80 locally behind ngrok)
+      MESSENGER_URL: http://messenger:8090
     volumes:
       - ./workspace:/app/workspace          # FileWorkspace when MongoDB is off
       - ./data/cache:/app/data/cache       # 24 h prefetch cache when MongoDB is off
@@ -27,6 +30,15 @@ services:
       - "8080"
     restart: unless-stopped
 
+  messenger:                               # iMessage via Photon Stable (spectrum-ts) for the API's camera links
+    build:
+      context: .
+      dockerfile: services/messenger/Dockerfile
+    env_file: .env                         # PHOTON_PROJECT_ID, PHOTON_PROJECT_SECRET at runtime
+    expose:
+      - "8090"
+    restart: unless-stopped
+
   web:
     build:
       context: .
@@ -43,6 +55,7 @@ services:
     depends_on:
       - api
       - house-data
+      - messenger
     restart: unless-stopped
 
 volumes:

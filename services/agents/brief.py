@@ -199,15 +199,18 @@ def _show(value: Any) -> str:
 
 
 def _call_label(call_id: str) -> str:
-    m = re.fullmatch(r"c(\d+)", call_id)
-    return f"Call {m[1]}" if m else call_id
+    if m := re.fullmatch(r"c(\d+)", call_id):
+        return f"Call {m[1]}"
+    if m := re.fullmatch(r"cam(\d+)", call_id):
+        return f"Camera {m[1]}"
+    return call_id
 
 
 def _new_calls(fact: Fact, old: Optional[Fact], evidence: dict[str, Evidence]) -> str:
     """' (Call 2)': the calls behind evidence this fact gained since the previous brief."""
     seen = set(old.evidence_ids) if old else set()
     calls = [evidence[e].locator["call_id"] for e in fact.evidence_ids
-             if e not in seen and e in evidence and evidence[e].source == "call" and evidence[e].locator]
+             if e not in seen and e in evidence and evidence[e].source in ("call", "camera") and evidence[e].locator]
     return f" ({', '.join(_call_label(c) for c in dict.fromkeys(calls))})" if calls else ""
 
 
