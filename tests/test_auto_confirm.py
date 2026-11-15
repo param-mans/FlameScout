@@ -180,3 +180,47 @@ def test_real_calls_dir_never_lists_the_manifest(tmp_path, monkeypatch):
         out = c.get("/api/calls/scripts").json()
         assert out and all(s["script_id"].lower() != "manifest" for s in out)
         assert c.post("/api/calls/simulate", json={"script_id": "manifest"}).status_code == 404
+
+
+# ---- interaction with the incoming Call in (audio) and Clear call ----
+
+def _callin_with_script(c, monkeypatch, script: str) -> str:
+    """Call in + an uploaded recording whose 'transcription' is the script's caller lines (no model)."""
+    from services.api import transcribe
+    from .test_transcribe import make_wav
+    lines = [s.text for s in load_script(script) if s.speaker == "caller"]
+    monkeypatch.setattr(transcribe, "transcribe_monologue", lambda wav: lines)
+    call = c.post("/api/calls/web/callin").json()
+    r = c.post("/api/calls/web/callin/audio", content=make_wav(),
+               params={"incident_id": call["incident_id"], "call_label": call["call_label"]})
+    assert r.status_code == 200, r.text
+    c.app.state.svc.wait(call["incident_id"])
+    return call["incident_id"]
+
+
+@pytest.mark.parametrize("auto, script, want", [("1", "S2", ("wilshire_tower", "auto")),   # clear winner: confirmed
+                                                ("0", "S2", (None, None)),          # switch off: the pause stays
+                                                ("1", "S3", (None, None))])         # ambiguous: the pause stays
+def test_audio_callin_takes_the_same_location_path(tmp_path, monkeypatch, auto, script, want):
+    with make_client(tmp_path, monkeypatch, "rules", auto) as c:
+        iid = _callin_with_script(c, monkeypatch, script)
+        rec = c.get(f"/api/incidents/{iid}").json()
+        got = ((rec["confirmed_building_id"] or "").removeprefix("fake_") or None, rec["confirmed_by"])
+        assert got == want   # the rules pipeline's fixture id has no "fake_" prefix
+        assert c.get(f"/api/incidents/{iid}/candidates").json()        # it was located like typed segments
+
+
+def test_clear_call_then_call_in_starts_a_clean_incident(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch, "rules", "1") as c:
+        first = _callin_with_script(c, monkeypatch, "S2")
+        assert c.get(f"/api/incidents/{first}").json()["confirmed_by"] == "auto"
+        assert c.post("/api/calls/web/clear").status_code == 200
+        second = c.post("/api/calls/web/callin").json()["incident_id"]
+        assert second != first
+        rec = c.get(f"/api/incidents/{second}").json()
+        assert (rec["confirmed_building_id"], rec["confirmed_by"]) == (None, None)
+        assert c.get(f"/api/incidents/{second}/overlay/latest").status_code == 404   # nothing carried over
+        with c.websocket_connect(f"/ws/incidents/{second}") as ws:                 # the viewer's new socket
+            snap = ws.receive_json()
+            assert snap["incident_id"] == second and snap["snapshot"] is True
+            assert snap["payload"]["incident"]["confirmed_by"] is None
