@@ -93,6 +93,20 @@ export function CallIn({ feed, onStart }: { feed: CallInfo | null; onStart: (c: 
     if (c) api.endCall(c).catch(() => {});
   };
 
+  // Any screen can end the call it is following (a caller who closed the tab leaves it open otherwise).
+  const clear = async (c: CallInfo) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.endCall({ incident_id: c.incident_id, call_label: c.call_id });
+      setNote("Call cleared.");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   useEffect(() => () => { recRef.current?.stop(false); }, []);
 
   const btn = "shrink-0 border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider disabled:opacity-50";
@@ -129,6 +143,16 @@ export function CallIn({ feed, onStart }: { feed: CallInfo | null; onStart: (c: 
         <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" aria-hidden />
         CALL IN PROGRESS · {feed.call_id.toUpperCase()} · {feed.status === "transcribing" ? "TRANSCRIBING…" : "CALLER SPEAKING"}
       </span>
+    );
+    body = (
+      <>
+        {body}
+        <button onClick={() => void clear(feed)} disabled={busy}
+          title="End this call for every screen (e.g. a call left open on another device). Its transcript so far is kept."
+          className={`${btn} border-line-hi text-dim hover:bg-accent/15`}>
+          Clear call
+        </button>
+      </>
     );
   } else {
     body = (
