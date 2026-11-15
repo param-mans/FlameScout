@@ -26,6 +26,7 @@ EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
 MANIFEST = CALLS / "manifest.json"  # UI listing contract, not a script
 SCENARIOS = sorted(p for p in CALLS.glob("*.json") if p != MANIFEST)
 SHOWCASE = ["show_fairdale", "show_fairhope", "show_playa"]
+EXTRA = ["test_cooking", "ambig_bathrooms"]   # fast path: room inferred from a cue; room candidates
 VIEWER_CATALOG = ROOT / "apps" / "web" / "public" / "house-viewer" / "samples" / "index.json"
 
 
@@ -79,7 +80,7 @@ def test_new_scenarios(stem):
     assert referenced <= calls, f"expected file names calls that are not in the script: {referenced - calls}"
 
 
-@pytest.mark.parametrize("stem", NEW + SHOWCASE)
+@pytest.mark.parametrize("stem", NEW + SHOWCASE + EXTRA)
 def test_expected_plan_ids_exist(stem):
     exp = _data(EXPECTED / f"{stem}.json")
     index_path = exp["building"]["plan_index"]
@@ -97,7 +98,7 @@ def test_expected_plan_ids_exist(stem):
                 assert v["floor_id"] in index["floors"], v
 
 
-@pytest.mark.parametrize("stem", NEW + SHOWCASE)
+@pytest.mark.parametrize("stem", NEW + SHOWCASE + EXTRA)
 def test_fusion_accepts_the_scenario_in_memory(stem):
     eng = FusionEngine(f"inc_{stem}", extractor=KeywordExtractor())
     rec = eng.ingest_all(load_script(stem))
@@ -203,3 +204,81 @@ def _walk(o):
     elif isinstance(o, list):
         for v in o:
             yield from _walk(v)
+
+
+# ---------- fast path scripts: inferred room (TEST_COOKING), room candidates (AMBIG_BATHROOMS) ----------
+
+def _keyword_facts_match(stem: str, exp: dict) -> None:
+    rec = FusionEngine(f"inc_{stem}", extractor=KeywordExtractor()).ingest_all(load_script(stem))
+    assert not rec.contradictions
+    for key, want in exp["any_extractor"]["facts"].items():
+        got = rec.facts[key].value
+        assert (sorted(got) == sorted(want)) if isinstance(want, list) else got == want, (key, got, want)
+
+
+def _spans(stem: str):
+    from datetime import datetime, timezone
+
+    from services.agents.overlay import Span, span_id
+    return [Span(span_id=span_id(s), received_at=datetime.now(timezone.utc), **s.model_dump()) for s in load_script(stem)]
+
+
+def _real_index(exp: dict) -> dict:
+    p = ROOT / exp["building"]["plan_index"]
+    if not p.exists():
+        pytest.skip(f"{exp['building']['plan_index']} is local only (data/raw is not in git)")
+    return json.loads(p.read_text())
+
+
+def test_cooking_script_is_short_visible_and_infers_the_kitchen():
+    d, exp = _data(CALLS / "test_cooking.json"), _data(EXPECTED / "test_cooking.json")
+    segs = d["segments"]
+    assert d["script_id"] == "TEST_COOKING" and len(segs) <= 2 and segs[-1]["t_end"] <= 10.0
+    assert "kitchen" not in " ".join(s["text"].lower() for s in segs)          # the room is never named
+    row = next(r for r in _manifest() if r["id"] == "TEST_COOKING")
+    assert row == {"id": "TEST_COOKING", "title": "TEST · cooking, room not named (inferred)", "group": "test",
+                   "house": exp["building"]["id"], "inconsistent": False, "visible": True}
+    assert not _contradictions(exp)
+    _keyword_facts_match("test_cooking", exp)
+
+    from services.agents import fast_path
+    from services.agents import overlay as overlay_mod
+    index = _real_index(exp)
+    want = exp["llm_only"]["fire"][0]
+    spans = _spans("test_cooking")
+    cook = next(s for s in spans if "cooking" in s.text)
+    assert fast_path._cue(cook.text) == (want["inferred_type"], want["inferred_from"])
+    out = fast_path.FastOutput.model_validate({"fire": [{"id": "fire-1", "kind": "fire", "confidence": 0.9,
+                                                         "evidence_ids": [cook.span_id], "note": "pan caught fire"}]})
+    draft, resolved, _, _ = fast_path._to_draft(out, index, spans)
+    ov = overlay_mod.assemble(draft, "inc_t", "m", 1, index, spans)
+    assert overlay_mod.check(ov, index, spans, resolved) == []
+    f = ov.fire[0]
+    assert (f.location.kind, f.location.room_id, f.status, f.note) == ("room", want["room_id"], want["status"], want["note"])
+    assert f.confidence <= want["max_confidence"]
+
+
+def test_ambiguous_bathrooms_script_gives_one_candidate_per_bathroom():
+    d, exp = _data(CALLS / "ambig_bathrooms.json"), _data(EXPECTED / "ambig_bathrooms.json")
+    assert d["script_id"] == "AMBIG_BATHROOMS" and SCRIPT_ID.fullmatch(d["script_id"])
+    row = next(r for r in _manifest() if r["id"] == "AMBIG_BATHROOMS")
+    assert not row["visible"] and not row["inconsistent"] and row["house"] == exp["building"]["id"]
+    _keyword_facts_match("ambig_bathrooms", exp)
+
+    from services.agents import fast_path
+    from services.agents import overlay as overlay_mod
+    index = _real_index(exp)
+    person = exp["llm_only"]["people"][0]
+    r = resolve_place(index, **person["resolve"])
+    assert r["status"] == "ambiguous" and sorted(r["ids"]) == sorted(person["candidates"])
+    spans = _spans("ambig_bathrooms")
+    said = next(s for s in spans if "bathroom" in s.text)
+    out = fast_path.FastOutput.model_validate({"occupants": [{
+        "id": "occ-1", "count": 1, "confidence": 0.8, "evidence_ids": [said.span_id], "note": "daughter",
+        "place": {"type": "bathroom", "floor_reported": 1}}]})
+    draft, resolved, _, groups = fast_path._to_draft(out, index, spans)
+    ov = overlay_mod.assemble(draft, "inc_t", "m", 1, index, spans)
+    assert overlay_mod.check(ov, index, spans, resolved, candidate_groups=groups) == []
+    assert sorted(o.location.room_id for o in ov.occupants) == sorted(person["candidates"])
+    assert {(o.count, o.status, o.group_id) for o in ov.occupants} == {(1, "contradicted", "grp-occ-1")}
+    assert [(c.group_id, c.key) for c in ov.contradictions] == [("grp-occ-1", person["overlay"]["contradiction_key"])]

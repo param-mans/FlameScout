@@ -1,0 +1,8 @@
+{
+  "script_id": "TEST_COOKING",
+  "description": "Test, one short call from 13722 Playa Lucia Court, Houston (hero 199958956, one floor, one kitchen). The caller never names the room: they were cooking eggs and the pan caught fire. The fast path infers the kitchen in code (the plan's only kitchen), status inferred, note \"inferred from: cooking\". Everyone is outside. No contradictions. Expected: data/fixtures/calls/expected/test_cooking.json.",
+  "segments": [
+    {"call_id": "c1", "speaker": "caller", "text": "13722 Playa Lucia Court! I was cooking eggs and the pan caught fire.", "t_start": 0.0, "t_end": 4.6},
+    {"call_id": "c1", "speaker": "caller", "text": "Flames are spreading, we're all outside!", "t_start": 5.0, "t_end": 7.8}
+  ]
+}

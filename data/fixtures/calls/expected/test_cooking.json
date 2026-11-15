@@ -1,0 +1,44 @@
+{
+  "script_id": "TEST_COOKING",
+  "building": {
+    "id": "199958956",
+    "address": "13722 Playa Lucia Court, Houston",
+    "plan_index": "data/raw/199958956/derived/plan_index.json"
+  },
+  "floor": {
+    "number": 1,
+    "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+    "note": "single-floor house"
+  },
+  "any_extractor": {
+    "facts": {
+      "location.address": "13722 Playa Lucia Court",
+      "incident.visible": [
+        "flames"
+      ]
+    },
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {
+      "incident.floor": 1
+    },
+    "people": [],
+    "fire": [
+      {
+        "kind": "flames",
+        "where": "the pan, while cooking eggs (room not named)",
+        "status": "inferred",
+        "note": "inferred from: cooking",
+        "inferred_from": "cooking",
+        "inferred_type": "kitchen",
+        "max_confidence": 0.6,
+        "room_id": "cdz3fkt38kae7tapstpt0eaeb",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+      }
+    ],
+    "hazards": [],
+    "contradictions": []
+  },
+  "notes": "The caller never says 'kitchen'. services/agents/fast_path.py infers it in code: the cue 'cooking' maps to the room type kitchen, and the plan has exactly one kitchen. Everyone is outside, so no occupants."
+}

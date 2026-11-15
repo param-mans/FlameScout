@@ -6,6 +6,7 @@
     {"id": "S6_FAIRDALE", "title": "TEST · INCONSISTENT · Fairdale: callers disagree on floor", "group": "test", "house": "209217448", "inconsistent": true, "visible": true},
     {"id": "S7_FAIRHOPE_OAK", "title": "TEST · 3 callers, same fire, consistent", "group": "test", "house": "214905148", "inconsistent": false, "visible": true},
     {"id": "S8_PLAYA_LUCIA", "title": "TEST · vague caller, system must abstain", "group": "test", "house": "199958956", "inconsistent": false, "visible": true},
+    {"id": "TEST_COOKING", "title": "TEST · cooking, room not named (inferred)", "group": "test", "house": "199958956", "inconsistent": false, "visible": true},
     {"id": "S1", "title": "TEST · S1 clean single caller", "group": "test", "house": null, "inconsistent": false, "visible": false},
     {"id": "S2", "title": "TEST · S2 floor contradiction (third vs fourth)", "group": "test", "house": null, "inconsistent": true, "visible": false},
     {"id": "S3", "title": "TEST · S3 ambiguous name, two candidates", "group": "test", "house": null, "inconsistent": false, "visible": false},
@@ -15,6 +16,7 @@
     {"id": "S5", "title": "TEST · S5 two calls, fixture cedar house", "group": "test", "house": null, "inconsistent": true, "visible": false},
     {"id": "S6", "title": "TEST · S6 Fairdale, two calls (legacy)", "group": "test", "house": "209217448", "inconsistent": true, "visible": false},
     {"id": "S9_NWTC", "title": "TEST · S9 Northwest Trade Center, people count contradiction", "group": "test", "house": "23296", "inconsistent": true, "visible": false},
+    {"id": "AMBIG_BATHROOMS", "title": "TEST · AMBIGUOUS_BATHROOMS: one person, two bathrooms downstairs (candidates)", "group": "test", "house": "209217448", "inconsistent": false, "visible": false},
     {"id": "S10_WILSHIRE", "title": "TEST · S10 Wilshire Tower, five ways to say floor 6", "group": "test", "house": null, "inconsistent": false, "visible": false}
   ]
 }

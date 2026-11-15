@@ -1,0 +1,9 @@
+{
+  "script_id": "AMBIG_BATHROOMS",
+  "description": "Test (hidden), AMBIGUOUS_BATHROOMS: one call from 9660 Fairdale Lane, Houston (catalog house 209217448, two floors, two bathrooms downstairs). Smoke from the garage (the only garage); the caller's daughter is in \"the bathroom downstairs\", which matches both bathrooms of floor 1. The fast path gives one candidate occupant per bathroom (same count, one group_id, status contradicted, contradictions key occupants.location_candidates), painted yellow, and asks the dispatcher which one. Expected: data/fixtures/calls/expected/ambig_bathrooms.json.",
+  "segments": [
+    {"call_id": "c1", "speaker": "caller", "text": "9660 Fairdale Lane! Smoke is pouring out of the garage.", "t_start": 0.0, "t_end": 3.8},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Is anyone inside?", "t_start": 4.1, "t_end": 5.2},
+    {"call_id": "c1", "speaker": "caller", "text": "My daughter is in the bathroom downstairs, she can't get out!", "t_start": 5.5, "t_end": 9.4}
+  ]
+}

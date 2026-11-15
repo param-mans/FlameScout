@@ -1,0 +1,78 @@
+{
+  "script_id": "AMBIG_BATHROOMS",
+  "building": {
+    "id": "209217448",
+    "address": "9660 Fairdale Lane, Houston",
+    "plan_index": "data/raw/209217448/derived/plan_index.json"
+  },
+  "floor": {
+    "number": 1,
+    "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+    "note": "fire floor: the garage is on floor 1"
+  },
+  "any_extractor": {
+    "facts": {
+      "location.address": "9660 Fairdale Lane",
+      "incident.visible": [
+        "smoke"
+      ],
+      "people.trapped": true
+    },
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {
+      "people.reported": true
+    },
+    "people": [
+      {
+        "who": "the caller's daughter",
+        "count": 1,
+        "status": "trapped",
+        "call_id": "c1",
+        "where": "in the bathroom downstairs",
+        "precision": "room candidates",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "bathroom",
+          "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+        },
+        "candidates": [
+          "b4qtykzcazp4iumkamm7y7h2b",
+          "h26t7ky77ew74yb0pg8qqf5rd"
+        ],
+        "overlay": {
+          "occupants_per_candidate": 1,
+          "status": "contradicted",
+          "same_group_id": true,
+          "contradiction_key": "occupants.location_candidates"
+        }
+      }
+    ],
+    "fire": [
+      {
+        "kind": "smoke",
+        "where": "garage",
+        "room_id": "tfsfsskzu72",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "garage",
+          "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+        }
+      }
+    ],
+    "hazards": [],
+    "contradictions": [],
+    "room_candidates": [
+      {
+        "group_key": "occupants.location_candidates",
+        "room_ids": [
+          "b4qtykzcazp4iumkamm7y7h2b",
+          "h26t7ky77ew74yb0pg8qqf5rd"
+        ],
+        "note": "one caller, one person, two matching rooms: candidates, not a contradiction between callers"
+      }
+    ]
+  },
+  "notes": "Floor 1 has two bathrooms, so 'the bathroom downstairs' matches both: one yellow candidate occupant per bathroom, the dispatcher is asked which one. Not a disagreement between callers, so the contradictions lists stay empty."
+}
