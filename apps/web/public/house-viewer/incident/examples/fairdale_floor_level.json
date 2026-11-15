@@ -1,0 +1,50 @@
+{
+  "incident_id": "inc-people-2",
+  "model_id": "tvaSot6bAt8",
+  "version": 1,
+  "as_of": "2026-11-15T03:12:00Z",
+  "changes_since_last": [
+    "A caller reports one person upstairs, room unknown",
+    "Flames reported in the kitchen"
+  ],
+  "occupants": [
+    {
+      "id": "occ-f1",
+      "count": 1,
+      "location": {
+        "kind": "floor",
+        "floor_reported": 2
+      },
+      "status": "reported",
+      "confidence": 0.6,
+      "reported_at": "2026-11-15T03:10:00Z",
+      "evidence_ids": [
+        "call-1:14.0-20.0"
+      ],
+      "note": "Caller: someone is still upstairs"
+    }
+  ],
+  "fire": [
+    {
+      "id": "fire-1",
+      "kind": "fire",
+      "location": {
+        "kind": "room",
+        "room_id": "j7nhq2abkp0"
+      },
+      "status": "reported",
+      "confidence": 0.8,
+      "reported_at": "2026-11-15T03:05:00Z",
+      "evidence_ids": [
+        "call-1:4.0-11.0"
+      ],
+      "note": "Caller: flames in the kitchen"
+    }
+  ],
+  "hazards": [],
+  "blocked": [],
+  "contradictions": [],
+  "objectives": [],
+  "considerations": [],
+  "routes": []
+}

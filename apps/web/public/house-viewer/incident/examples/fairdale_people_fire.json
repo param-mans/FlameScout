@@ -1,0 +1,104 @@
+{
+  "incident_id": "inc-people-3",
+  "model_id": "tvaSot6bAt8",
+  "version": 1,
+  "as_of": "2026-11-15T03:12:00Z",
+  "changes_since_last": [
+    "Flames reported in the kitchen",
+    "One person in the office, two in a bedroom",
+    "One person in one of two bathrooms (callers disagree)"
+  ],
+  "occupants": [
+    {
+      "id": "occ-1",
+      "count": 1,
+      "location": {
+        "kind": "room",
+        "room_id": "rewssvxhpxq"
+      },
+      "status": "reported",
+      "confidence": 0.7,
+      "reported_at": "2026-11-15T03:10:00Z",
+      "evidence_ids": [
+        "call-1:25.0-31.0"
+      ],
+      "note": "Caller: her husband is in the office"
+    },
+    {
+      "id": "occ-2",
+      "count": 2,
+      "location": {
+        "kind": "room",
+        "room_id": "d3slsxy3zlg"
+      },
+      "status": "reported",
+      "confidence": 0.7,
+      "reported_at": "2026-11-15T03:10:00Z",
+      "evidence_ids": [
+        "call-1:32.0-38.0"
+      ],
+      "note": "Caller: two children in the front bedroom"
+    },
+    {
+      "id": "occ-b1",
+      "count": 1,
+      "location": {
+        "kind": "room",
+        "room_id": "h26t7ky77ew74yb0pg8qqf5rd"
+      },
+      "status": "contradicted",
+      "confidence": 0.5,
+      "reported_at": "2026-11-15T03:10:00Z",
+      "evidence_ids": [
+        "call-1:20.0-26.0"
+      ],
+      "note": "Caller 1: her father is in the bathroom",
+      "group_id": "occ-bath"
+    },
+    {
+      "id": "occ-b2",
+      "count": 1,
+      "location": {
+        "kind": "room",
+        "room_id": "b4qtykzcazp4iumkamm7y7h2b"
+      },
+      "status": "contradicted",
+      "confidence": 0.5,
+      "reported_at": "2026-11-15T03:10:00Z",
+      "evidence_ids": [
+        "call-2:12.0-18.0"
+      ],
+      "note": "Caller 2: he is in the small bathroom",
+      "group_id": "occ-bath"
+    }
+  ],
+  "fire": [
+    {
+      "id": "fire-1",
+      "kind": "fire",
+      "location": {
+        "kind": "room",
+        "room_id": "j7nhq2abkp0"
+      },
+      "status": "reported",
+      "confidence": 0.8,
+      "reported_at": "2026-11-15T03:05:00Z",
+      "evidence_ids": [
+        "call-1:4.0-11.0"
+      ],
+      "note": "Caller: flames in the kitchen"
+    }
+  ],
+  "contradictions": [
+    {
+      "group_id": "occ-bath",
+      "key": "occupants.location",
+      "resolved_by_dispatcher": false
+    }
+  ],
+  "hazards": [],
+  "blocked": [],
+  "objectives": [],
+  "considerations": [],
+  "routes": []
+}

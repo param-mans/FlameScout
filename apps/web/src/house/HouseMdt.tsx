@@ -6,10 +6,10 @@ import { StatusTag, fmt } from "../components/ui";
 import { BuildingViewer } from "../components/viewer/BuildingViewer";
 import type { Brief } from "../types/schemas";
 import { houseBrief, NA } from "./houseBrief";
+import { peopleSummary } from "./people";
 import type { ConfirmedHouse } from "./liveFeed";
 import { useHouseData } from "./useHouseData";
 
-type Exposure = { side: string; distance_m: number; band?: string };
 const HAZARDS = ["Gas", "Fireplace", "Garage", "Solar panels", "Pool"];   // listing mentions shown on this screen
 
 function Readout({ label, value, sub, tone = "text-ink" }: { label: string; value: string; sub?: React.ReactNode; tone?: string }) {
@@ -56,8 +56,7 @@ export function HouseMdt({ house, brief }: { house: Extract<ConfirmedHouse, { st
   const floor = brief?.size_up["incident.floor"];
   const stairMarkers = brief?.markers.filter((m) => m.kind === "stair").length ?? 0;
   const stairwells = brief && stairMarkers ? stairMarkers : plan ? stairs : null;
-  const exposures = (brief?.exposures ?? []) as Exposure[];
-  const closest = exposures.length ? exposures.reduce((a, b) => (a.distance_m <= b.distance_m ? a : b)) : null;
+  const people = peopleSummary(incident.overlay, plan);   // PEOPLE card: validated overlay only; without it, a dash
   const hazardCount = brief ? brief.hazards.length : hb ? hb.brief.hazards.length : null;
 
   return (
@@ -69,8 +68,11 @@ export function HouseMdt({ house, brief }: { house: Extract<ConfirmedHouse, { st
           sub={floor && <StatusTag status={floor.status} confidence={floor.confidence} />} />
         <Readout label="Stairwells identified" value={stairwells == null ? "—" : String(stairwells)} sub={stairwells != null && stairwells < 2 ? "verify on arrival" : undefined} />
         <Readout label="Hazard flags" value={hazardCount == null ? "—" : String(hazardCount)} sub={brief ? "from tenants (inferred)" : hb ? "from listing" : undefined} />
-        <Readout label="Closest exposure" value={closest ? `${closest.distance_m} m` : "—"} tone={closest?.band === "close" ? "text-reported" : "text-ink"}
-          sub={closest && [closest.side, closest.band].filter(Boolean).join(" · ")} />
+        <div className="min-w-0 bg-panel px-3 py-2 text-left" data-people-card>
+          <div className="label">People</div>
+          <div className="num text-[28px] font-semibold leading-tight text-ink" data-people-total>{people ? String(people.total) : "—"}</div>
+          <div className="h-4 truncate whitespace-nowrap text-[12px] leading-4 text-ink" data-people-rooms>{people?.rooms}</div>
+        </div>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-[224px_minmax(0,1fr)] gap-px bg-line max-[1100px]:grid-cols-[210px_minmax(0,1fr)]">

@@ -38,8 +38,9 @@ export function anchorPoint(plan, ev, loc) {
   return node.c // center (the contract has no orientation: no cardinal sides)
 }
 
-export function planRoutes(plan, overlay, ev = evacuacion(plan)) {
-  const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now()
+/** Incident graph shared by planRoutes and the house screen's routes (house-routes.js): fire points, adjacency (evacuation
+ *  graph room-room edges + plan.json stairs; each edge has len, cost = len + fire penalty, near) and ground-floor entries. */
+export function incidentGraph(plan, overlay, ev = evacuacion(plan)) {
   const key = (fi, roomId) => ev.clave(fi, { id: roomId })
   // fire points per floor (room or anchor level only; floor-only fire has no point)
   const fires = []
@@ -83,6 +84,12 @@ export function planRoutes(plan, overlay, ev = evacuacion(plan)) {
     const len = dist(o.center, node.c), pen = fireOn(node.key, node.key, [o.center, node.c], 0)
     entries.push({ to: node.key, len, cost: len + pen + (o.type === 'window' ? WINDOW_PENALTY : 0), near: pen > 0, opening: o })
   }
+  return { key, fires, ady, entries }
+}
+
+export function planRoutes(plan, overlay, ev = evacuacion(plan)) {
+  const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now()
+  const { key, ady, entries } = incidentGraph(plan, overlay, ev)
   // Dijkstra from a virtual outside node; target: a room key or any room on a floor
   function route(target) {
     const d = new Map(), pred = new Map(), done = new Set()

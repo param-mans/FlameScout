@@ -19,6 +19,7 @@ import { buildPlanIndex, emptyPlanIndex } from './incident/plan-index.js'
 import { planRoutes, floorOf, anchorPoint } from './incident/planner.js'
 import { scenariosFor } from './incident/scenarios.js'
 import { validate as validarOverlay } from './incident/validate.js'
+import { housePeople, houseRoutes } from './incident/house-routes.js'
 
 aplicarCSS()
 const $ = (id) => document.getElementById(id)
@@ -670,16 +671,16 @@ function dibujarRuta3D() {
   if (!s || s.kind !== 'room' || !S.capas.route) return
   const ruta = rutaSala(s.fi, salaPorId(s.fi, s.id))
   if (!ruta) return
-  const y = (fi) => (P[fi] ? P[fi].cur.y : plantaY(fi))
+  const y = (fi) => (P[fi] ? P[fi].cur.y : plantaY(fi)), col = HOUSE ? '#ffffff' : T.sel // casa: ruta de la sala tocada en blanco
   const pts = ruta.puntos.map((p) => m3(p.x, p.y, y(p.fi) + 0.25))
   for (let i = 0; i < pts.length - 1; i++) {
     const a = pts[i], b = pts[i + 1], len = a.distanceTo(b)
     if (len < 1e-4) continue
-    const cil = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, len, 8), new THREE.MeshBasicMaterial({ color: C(T.sel), depthTest: false, transparent: true, fog: false }))
+    const cil = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, len, 8), new THREE.MeshBasicMaterial({ color: C(col), depthTest: false, transparent: true, fog: false }))
     cil.position.copy(a).add(b).multiplyScalar(0.5); cil.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); cil.renderOrder = 20
     rutaG.add(cil)
   }
-  const bola = (p, r) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 10), new THREE.MeshBasicMaterial({ color: C(T.sel), depthTest: false, transparent: true, fog: false })); m.position.copy(p); m.renderOrder = 21; rutaG.add(m) }
+  const bola = (p, r) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 10), new THREE.MeshBasicMaterial({ color: C(col), depthTest: false, transparent: true, fog: false })); m.position.copy(p); m.renderOrder = 21; rutaG.add(m) }
   bola(pts[0], 0.12); bola(pts[pts.length - 1], 0.18)
 }
 
@@ -837,10 +838,11 @@ function render2D() {
   if (sel && sel.kind === 'room' && S.capas.route) {
     const ruta = rutaSala(sel.fi, salaPorId(sel.fi, sel.id))
     if (ruta) {
+      const sc = HOUSE ? '#ffffff' : T.sel // casa: ruta de la sala tocada en blanco
       const pts = ruta.puntos.filter((p) => p.fi === fi)
-      if (pts.length > 1) h += `<polyline points="${pts.map((p) => `${p.x},${-p.y}`).join(' ')}" fill="none" stroke="${T.sel}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" filter="url(#brillo)" pointer-events="none" ${ns}/>`
-      if (ruta.puntos[0].fi === fi) h += `<circle cx="${ruta.puntos[0].x}" cy="${-ruta.puntos[0].y}" r="0.12" fill="${T.sel}" filter="url(#brillo)"/>`
-      const fin = ruta.puntos[ruta.puntos.length - 1]; if (fin.fi === fi) h += `<circle cx="${fin.x}" cy="${-fin.y}" r="0.18" fill="none" stroke="${T.sel}" stroke-width="1.6" ${ns} filter="url(#brillo)"/>`
+      if (pts.length > 1) h += `<polyline points="${pts.map((p) => `${p.x},${-p.y}`).join(' ')}" fill="none" stroke="${sc}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" filter="url(#brillo)" pointer-events="none" data-route="tap" ${ns}/>`
+      if (ruta.puntos[0].fi === fi) h += `<circle cx="${ruta.puntos[0].x}" cy="${-ruta.puntos[0].y}" r="0.12" fill="${sc}" filter="url(#brillo)"/>`
+      const fin = ruta.puntos[ruta.puntos.length - 1]; if (fin.fi === fi) h += `<circle cx="${fin.x}" cy="${-fin.y}" r="0.18" fill="none" stroke="${sc}" stroke-width="1.6" ${ns} filter="url(#brillo)"/>`
     }
   }
   h += svgIncidente2D(fi, ns)
@@ -1249,7 +1251,7 @@ function tema(vars) {
 // la pagina contenedora. setIncident: si el plano aun no ha cargado se guarda el ultimo overlay y se aplica al cargar; las
 // versiones menores que la actual se ignoran (respuesta incidentRejected); se valida con incident/validate.js (port de
 // validate_overlay.py) contra el indice del plano cargado; si es valido se aplica y se guarda para el control de versiones.
-const INC = { index: null, versions: new Map(), actual: null, pendiente: null, vista: null, rutas: null, resaltar: new Set(), escenarios: [], escenario: null, bannerAbierto: null, salas: new Set() }
+const INC = { index: null, versions: new Map(), actual: null, pendiente: null, vista: null, rutas: null, resaltar: new Set(), escenarios: [], escenario: null, bannerAbierto: null, salas: new Set(), casa: null }
 function prepararIncidente(plan) {
   INC.versions = new Map(); INC.actual = null; INC.vista = null; INC.rutas = null; INC.resaltar = new Set()
   try { INC.index = plan ? buildPlanIndex(plan) : emptyPlanIndex() } catch (e) { INC.index = null; avisarPadre({ type: 'planIndex', index: null, error: e.message }); return }
@@ -1320,6 +1322,7 @@ function reconstruirIncidente() {
     const errs = validarOverlay({ ...ov, routes: INC.rutas.routes }, INC.index)
     if (errs.length) { console.warn('[house-viewer] planner routes rejected by the validator', errs); INC.rutas = { ...INC.rutas, routes: [], geometry: new Map(), noRoute: (ov.objectives || []).map((o) => o.id) } }
   }
+  casaIncidente(ov)
   if (S.plan) { dibujarIncidente3D(); render2D() }
   pintarPanelIncidente()
   avisarPadre({ type: 'incidentState', overlay: ov ? structuredClone(ov) : null, version: ov ? ov.version : null, versions: [...INC.versions.keys()],
@@ -1379,6 +1382,7 @@ function dibujarIncidente3D() {
   limpiarIncidente3D()
   const ov = ovVista()
   if (!ov || !S.capas.incident) return
+  if (HOUSE) return dibujarCasa3D(ov)
   // layout=house: ningun rotulo (todos los sprites de la capa son texto): personas, brillo rojo y rutas sin palabras
   const pon = (fi, o) => { if (HOUSE && o.isSprite) { o.material.map?.dispose(); o.material.dispose(); return } P[fi].g.add(o); incG.push(o) }
   const H = alturaTotal() + 1.5
@@ -1506,6 +1510,7 @@ function animarIncidente() {
 function svgIncidente2D(fi, ns) {
   const ov = ovVista()
   if (!ov || !S.capas.incident) return ''
+  if (HOUSE) return svgCasa2D(fi, ns, ov)
   const fs = Math.max(0.16, 12 * Math.max(S.vb[2] / ($('vista2d').clientWidth || 400), S.vb[3] / ($('vista2d').clientHeight || 300)))
   let h = `<defs><radialGradient id="incFuego"><stop offset="0" stop-color="${IC.red}" stop-opacity="0.85"/><stop offset="0.6" stop-color="${IC.red}" stop-opacity="0.35"/><stop offset="1" stop-color="${IC.red}" stop-opacity="0"/></radialGradient>` +
     `<radialGradient id="incVerde"><stop offset="0" stop-color="${IC.green}" stop-opacity="0.7"/><stop offset="1" stop-color="${IC.green}" stop-opacity="0"/></radialGradient>` +
@@ -1566,6 +1571,102 @@ function svgIncidente2D(fi, ns) {
     if (fin.fi === fi) h += txt(fin.p[0], -fin.p[1] - fs * 1.1, [`${r.kind.toUpperCase()} · ${r.objective_id}${g.dashed ? ' (candidate)' : ''}`, `~${piesM(r.length_m_estimate)} estimate${r.passes_near_fire ? ' · near fire' : ''}`], r.passes_near_fire ? IC.nearFire : IC.route, g.dashed ? 0.8 : 1)
   }
   return `<g class="incidente">${h}</g>`
+}
+
+// ---------------------------------------------------------------- layout=house: personas, brillo de fuego y rutas roja / verde
+// Sin texto ni cifras. Personas: verdes (una sala, sin contradiccion) y amarillas (candidatas de un grupo contradicho y
+// personas solo con planta). Fuego: degradado radial que decae con la distancia, recortado al contorno de la casa (union de
+// las salas con contorno fiable). Rutas (incident/house-routes.js): roja de la entrada al fuego, verde de la entrada por todas
+// las personas hasta una salida. Atributos ocultos en <body> para las pruebas: data-people-green / -yellow (figuras),
+// data-route-red / -green (rutas dibujadas) y data-unreachable (paradas sin ruta).
+const YELLOW = '#facc15'
+function casaIncidente(ov) {
+  if (!HOUSE) return
+  INC.casa = null
+  if (ov && S.plan && S.ev) {
+    try { const people = housePeople(S.plan, S.ev, ov); INC.casa = { people, ...houseRoutes(S.plan, S.ev, ov, people) } }
+    catch (e) { console.warn('[house-viewer] house routes failed', e) }
+  }
+  const c = INC.casa, n = (col) => (c ? c.people.filter((x) => x.color === col).reduce((a, x) => a + x.n, 0) : 0)
+  Object.assign(document.body.dataset, { peopleGreen: n('green'), peopleYellow: n('yellow'), routeRed: c && c.red ? 1 : 0, routeGreen: c && c.green ? 1 : 0, unreachable: c ? c.unreachable : 0 })
+}
+// fuegos dibujables (con sala) y radio del degradado: min(8 m, 35 % de la mayor dimension de la planta)
+function fuegosCasa(ov) {
+  return (ov.fire || []).map((f) => {
+    const L = lugar(f); if (!L || !L.room) return null
+    const b = limitesPiso(piso(L.fi)), R = Math.min(8, 0.35 * Math.max(b.maxX - b.minX, b.maxY - b.minY))
+    return { f, L, R, k: (f.kind === 'smoke' ? 0.6 : 1) * (caduco(ov, f) ? 0.5 : 1) }
+  }).filter(Boolean)
+}
+const FUEGO_STOPS = [[0, 0.9], [0.3, 0.6], [0.6, 0.28], [1, 0]] // opacidad frente a la distancia relativa al radio
+function texFuego() {
+  const c = document.createElement('canvas'); c.width = c.height = 256
+  const g = c.getContext('2d'), gr = g.createRadialGradient(128, 128, 0, 128, 128, 128)
+  FUEGO_STOPS.forEach(([o, a]) => gr.addColorStop(o, `rgba(239,68,68,${a})`))
+  g.fillStyle = gr; g.fillRect(0, 0, 256, 256)
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; return t
+}
+const colorPersona = (x) => (x.color === 'green' ? IC.green : YELLOW)
+const posFiguras = (x) => Array.from({ length: x.n }, (_, i) => { const a = (i / x.n) * Math.PI * 2 + Math.PI / 2, r = x.n > 1 ? 0.38 : 0; return [x.p[0] + Math.cos(a) * r, x.p[1] + Math.sin(a) * r] })
+function dibujarCasa3D(ov) {
+  const pon = (fi, o) => { P[fi].g.add(o); incG.push(o) }
+  for (const { L, R, k } of fuegosCasa(ov)) {
+    const tx = texFuego()
+    for (const r of salasDe(piso(L.fi)).filter(poligonoValido)) { // solo dentro de las salas: no sale del contorno
+      const geo = formaSala(r, 0.045), uv = geo.attributes.uv
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) - L.p[0]) / (2 * R) + 0.5, (uv.getY(i) - L.p[1]) / (2 * R) + 0.5)
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tx, transparent: true, opacity: k, depthWrite: false, side: THREE.DoubleSide, fog: false }))
+      m.userData.fuego = true; pon(L.fi, m)
+    }
+    const sala = new THREE.Mesh(formaSala(L.room, 0.05), matInc(IC.red, 0.38 * k)); sala.userData.fuego = true; pon(L.fi, sala) // maximo en la sala del fuego
+  }
+  const c = INC.casa
+  if (c) for (const x of c.people) for (const q of posFiguras(x)) { const f = persona(colorPersona(x), 0.95); f.position.copy(m3(q[0], q[1], 0)); f.userData.persona = x.color; pon(x.fi, f) }
+  const grupo = new THREE.Group(); escena.add(grupo)
+  incRutas = { grupo, rutas: [] }
+  const ruta3D = (pts, color, h) => {
+    const segs = [], cuentas = [], mat = () => new THREE.MeshBasicMaterial({ color: C(color), depthTest: false, transparent: true, opacity: 0.95, fog: false })
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i]
+      if (a.fi === b.fi) {
+        const A = m3(a.p[0], a.p[1], h), B = m3(b.p[0], b.p[1], h), len = A.distanceTo(B); if (len < 1e-4) continue
+        const cil = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, len, 8), mat())
+        cil.position.copy(A).add(B).multiplyScalar(0.5); cil.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize()); cil.renderOrder = 36
+        cil.userData.ruta = color; pon(a.fi, cil)
+      } else {
+        const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: C(color), transparent: true, opacity: 0.9, depthTest: false, fog: false }))
+        l.renderOrder = 36; grupo.add(l); segs.push({ l, a, b })
+      }
+    }
+    for (let k = 0; k < 3; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), mat()); m.renderOrder = 37; grupo.add(m); cuentas.push(m) }
+    incRutas.rutas.push({ pts, segs, cuentas })
+  }
+  if (c && c.red) ruta3D(c.red.pts, IC.red, 0.3)
+  if (c && c.green) ruta3D(c.green.pts, IC.green, 0.42)
+  rotSucio = true
+}
+function svgCasa2D(fi, ns, ov) {
+  let defs = '', h = ''
+  const fuegos = fuegosCasa(ov).filter((x) => x.L.fi === fi)
+  if (fuegos.length) defs += `<clipPath id="casaContorno">${salasDe(piso(fi)).filter(poligonoValido).map((r) => `<path d="${anillo(r.polygon)}"/>`).join('')}</clipPath>`
+  fuegos.forEach(({ L, R, k }, i) => {
+    defs += `<radialGradient id="casaFuego${i}" gradientUnits="userSpaceOnUse" cx="${L.p[0]}" cy="${-L.p[1]}" r="${R}">` + FUEGO_STOPS.map(([o, a]) => `<stop offset="${o}" stop-color="${IC.red}" stop-opacity="${a * k}"/>`).join('') + '</radialGradient>'
+    h += `<g clip-path="url(#casaContorno)" pointer-events="none" data-fire-glow><circle cx="${L.p[0]}" cy="${-L.p[1]}" r="${R}" fill="url(#casaFuego${i})"/>` +
+      `<path d="${anillo(L.room.polygon)}" fill="${IC.red}" fill-opacity="${0.38 * k}"/></g>`
+  })
+  const c = INC.casa
+  const linea = (pts, color, tipo) => {
+    let d = ''
+    for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i]; if (a.fi === fi && b.fi === fi) d += `M${a.p[0]} ${-a.p[1]}L${b.p[0]} ${-b.p[1]}` }
+    return `<g data-route="${tipo}" pointer-events="none">${d ? `<path d="${d}" fill="none" stroke="#080a0e" stroke-opacity="0.55" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" ${ns}/><path d="${d}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" ${ns}/>` : ''}</g>`
+  }
+  if (c && c.red) h += linea(c.red.pts, IC.red, 'red')
+  if (c && c.green) h += linea(c.green.pts, IC.green, 'green')
+  if (c) for (const x of c.people) if (x.fi === fi) for (const [px, py] of posFiguras(x)) {
+    const y = -py, col = colorPersona(x)
+    h += `<g data-person="${x.color}" pointer-events="none"><circle cx="${px}" cy="${y - 0.2}" r="0.13" fill="${col}" stroke="#080a0e" stroke-width="0.8" ${ns}/><path d="M${px - 0.17} ${y + 0.24} Q${px} ${y - 0.16} ${px + 0.17} ${y + 0.24} Z" fill="${col}" stroke="#080a0e" stroke-width="0.8" ${ns}/></g>`
+  }
+  return `<g class="incidente">${defs ? `<defs>${defs}</defs>` : ''}${h}</g>`
 }
 
 // ---------------------------------------------------------------- banner, versiones, consideraciones y escenarios (DEBUG)
