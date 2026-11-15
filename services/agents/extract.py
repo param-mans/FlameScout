@@ -6,6 +6,9 @@ code in fusion.py, never the LLM.
 
 - KeywordExtractor: regex stub. No API key needed. Used by tests and as the
   demo fallback. Good enough for the scripted S1-S4 calls.
+- spot_address(): case-insensitive street address finder in code (house number
+  in digits or words + street + suffix, or "on <street> <suffix>"). The keyword
+  extractor uses it, and it backs up the LLM extractor when the model misses one.
 - GeminiExtractor: same interface, using
   model.with_structured_output(ExtractionResult). Never raises: any error, or
   a call slower than EXTRACT_TIMEOUT_S (default 4 s), falls back to
@@ -51,19 +54,47 @@ class Extractor(Protocol):
 _ORDINALS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
              "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10}
 
+# ---------- street address spotter (no LLM) ----------
+# Transcripts are often lowercase and say numbers as words, so this is case-insensitive and takes a run of
+# number words as the house number ("nine six six oh fairdale lane"; house_catalog turns it into digits).
+# A street needs its suffix (Lane, Rd, ...): without one, "2 kids" would look like an address.
+_SUFFIX = (r"street|st|avenue|ave|av|boulevard|blvd|road|rd|drive|dr|way|place|pl|lane|ln|court|ct|circle|cir|"
+           r"trail|trl|parkway|pkwy|terrace|ter|highway|hwy")
+_NUMWORD = (r"(?:zero|oh|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|"
+            r"fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|"
+            r"hundred)")
+# Words that are chatter, not part of a street name ("2 kids on Fairdale Lane" is not house number 2).
+_NOT_STREET = (r"(?!(?:on|at|in|of|the|a|an|and|or|near|by|to|from|is|are|was|my|our|we|i|im|it|its|floor|"
+               r"there|here|house|home|fire|smoke|kids?|people|room)\b)")
+_STREET_WORD = rf"{_NOT_STREET}[a-z0-9']+"
+_ADDRESS_NUM = re.compile(
+    rf"\b((?:\d{{1,6}}[a-z]?|{_NUMWORD}(?:[\s-]+{_NUMWORD})+)[\s,]+"   # house number: digits, or 2+ number words
+    rf"(?:(?:north|south|east|west|[nsew]\.?)\s+)?"
+    rf"(?:{_STREET_WORD}\s+){{0,3}}{_STREET_WORD}\s+(?:{_SUFFIX}))\b\.?", re.I)
+_ADDRESS_NO_NUM = re.compile(   # "we're on Fairdale Lane": the street alone, the locator lists its houses
+    rf"\b(?:on|at)\s+((?:(?:north|south|east|west)\s+)?(?:{_STREET_WORD}\s+){{0,2}}{_STREET_WORD}\s+(?:{_SUFFIX}))\b",
+    re.I)
+
+
+def spot_address(text: str) -> Optional[ExtractedFact]:
+    """The street address in one utterance, found in code: verbatim from the text, never completed or guessed.
+    A house number + street wins over a street alone."""
+    for rx in (_ADDRESS_NUM, _ADDRESS_NO_NUM):
+        if m := rx.search(text):
+            value = " ".join(m.group(1).replace(",", " ").split())
+            return ExtractedFact(key="location.address", value=value, quote=m.group(0).rstrip("."))
+    return None
+
 
 class KeywordExtractor:
-    ADDRESS = re.compile(
-        r"\b(\d{2,6}\s+(?:[NSEW]\.?\s+)?[A-Z][\w']*(?:\s+[A-Z][\w']*)*\s+"
-        r"(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Drive|Dr|Way|Place|Pl|Lane|Ln|Court|Ct))\b")
     NAME = re.compile(r"\b(?:from|at|of|near)\s+(?:the\s+)?([A-Z][\w']*(?:\s+[A-Z][\w']*)*\s+"
                       r"(?:Tower|Building|Plaza|Center|Centre|Lofts|Apartments))\b")
     FLOOR = re.compile(r"\b(" + "|".join(_ORDINALS) + r"|\d{1,2}(?:st|nd|rd|th))\s+floor\b", re.I)
 
     def extract(self, text: str) -> list[ExtractedFact]:
         out: list[ExtractedFact] = []
-        if m := self.ADDRESS.search(text):
-            out.append(ExtractedFact(key="location.address", value=m.group(1), quote=m.group(0)))
+        if addr := spot_address(text):
+            out.append(addr)
         if m := self.NAME.search(text):
             out.append(ExtractedFact(key="location.name", value=m.group(1), quote=m.group(0)))
         if m := self.FLOOR.search(text):
@@ -148,7 +179,17 @@ class GeminiExtractor:
                 fut.cancel()
             log.warning("GeminiExtractor fell back to keywords: %r", e)
             return self.fallback.extract(text)
-        return self._grounded(facts, text)
+        return self._with_address(self._grounded(facts, text), text)
+
+    @staticmethod
+    def _with_address(facts: list[ExtractedFact], text: str) -> list[ExtractedFact]:
+        """Backstop: a street address the model missed is still a fact (the location gate waits on it)."""
+        if any(f.key == "location.address" for f in facts):
+            return facts
+        if addr := spot_address(text):
+            log.info("address spotter added %r the model missed", addr.value)
+            return [*facts, addr]
+        return facts
 
     def _get_chain(self):
         if self._chain is None:

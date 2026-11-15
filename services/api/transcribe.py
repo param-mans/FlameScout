@@ -31,7 +31,13 @@ MAX_WAV_BYTES = 12_000_000     # 5 min of 16 kHz mono PCM16 is 9.6 MB; Gemini ta
 PROMPT = ("Transcribe the speech in this audio verbatim, in the language spoken, as a list of sentences in "
           "the order they were said. Do not summarize, correct, translate or add anything. Write numbers as "
           "digits. Leave out silence, noise and filler that is not words. If there is no clear speech, return "
-          "an empty list.")
+          "an empty list.\n"
+          "The speaker is usually reporting a fire and gives a street address. Listen closely for it: write the "
+          "house number as digits (\"ninety-seven hundred\" -> 9700, \"nine six six oh\" -> 9660), spell the "
+          "street name and its suffix (Road, Lane, Drive, ...) as heard, and keep the whole address in one "
+          "sentence. Never write an address that was not said.")
+# Whisper's `prompt` is a style hint (it can be echoed on silent audio, so it holds no address of its own).
+WHISPER_HINT = "Emergency fire call. The caller gives the street address, house number in digits, then the street name."
 
 
 class Monologue(BaseModel):
@@ -83,7 +89,7 @@ def _openai(wav: bytes) -> list[str]:
     client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], timeout=90, max_retries=1,
                     base_url=os.getenv("OPENAI_BASE_URL", "").strip() or "https://api.openai.com/v1")
     out = client.audio.transcriptions.create(model=os.getenv("OPENAI_TRANSCRIBE_MODEL", "whisper-1"),
-                                             file=("call.wav", wav, "audio/wav"))
+                                             file=("call.wav", wav, "audio/wav"), prompt=WHISPER_HINT)
     return split_sentences(out.text)
 
 
