@@ -281,6 +281,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         _emit_call(call)
         return {"call": call.public()}
 
+    @app.post("/api/calls/web/clear")
+    def web_calls_clear() -> dict:
+        """Clear call (any screen): cancel open calls; the next Call in starts a new incident."""
+        ended = calls.clear()
+        for call in ended:
+            _emit_call(call)
+        svc.bus.publish(CALLS_TOPIC, "calls.cleared", {})   # every open web app clears its screen
+        return {"canceled": [c.public() for c in ended]}
+
     # ---------------- location (FR-3) ----------------
     @app.get("/api/incidents/{incident_id}/candidates", response_model=list[LocationCandidate])
     def get_candidates(incident_id: str, refresh: bool = False) -> list[LocationCandidate]:

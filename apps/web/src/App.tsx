@@ -39,7 +39,7 @@ export default function App() {
     if (FORCE_MOCK) return;
     void live.attach(c.incident_id);
     setView("dispatcher");
-  });
+  }, () => { if (!FORCE_MOCK) live.reset(); });
 
   // Incident building for the MDT viewer: the sample picked in Demo / Controls (?sample=<id>), else the first sample.
   // TODO: map the confirmed API building to a sample house once the heroes have scans in the viewer.
@@ -97,7 +97,8 @@ export default function App() {
                 {scriptValue === "" ? (st.incidentId ? "New blank incident" : "Start blank incident") : st.incidentId ? "New call" : "Run call"}
               </Btn>
               {st.incidentId && <span className="num text-[11px] text-faint" title="Incident id">{st.incidentId}</span>}
-              <CallIn feed={activeCall} onStart={(c) => { void live.attach(c.incident_id); setView("dispatcher"); }} />
+              <CallIn feed={activeCall} onStart={(c) => { void live.attach(c.incident_id); setView("dispatcher"); }}
+                canClear={!!st.incidentId} onClear={live.reset} />
             </>
           )}
           {st.mode === "mock" && <Btn onClick={live.retryApi}>Retry API</Btn>}

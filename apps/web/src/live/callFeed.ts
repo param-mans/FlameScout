@@ -15,12 +15,14 @@ export const isActive = (c: CallInfo) => !ENDED.has(c.status);
 const key = (c: CallInfo) => `${c.incident_id}|${c.call_id}`;
 
 /** The newest active call-in (or null). onNewCall runs once per call-in that starts, or is already
- *  running when the page connects. */
-export function useCallFeed(onNewCall: (c: CallInfo) => void): CallInfo | null {
+ *  running when the page connects. onCleared runs when any screen taps Clear call. */
+export function useCallFeed(onNewCall: (c: CallInfo) => void, onCleared?: () => void): CallInfo | null {
   const [calls, setCalls] = useState<Record<string, CallInfo>>({});
   const seen = useRef(new Set<string>());
   const cb = useRef(onNewCall);
   cb.current = onNewCall;
+  const clearedCb = useRef(onCleared);
+  clearedCb.current = onCleared;
 
   useEffect(() => {
     let sock: WebSocket | null = null;
@@ -32,6 +34,7 @@ export function useCallFeed(onNewCall: (c: CallInfo) => void): CallInfo | null {
       sock.onmessage = (m) => {
         let ev: { type: string; payload?: { call?: CallInfo } };
         try { ev = JSON.parse(m.data as string); } catch { return; }
+        if (ev.type === "calls.cleared") { clearedCb.current?.(); return; }   // Clear call on any screen
         const c = ev.payload?.call;
         if (ev.type !== "call.status" || !c || c.direction !== "callin") return;
         setCalls((prev) => ({ ...prev, [key(c)]: c }));

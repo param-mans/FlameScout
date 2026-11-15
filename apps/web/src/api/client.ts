@@ -55,4 +55,5 @@ export const api = {
   /** Call in: starts a call every open web app follows (/ws/calls). The recording goes to /api/calls/web/callin/audio. */
   callIn: () => request<{ incident_id: string; call_label: string }>("POST", "/api/calls/web/callin", {}),
   endCall: (c: { incident_id: string; call_label: string }) => request<unknown>("POST", "/api/calls/web/end", c),
+  clearCalls: () => request<unknown>("POST", "/api/calls/web/clear", {}),
 };

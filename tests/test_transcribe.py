@@ -111,3 +111,19 @@ def test_registry_second_call_in_window_joins_the_incident_as_c2():
     c3 = reg.start()
     assert (c3.incident_id, c3.call_id) == ("inc_b", "c1")
     assert [c.call_id for c in reg.calls(active_only=True)] == ["c1"]
+
+
+def test_clear_cancels_open_calls_and_next_call_starts_a_new_incident(client):
+    first = client.post("/api/calls/web/callin").json()
+    with client.websocket_connect("/ws/calls") as ws:
+        ws.receive_json()                                    # snapshot: the open call
+        r = client.post("/api/calls/web/clear")
+        assert ws.receive_json()["payload"]["call"]["status"] == "canceled"
+        assert ws.receive_json()["type"] == "calls.cleared"
+    assert r.status_code == 200
+    assert [c["status"] for c in r.json()["canceled"]] == ["canceled"]
+    assert upload(client, first).status_code == 404          # the cleared call takes no recording
+    second = client.post("/api/calls/web/callin").json()
+    assert second["incident_id"] != first["incident_id"] and second["call_label"] == "c1"
+    third = client.post("/api/calls/web/callin").json()      # without a clear, callers still join
+    assert third["incident_id"] == second["incident_id"] and third["call_label"] == "c2"

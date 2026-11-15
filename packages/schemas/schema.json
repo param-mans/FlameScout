@@ -700,7 +700,8 @@
             "copilot.suggestion",
             "metric.tick",
             "overlay.updated",
-            "call.status"
+            "call.status",
+            "calls.cleared"
           ],
           "title": "Type",
           "type": "string"

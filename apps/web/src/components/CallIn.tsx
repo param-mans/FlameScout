@@ -16,7 +16,12 @@ type Phase = "recording" | "sending" | "failed";
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
-export function CallIn({ feed, onStart }: { feed: CallInfo | null; onStart: (c: CallInCall) => void }) {
+export function CallIn({ feed, onStart, canClear, onClear }: {
+  feed: CallInfo | null;
+  onStart: (c: CallInCall) => void;
+  canClear: boolean;               // an incident is on screen
+  onClear: () => void;             // back to "no active incident"
+}) {
   const [mine, setMine] = useState<CallInCall | null>(null);   // this device is the caller
   const [phase, setPhase] = useState<Phase>("recording");
   const [secs, setSecs] = useState(0);
@@ -93,13 +98,14 @@ export function CallIn({ feed, onStart }: { feed: CallInfo | null; onStart: (c: 
     if (c) api.endCall(c).catch(() => {});
   };
 
-  // Any screen can end the call it is following (a caller who closed the tab leaves it open otherwise).
-  const clear = async (c: CallInfo) => {
+  // Clear call (any screen): cancel open calls everywhere, clear this screen; the next Call in is a new incident.
+  const clear = async () => {
     setBusy(true);
     setError(null);
     try {
-      await api.endCall({ incident_id: c.incident_id, call_label: c.call_id });
-      setNote("Call cleared.");
+      await api.clearCalls();
+      setNote(null);
+      onClear();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -144,16 +150,6 @@ export function CallIn({ feed, onStart }: { feed: CallInfo | null; onStart: (c: 
         CALL IN PROGRESS · {feed.call_id.toUpperCase()} · {feed.status === "transcribing" ? "TRANSCRIBING…" : "CALLER SPEAKING"}
       </span>
     );
-    body = (
-      <>
-        {body}
-        <button onClick={() => void clear(feed)} disabled={busy}
-          title="End this call for every screen (e.g. a call left open on another device). Its transcript so far is kept."
-          className={`${btn} border-line-hi text-dim hover:bg-accent/15`}>
-          Clear call
-        </button>
-      </>
-    );
   } else {
     body = (
       <button onClick={() => void start()} disabled={busy}
@@ -167,6 +163,13 @@ export function CallIn({ feed, onStart }: { feed: CallInfo | null; onStart: (c: 
   return (
     <div className="flex w-full min-w-0 flex-wrap items-center gap-2 md:w-auto md:flex-nowrap">
       {body}
+      {!mine && (feed || canClear) && (
+        <button onClick={() => void clear()} disabled={busy}
+          title="End any open call on every screen and clear this one. The next Call in starts a new incident."
+          className={`${btn} border-line-hi text-dim hover:bg-accent/15`}>
+          ✕ Clear call
+        </button>
+      )}
       {(error || note) && (
         <span className={`min-w-0 text-[11px] md:max-w-[260px] md:truncate ${error ? "text-contradicted" : "text-dim"}`} title={error ?? note ?? ""}>
           {error ?? note}

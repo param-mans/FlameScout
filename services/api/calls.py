@@ -39,6 +39,7 @@ class CallRegistry:
                  window_s: float = 600.0, clock: Callable[[], float] = time.time) -> None:
         self._create, self._exists, self.window_s, self._clock = create_incident, exists, window_s, clock
         self._calls: list[LiveCall] = []
+        self._cleared = 0                 # calls before this index never pick the next call's incident
         self._lock = threading.Lock()
 
     def calls(self, active_only: bool = False) -> list[LiveCall]:
@@ -68,10 +69,21 @@ class CallRegistry:
             if call.ended_at is None:
                 call.ended_at = self._clock()
 
+    def clear(self) -> list[LiveCall]:
+        """Clear call: cancel every active call and start the next one in a new incident."""
+        with self._lock:
+            now = self._clock()
+            ended = [c for c in self._calls if c.active]
+            for c in ended:
+                c.status, c.ended_at = "canceled", now
+            self._cleared = len(self._calls)
+        log.info("calls cleared (%d active)", len(ended))
+        return ended
+
     def _pick_incident(self) -> str:
         """Caller holds the lock."""
         now = self._clock()
-        for c in reversed(self._calls):
+        for c in reversed(self._calls[self._cleared:]):
             last = c.ended_at if c.ended_at is not None else now
             if (c.active or now - last <= self.window_s) and self._exists(c.incident_id):
                 return c.incident_id
