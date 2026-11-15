@@ -180,7 +180,7 @@ try {
   await ctx.close();
   await browser.close();
 } finally {
-  mock.kill();
+  mock.kill("SIGKILL");
   await vite.close();
 }
 console.log(failures ? `${failures} FAILED` : "OK house people (webkit, 1180x820)");
