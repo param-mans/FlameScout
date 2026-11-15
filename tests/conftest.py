@@ -50,6 +50,7 @@ def _offline_by_default(request, monkeypatch, tmp_path):
         monkeypatch.setenv("LANGSMITH_TRACING", "false")
         monkeypatch.delenv("TIGER_DATABASE_URL", raising=False)
         monkeypatch.delenv("MONGODB_URI", raising=False)
+        monkeypatch.delenv("AUTO_CONFIRM_LOCATION", raising=False)  # the default (1), whatever .env says
         for k in ("GEMINI_API_KEY", "GEOCODER", "COSTAR_INDEX"):  # services/api tests: no geocoder, no kit
             monkeypatch.delenv(k, raising=False)
         for k in ("OPENAI_API_KEY", "XAI_API_KEY", "LLM_PROVIDER", "LLM_FALLBACK_PROVIDER", "CRITIC_PROVIDER"):

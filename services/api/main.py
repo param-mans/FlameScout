@@ -34,8 +34,27 @@ from .store import NotFound
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("flamescout.api")
 CALLS_DIR = ROOT / "data" / "fixtures" / "calls"
+MANIFEST = "manifest.json"   # which scripts the UI lists (docs/AUTO_CONFIRM.md); never a script itself
+GROUP_ORDER = {"showcase": 0, "test": 1}
 Role = Literal["dispatcher", "officer", "admin"]
 CALLS_TOPIC = "_calls"   # event bus topic for /ws/calls (not an incident id: those never start with "_")
+
+class IncidentOut(IncidentRecord):
+    """IncidentRecord plus who confirmed the location: "auto" | "dispatcher" | None."""
+    confirmed_by: Optional[str] = None
+
+
+def load_manifest(calls_dir) -> Optional[list[dict]]:
+    """manifest.json's scripts, or None when there is no manifest (then every script is listed)."""
+    p = calls_dir / MANIFEST
+    if not p.exists():
+        return None
+    try:
+        return [s for s in json.loads(p.read_text()).get("scripts", []) if isinstance(s, dict) and s.get("id")]
+    except (json.JSONDecodeError, AttributeError) as e:
+        log.warning("%s is not valid (%s): listing every script", p, e)
+        return None
+
 
 # ---------------- request bodies ----------------
 
@@ -140,13 +159,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     def create_incident(body: IncidentIn = IncidentIn()) -> IncidentRecord:
         return svc.create_incident(body.incident_id)
 
-    @app.get("/api/incidents", response_model=list[IncidentRecord])
-    def list_incidents() -> list[IncidentRecord]:
-        return svc.list_incidents()
+    @app.get("/api/incidents", response_model=list[IncidentOut])
+    def list_incidents() -> list[dict]:
+        return [svc.incident_json(r) for r in svc.list_incidents()]
 
-    @app.get("/api/incidents/{incident_id}", response_model=IncidentRecord)
-    def get_incident(incident_id: str) -> IncidentRecord:
-        return svc.get_incident(incident_id)
+    @app.get("/api/incidents/{incident_id}", response_model=IncidentOut)
+    def get_incident(incident_id: str) -> dict:
+        return svc.incident_json(svc.get_incident(incident_id))
 
     @app.delete("/api/incidents/{incident_id}", status_code=204)
     def delete_incident(incident_id: str) -> None:
@@ -161,7 +180,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     def _load_script(script_id: str) -> list[CallSegment]:
         p = CALLS_DIR / f"{script_id.lower()}.json"
-        if not p.exists():
+        if p.name == MANIFEST or not p.exists():
             raise NotFound(f"script {script_id}")
         return [CallSegment(**s) for s in json.loads(p.read_text())["segments"]]
 
@@ -179,7 +198,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             t_prev = seg.t_start
             out = await asyncio.to_thread(svc.ingest_segment, incident_id, seg)
             if _should_confirm(body, i, out, confirmed):
-                await asyncio.to_thread(svc.confirm_location, incident_id, body.confirm_building_id)
+                # AUTO_CONFIRM_LOCATION may already have confirmed this building: no second brief
+                if out["incident"].confirmed_building_id != body.confirm_building_id:
+                    await asyncio.to_thread(svc.confirm_location, incident_id, body.confirm_building_id)
                 confirmed = True
 
     async def _replay_logged(body: SimulateIn, incident_id: str, segs: list[CallSegment]) -> None:
@@ -190,12 +211,28 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.get("/api/calls/scripts")
     def list_scripts() -> list[dict]:
-        out = []
+        """Without manifest.json: every script. With it: only its visible scripts, showcase before test
+        (manifest order within a group), each with title, group, inconsistent and house added."""
+        files: dict[str, dict] = {}
         for p in sorted(CALLS_DIR.glob("*.json")):
+            if p.name == MANIFEST:
+                continue
             d = json.loads(p.read_text())
-            out.append({"script_id": d.get("script_id", p.stem.upper()), "description": d.get("description"),
-                        "segments": len(d.get("segments", []))})
-        return out
+            files[p.stem.lower()] = {"script_id": d.get("script_id", p.stem.upper()),
+                                     "description": d.get("description"), "segments": len(d.get("segments", []))}
+        manifest = load_manifest(CALLS_DIR)
+        if manifest is None:
+            return list(files.values())
+        rows = []
+        for n, m in enumerate(manifest):
+            item = files.get(str(m["id"]).lower())
+            if item is None or not m.get("visible", True):
+                continue
+            group = m.get("group", "test")
+            rows.append((GROUP_ORDER.get(group, len(GROUP_ORDER)), n, {
+                **item, "title": m.get("title") or item["description"], "group": group,
+                "inconsistent": bool(m.get("inconsistent", False)), "house": m.get("house")}))
+        return [r for _, _, r in sorted(rows, key=lambda r: r[:2])]
 
     @app.post("/api/calls/simulate", status_code=202)
     async def simulate(body: SimulateIn) -> dict:
@@ -299,8 +336,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     def confirm_location(incident_id: str, body: ConfirmIn, r: str = Depends(role)) -> dict:
         """Returns at once. The brief arrives as `brief.updated` on the WebSocket (orchestrator: ~35-40 s),
         with `status` "briefed" or "awaiting_approval" (then POST /review)."""
-        out = svc.confirm_location(incident_id, body.building_id)
-        svc.audit(incident_id, r, "confirm_location", {"building_id": body.building_id})
+        out = svc.confirm_location(incident_id, body.building_id, confirmed_by="dispatcher")
+        svc.audit(incident_id, r, "confirm_location", {"building_id": body.building_id, "confirmed_by": "dispatcher"})
         return out
 
     @app.post("/api/incidents/{incident_id}/review", response_model=Brief)
@@ -343,6 +380,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         b = svc.brief(incident_id, version)
         svc.audit(incident_id, r, "view_brief", {"version": version})
         return b
+
+    @app.get("/api/incidents/{incident_id}/overlay/latest")
+    def latest_overlay(incident_id: str) -> dict:
+        """The latest overlay.updated payload, {"version", "overlay"}, for a client that connected late."""
+        return svc.latest_overlay(incident_id)
 
     # ---------------- copilot (FR-11) ----------------
     @app.get("/api/incidents/{incident_id}/copilot", response_model=list[CopilotSuggestion])
@@ -414,7 +456,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             trace = svc.trace_id(incident_id)
             await websocket.send_json({"type": "incident.updated", "incident_id": incident_id,
                                        "trace_id": trace, "snapshot": True,
-                                       "payload": {"incident": rec.model_dump(mode="json")}})
+                                       "payload": {"incident": svc.incident_json(rec)}})
             # The transcript so far, as the same events a live client got. A line recorded between
             # subscribe and this read can arrive twice; clients dedupe by (call, t_start, text).
             for p in past:

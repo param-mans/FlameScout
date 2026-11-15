@@ -19,6 +19,10 @@ class Settings:
     tiger_url: str | None = field(default_factory=lambda: os.getenv("TIGER_DATABASE_URL") or None)
     # orchestrator: the deep agent writes the briefs, rules pipeline as fallback. rules: rules only.
     pipeline: str = field(default_factory=lambda: os.getenv("PIPELINE", "orchestrator").lower())
+    # 1 (default): confirm the location without the dispatcher when the locator is sure (one candidate, or
+    # best score >= 0.8 and >= 0.2 ahead of the second); 0: always wait for POST /confirm-location.
+    auto_confirm_location: bool = field(default_factory=lambda: os.getenv(
+        "AUTO_CONFIRM_LOCATION", "1").strip().lower() not in ("0", "false", "no", "off", ""))
     cors_origins: list[str] = field(default_factory=lambda: [
         o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()])
 

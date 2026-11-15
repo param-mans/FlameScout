@@ -28,7 +28,8 @@ def _validator():
 
 
 @pytest.fixture
-def client(tmp_path):
+def client(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTO_CONFIRM_LOCATION", "0")   # the test drives the dispatcher's confirmation
     if not (FIXTURES / "calls" / "s5.json").exists() or not (FIXTURES / HOUSE).exists():
         pytest.skip("S5 fixtures (data/fixtures/calls/s5.json, data/fixtures/fake_cedar_house) are missing")
     app = create_app(Settings(data_mode="fixture", workspace=tmp_path / "ws", fixtures=FIXTURES,

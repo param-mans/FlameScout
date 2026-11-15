@@ -8,8 +8,9 @@ from .conftest import FIXTURES, load_script
 
 
 @pytest.fixture
-def client(tmp_path):
+def client(tmp_path, monkeypatch):
     """The rules pipeline (PIPELINE=rules), on the API's own fixture buildings."""
+    monkeypatch.setenv("AUTO_CONFIRM_LOCATION", "0")   # these tests drive the dispatcher's confirmation
     app = create_app(Settings(data_mode="fixture", workspace=tmp_path / "ws", fixtures=FIXTURES,
                               tiger_url=None, cors_origins=["*"], pipeline="rules"))
     with TestClient(app) as c:

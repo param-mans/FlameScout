@@ -54,6 +54,21 @@ from .store import NotFound, Workspace, check_id
 log = logging.getLogger("flamescout.service")
 LOCATION_KEYS = ("location.address", "location.name")
 PIPELINES = ("orchestrator", "rules")
+AUTO_CONFIRM_MIN_SCORE = 0.8    # AUTO_CONFIRM_LOCATION: the best candidate's score ...
+AUTO_CONFIRM_MIN_MARGIN = 0.2   # ... and its lead over the second (a single candidate always qualifies)
+
+
+def auto_confirm_pick(cands: Sequence[LocationCandidate]) -> Optional[str]:
+    """The building to confirm without the dispatcher, or None when the choice is not clear."""
+    if not cands:
+        return None
+    ranked = sorted(cands, key=lambda c: -c.score)
+    if len(ranked) == 1:
+        return ranked[0].building_id
+    best, second = ranked[0], ranked[1]
+    if best.score >= AUTO_CONFIRM_MIN_SCORE and best.score - second.score >= AUTO_CONFIRM_MIN_MARGIN - 1e-9:
+        return best.building_id
+    return None
 
 
 class Conflict(ValueError):
@@ -125,6 +140,18 @@ class IncidentService:
 
     def _dir(self, incident_id: str):
         return self.ws.incident_dir(incident_id)
+
+    def confirmed_by(self, incident_id: str) -> Optional[str]:
+        """"auto" (AUTO_CONFIRM_LOCATION), "dispatcher" (POST /confirm-location or a simulated tap), or None."""
+        p = self._dir(incident_id) / "confirmation.json"
+        return self.ws.read_json(p).get("confirmed_by") if p.exists() else None
+
+    def incident_json(self, rec: IncidentRecord) -> dict:
+        """The incident as the API and incident.updated send it: the record plus confirmed_by."""
+        return {**rec.model_dump(mode="json"), "confirmed_by": self.confirmed_by(rec.incident_id)}
+
+    def _emit_incident(self, rec: IncidentRecord) -> None:
+        self._emit(rec.incident_id, "incident.updated", {"incident": self.incident_json(rec)})
 
     def _agents_ws(self, incident_id: str) -> AgentWorkspace:
         return incident_workspace(incident_id, self.agents_root)
@@ -215,7 +242,7 @@ class IncidentService:
             self._engines[iid] = eng
             self._agents_ws(iid).clear()   # an id seen before: no stale briefs from an earlier run
             self._save(eng.record)
-        self._emit(iid, "incident.updated", {"incident": eng.record.model_dump(mode="json")})
+        self._emit_incident(eng.record)
         return eng.record
 
     def list_incidents(self) -> list[IncidentRecord]:
@@ -275,7 +302,7 @@ class IncidentService:
             extracted_out = [{"key": f.key, "value": f.value, "quote": f.quote} for f in extracted] if extracted else []
             self._emit(incident_id, "transcript.segment",
                        {"segment": seg.model_dump(), "changes": changes, "extracted": extracted_out})
-            self._emit(incident_id, "incident.updated", {"incident": rec.model_dump(mode="json")})
+            self._emit_incident(rec)
             for c in rec.contradictions:
                 if len(c.values) > contra_before.get(c.key, 0) and len(c.values) > 1:
                     self._emit(incident_id, "contradiction.raised", {"contradiction": c.model_dump(mode="json")})
@@ -286,9 +313,11 @@ class IncidentService:
 
             loc_after = {k: rec.facts[k].value for k in LOCATION_KEYS if k in rec.facts}
             candidates = None
-            if loc_after != loc_before and not rec.confirmed_building_id:
+            confirmed_before = rec.confirmed_building_id   # an auto-confirm here already reads these changes
+            if loc_after != loc_before and not confirmed_before:
                 candidates = self._locate(incident_id, rec)
-            if changes and rec.confirmed_building_id:
+                self._maybe_auto_confirm(incident_id, candidates)
+            if changes and confirmed_before:
                 self._queue_update(incident_id, changes)
 
         self.metrics.record(incident_id, "fusion", fusion_ms, changes=len(changes))
@@ -349,8 +378,25 @@ class IncidentService:
         except ValueError as e:   # e.g. the location changed and matches nothing now
             log.warning("start_incident %s: %s", incident_id, e)
 
-    def confirm_location(self, incident_id: str, building_id: Optional[str]) -> dict[str, Any]:
-        """Dispatcher's one-tap confirmation, the ONLY path that produces a brief for a new building.
+    def _maybe_auto_confirm(self, incident_id: str, cands: Sequence[LocationCandidate]) -> None:
+        """AUTO_CONFIRM_LOCATION=1 and a clear candidate: confirm it through confirm_location (the
+        endpoint's path), so the events are the same as a dispatcher's tap; confirmed_by = "auto"."""
+        if not self.settings.auto_confirm_location:
+            return
+        building_id = auto_confirm_pick(cands)
+        if building_id is None:
+            return   # ambiguous: wait for the dispatcher
+        try:
+            self.confirm_location(incident_id, building_id, confirmed_by="auto")
+        except (NotFound, ValueError) as e:   # e.g. the building vanished: the dispatcher still can
+            log.warning("auto-confirm of %s for %s failed: %s", building_id, incident_id, e)
+            return
+        self.audit(incident_id, "system", "confirm_location", {"building_id": building_id, "confirmed_by": "auto"})
+
+    def confirm_location(self, incident_id: str, building_id: Optional[str],
+                         confirmed_by: str = "dispatcher") -> dict[str, Any]:
+        """The ONLY path that produces a brief for a new building: the dispatcher's one-tap confirmation
+        (confirmed_by "dispatcher") or AUTO_CONFIRM_LOCATION (confirmed_by "auto").
         Returns at once; the brief arrives as brief.updated. building_id None = "none of these"."""
         t0 = time.perf_counter()
         with self._lock(incident_id):
@@ -371,11 +417,13 @@ class IncidentService:
             self._notes.pop(incident_id, None)   # notes so far are in the record the new brief reads
             eng.confirm(building_id)
             eng.record.status = "briefing"
+            self.ws.write_json(self._dir(incident_id) / "confirmation.json",
+                               {"building_id": building_id, "confirmed_by": confirmed_by})
             self._save(eng.record)
-            self._emit(incident_id, "incident.updated", {"incident": eng.record.model_dump(mode="json")})
+            self._emit_incident(eng.record)
         self._submit(incident_id, self._confirm_job, incident_id, building_id, pipeline, t0)
         return {"incident_id": incident_id, "building_id": building_id, "status": "briefing",
-                "pipeline": pipeline}
+                "pipeline": pipeline, "confirmed_by": confirmed_by}
 
     def _reject_job(self, incident_id: str) -> None:
         try:
@@ -421,7 +469,7 @@ class IncidentService:
         self._emit(incident_id, "brief.updated", self._brief_event(
             brief, "orchestrator", r.status, r.needs_review, r.fallback_reason, r.trace_run_id))
         self._emit_overlay(incident_id, brief.version)
-        self._emit(incident_id, "incident.updated", {"incident": rec.model_dump(mode="json")})
+        self._emit_incident(rec)
         if brief.version == 1:
             row = self.metrics.record(incident_id, "time_to_brief", _ms(t0), cached_dossier=bool(
                 brief.freshness.get("prefetched")), building_id=brief.building_id, version=1,
@@ -441,21 +489,38 @@ class IncidentService:
         The producer writes overlay_vN.json to the incident workspace and validates it against the plan
         index; this only relays it. No file for this version, or one that is not this incident's
         version N: nothing is sent, so the viewer keeps the previous overlay."""
+        overlay = self._read_overlay(incident_id, version)
+        if overlay is not None:
+            self._emit(incident_id, "overlay.updated", {"version": version, "overlay": overlay})
+
+    def _read_overlay(self, incident_id: str, version: int) -> Optional[dict]:
+        """overlay_vN.json when it is this incident's version N, else None (logged)."""
         text = self._agents_ws(incident_id).read_or_none(f"overlay_v{version}.json")
         if text is None:
             log.info("no overlay_v%d.json for %s: overlay.updated not sent", version, incident_id)
-            return
+            return None
         try:
             overlay = json.loads(text)
         except json.JSONDecodeError as e:
             log.warning("overlay_v%d.json of %s is not JSON (%s): not sent", version, incident_id, e)
-            return
+            return None
         meta = overlay if isinstance(overlay, dict) else {}
         if (meta.get("incident_id"), meta.get("version")) != (incident_id, version):
             log.warning("overlay_v%d.json of %s does not match the brief (incident %r, version %r): not sent",
                         version, incident_id, meta.get("incident_id"), meta.get("version"))
-            return
-        self._emit(incident_id, "overlay.updated", {"version": version, "overlay": overlay})
+            return None
+        return overlay
+
+    def latest_overlay(self, incident_id: str) -> dict:
+        """The last overlay.updated payload ({"version", "overlay"}) a late client missed: the newest brief
+        version with a valid overlay file."""
+        with self._lock(incident_id):
+            self._engine(incident_id)
+            for v in reversed(self._brief_versions(incident_id)):
+                overlay = self._read_overlay(incident_id, v)
+                if overlay is not None:
+                    return {"version": v, "overlay": overlay}
+        raise NotFound(f"no overlay yet for {incident_id}")
 
     def _drain_updates(self, incident_id: str) -> None:
         """update_incident with every change note queued so far; again if more arrived meanwhile."""
@@ -512,7 +577,7 @@ class IncidentService:
             self.ws.append_jsonl(self._dir(incident_id) / "inputs.jsonl",
                                  {"type": "resolve", "key": key, "value": value})
             self._save(eng.record)
-            self._emit(incident_id, "incident.updated", {"incident": eng.record.model_dump(mode="json")})
+            self._emit_incident(eng.record)
             self._emit(incident_id, "copilot.suggestion",
                        {"suggestions": [s.model_dump() for s in self.copilot(incident_id) if s.status == "open"]})
             if eng.record.confirmed_building_id:
@@ -547,7 +612,7 @@ class IncidentService:
             brief = self._new_brief(incident_id, rec, dossier, force=True)
             rec.status = "confirmed" if brief.version == 1 else "updated"
             self._save(rec)
-            self._emit(incident_id, "incident.updated", {"incident": rec.model_dump(mode="json")})
+            self._emit_incident(rec)
         row = self.metrics.record(incident_id, "time_to_brief", _ms(t0), cached_dossier=cached,
                                   building_id=building_id, version=brief.version, pipeline="rules")
         self._emit(incident_id, "metric.tick", row)
