@@ -58,7 +58,10 @@ FAST_TIMEOUT_S = 25.0       # one model call; past it the attempt counts as fail
 MAX_ATTEMPTS = 2            # the call, plus ONE retry that quotes the errors
 MIN_CONSIDERATIONS, MAX_CONSIDERATIONS = 2, 4
 NO_CRITIC_GAP = "Considerations were not checked by the critic"  # same gap as the agent path without a critique
-MAX_ROOM_CANDIDATES = 8     # an occupant matching 2..8 rooms -> one candidate per room (yellow); more -> floor level
+MAX_ROOM_CANDIDATES = 40    # an occupant matching 2+ rooms -> one candidate per room (yellow), every one of them
+# where a person can be: a person placed only at floor level (or nowhere) gets a candidate in each of these rooms
+NOT_A_ROOM = {"closet", "hallway", "staircase", "stairs", "landing", "entrance", "foyer", "porch", "patio", "balcony",
+              "deck", "void", "other", "pantry"}
 INFERRED_CAP = 0.6
 CANDIDATE_KEY = "occupants.location_candidates"
 # activity cue -> plan room type. Only used when the caller's lines name no room (ROOM_WORDS).
@@ -378,6 +381,19 @@ def _floor_no(index: dict, room_id: str) -> Optional[int]:
     return _floor_of(index, [room_id])
 
 
+def _every_room(index: dict, loc: dict) -> list[str]:
+    """Rooms a person placed at floor level (that floor) or nowhere (the whole house) could be in, plan order."""
+    if not overlay_mod.has_scan(index) or loc.get("kind") not in ("floor", "unknown"):
+        return []
+    floors = index.get("floors") or []
+    n = loc.get("floor_reported")
+    fid = floors[n - 1] if loc.get("kind") == "floor" and n and 0 < n <= len(floors) else None
+    if loc.get("kind") == "floor" and fid is None:
+        return []
+    return [rid for rid, r in (index.get("rooms") or {}).items()
+            if (r.get("type") or "other") not in NOT_A_ROOM and (fid is None or r.get("floor_id") == fid)]
+
+
 def _rooms_of_type(index: dict, room_type: str, floor: Optional[int]) -> list[str]:
     return [rid for rid, r in (index.get("rooms") or {}).items()
             if (r.get("type") or "") == room_type and (floor is None or _floor_no(index, rid) == floor)]
@@ -470,7 +486,18 @@ def _to_draft(out: FastOutput, index: dict, spans: Optional[list[Span]] = None
                                        "location": {"kind": "room", "room_id": room}}))
                 continue
             about = f"{e.note or e.id} ({e.id})"
-            made.append(cls(**{**data, "location": _locate(index, e.place, about, e.evidence_ids, resolved, questions)}))
+            loc = _locate(index, e.place, about, e.evidence_ids, resolved, questions)
+            every = _every_room(index, loc) if expand and not e.group_id and e.status != "contradicted" else []
+            if len(every) >= 2:                     # "I think she's in a room": a yellow candidate in EVERY room
+                group = f"grp-{e.id}"
+                renames[e.id] = group
+                resolved.update(every)
+                contradictions.append({"group_id": group, "key": CANDIDATE_KEY, "resolved_by_dispatcher": False})
+                for k, room in enumerate(every, 1):
+                    made.append(cls(**{**data, "id": f"{e.id}-{k}", "status": "contradicted", "group_id": group,
+                                       "location": {"kind": "room", "room_id": room}}))
+                continue
+            made.append(cls(**{**data, "location": loc}))
         return made
 
     occupants = entities(out.occupants, DraftOccupant, expand=True)

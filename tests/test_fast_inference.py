@@ -152,9 +152,21 @@ def test_callers_who_disagree_keep_their_own_group():
     assert [c["group_id"] for c in ov["contradictions"]] == ["g1"]
 
 
-def test_a_floor_only_occupant_is_a_floor_location():
+def test_a_floor_only_occupant_is_a_candidate_in_every_room_of_that_floor():
+    # "my son is upstairs": a yellow candidate in every room of floor 2 a person can be in (no closets or hallways)
     ov, errors, _, _ = run({"occupants": [occ(SON, {"floor_reported": 2})]})
-    assert errors == [] and ov["occupants"][0]["location"] == {"kind": "floor", "floor_reported": 2, "floor_id": "f2"}
+    want = sorted(rid for rid, r in INDEX["rooms"].items()
+                  if r["floor_id"] == "f2" and r["type"] not in ("closet", "hallway", "staircase"))
+    got = sorted(o["location"]["room_id"] for o in ov["occupants"])
+    assert errors == [] and (got == want if len(want) >= 2 else ov["occupants"][0]["location"]["kind"] == "floor")
+    if len(want) >= 2:
+        assert {o["status"] for o in ov["occupants"]} == {"contradicted"} and len({o["group_id"] for o in ov["occupants"]}) == 1
+
+
+def test_a_person_with_no_place_is_a_candidate_in_every_room():
+    ov, errors, _, _ = run({"occupants": [occ(SON, None)]})
+    rooms = [r for r in INDEX["rooms"].values() if r["type"] not in ("closet", "hallway", "staircase")]
+    assert errors == [] and len(ov["occupants"]) == len(rooms)
 
 
 def test_nothing_the_checks_accept_is_ever_schema_invalid():
