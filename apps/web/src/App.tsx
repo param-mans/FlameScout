@@ -84,17 +84,6 @@ export default function App() {
         <Btn active={view === "mdt"} onClick={() => setView("mdt")}>MDT</Btn>
 
         <div className="ml-auto flex items-center gap-2 lg:order-last lg:ml-0">
-          {isLive && (
-            <>
-              <ScriptPicker scripts={st.scripts} value={scriptValue} onChange={setScript} />
-              <Btn onClick={() => void live.startCall(scriptValue)}>
-                {scriptValue === "" ? (st.incidentId ? "New blank incident" : "Start blank incident") : st.incidentId ? "New call" : "Run call"}
-              </Btn>
-              {st.incidentId && <span className="num text-[11px] text-faint" title="Incident id">{st.incidentId}</span>}
-              <CallIn feed={activeCall} onStart={(c) => { void live.attach(c.incident_id); setView("dispatcher"); }}
-                canClear={!!st.incidentId} onClear={live.reset} />
-            </>
-          )}
           {st.mode === "mock" && <Btn onClick={live.retryApi}>Retry API</Btn>}
           <span className="num hidden text-[10px] font-semibold tracking-wider text-dim sm:inline" title="Simulation only: no real emergency lines are called">SIMULATION</span>
           <span
@@ -110,15 +99,7 @@ export default function App() {
 
         {isLive && (
           <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:ml-auto lg:w-auto lg:flex-nowrap">
-            <select
-              value={scriptValue}
-              onChange={(e) => setScript(e.target.value)}
-              aria-label="Scripted call"
-              className="num border border-line-hi bg-bg px-1.5 py-0.5 text-[11px] text-ink"
-            >
-              {st.scripts.map((x) => <option key={x.script_id} value={x.script_id}>{x.script_id} · {x.segments} segments</option>)}
-              <option value="">Blank · type your own</option>
-            </select>
+            <ScriptPicker scripts={st.scripts} value={scriptValue} onChange={setScript} />
             <Btn onClick={() => void live.startCall(scriptValue)}>
               {scriptValue === "" ? (st.incidentId ? "New blank incident" : "Start blank incident") : st.incidentId ? "New call" : "Run call"}
             </Btn>
