@@ -1,0 +1,19 @@
+{
+  "script_id": "S9_NWTC",
+  "building": {"id": "23296", "address": "9700 Tanner Rd, Houston", "plan_index": null},
+  "any_extractor": {
+    "facts": {"location.address": "9700 Tanner Road", "location.name": "Northwest Trade Center", "incident.visible": ["smoke"], "alarm.sounding": true, "hazards.reported": ["batteries"]},
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {"people.reported": true},
+    "people": [{"who": "workers still inside", "status": "contradicted", "group": "workers_inside",
+                "values": [{"call_id": "c1", "count": 3, "where": "somewhere inside", "precision": "unknown"},
+                           {"call_id": "c2", "count_range": [0, 2], "where": "the back offices", "precision": "floor", "floor_reported": 1}]}],
+    "fire": [{"kind": "smoke", "where": "warehouse, by the loading dock", "precision": "floor", "floor_reported": 1}],
+    "hazards": [{"kind": "batteries", "where": "forklift charging by the dock", "source": "caller", "note": "reported by the caller, not inferred from the record"}],
+    "contradictions": [{"key": "workers_inside", "values": [3, "two at most"], "resolved_by_dispatcher": false}],
+    "open_questions": ["How many people are still inside: three (employee) or two at most (manager's head count)?", "Where exactly in the back offices?"]
+  },
+  "notes": "No interior scan: every location is floor level or unknown, and no route can be computed. Sprinklers: the record says sprinklered; the manager thinks they came on (caller report)."
+}

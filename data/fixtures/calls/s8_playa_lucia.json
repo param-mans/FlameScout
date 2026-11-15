@@ -1,0 +1,21 @@
+{
+  "script_id": "S8_PLAYA_LUCIA",
+  "description": "One call from 13722 Playa Lucia Court, Houston (hero 199958956, one floor). A teenager alone at home: smoke under a door of 'the room next to the kitchen' (seven rooms are next to the kitchen, so no room is picked), she does not know which exit to use and cannot find the dog. Expected: data/fixtures/calls/expected/s8_playa_lucia.json.",
+  "segments": [
+    {"call_id": "c1", "speaker": "call_taker", "text": "Emergency services, what's the address of your emergency?", "t_start": 0.0, "t_end": 3.1},
+    {"call_id": "c1", "speaker": "caller", "text": "Um, it's... 13722 Playa Lucia Court. There's smoke. There's smoke coming under a door.", "t_start": 3.8, "t_end": 9.2},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Okay, 13722 Playa Lucia Court. Are you inside the house?", "t_start": 9.6, "t_end": 13.4},
+    {"call_id": "c1", "speaker": "caller", "text": "Yes. I'm home by myself. My parents are at work.", "t_start": 14.1, "t_end": 17.9},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Which door is the smoke coming from?", "t_start": 18.3, "t_end": 21.0},
+    {"call_id": "c1", "speaker": "caller", "text": "The room next to the kitchen. I don't, I don't know, it's just a door, I never go in there.", "t_start": 21.7, "t_end": 29.4},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Don't open that door. Where are you right now?", "t_start": 29.8, "t_end": 33.3},
+    {"call_id": "c1", "speaker": "caller", "text": "I'm in the hallway. I don't know which way to go, the front door or through the garage, I don't know.", "t_start": 34.0, "t_end": 42.1},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Can you get to a door that goes outside without passing the smoke?", "t_start": 42.5, "t_end": 47.5},
+    {"call_id": "c1", "speaker": "caller", "text": "I... I think so? I can't see good, it's getting hazy.", "t_start": 48.2, "t_end": 52.4},
+    {"call_id": "c1", "speaker": "caller", "text": "And I can't find Biscuit, my dog, he was right here...", "t_start": 52.8, "t_end": 57.0},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Leave the dog for now. Get yourself outside, okay? Stay low.", "t_start": 57.7, "t_end": 61.9},
+    {"call_id": "c1", "speaker": "caller", "text": "Okay. Okay. The alarm just started going off.", "t_start": 62.3, "t_end": 65.4},
+    {"call_id": "c1", "speaker": "call_taker", "text": "That's good, keep going. Tell me when you're outside.", "t_start": 66.1, "t_end": 69.6},
+    {"call_id": "c1", "speaker": "caller", "text": "I'm going, I'm going.", "t_start": 70.0, "t_end": 71.5}
+  ]
+}

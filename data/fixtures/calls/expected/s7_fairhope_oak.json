@@ -1,0 +1,25 @@
+{
+  "script_id": "S7_FAIRHOPE_OAK",
+  "building": {"id": "214905148", "address": "18107 Fairhope Oak Street, Houston", "plan_index": "data/raw/214905148/derived/plan_index.json"},
+  "any_extractor": {
+    "facts": {"location.address": "18107 Fairhope Oak Street", "incident.visible": ["flames", "smoke"], "hazards.reported": ["propane"]},
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {"people.reported": true},
+    "people": [
+      {"who": "the daughter, 11", "count": 1, "status": "reported", "call_id": "c3", "where": "the bedroom over the kitchen, next to the bonus room",
+       "precision": "room", "room_id": "peina19mpqedsku6a3huu38md", "resolved_by": ["over: kitchen", "next_to: bonus room"]},
+      {"who": "someone at an upstairs window above the garage", "count": 1, "status": "reported", "call_id": "c1", "where": "floor 2, above the garage",
+       "precision": "floor", "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb", "note": "six floor-2 rooms are over the garage: stays at floor level"},
+      {"who": "a face at the upstairs front left window", "count": 1, "status": "reported", "call_id": "c2", "where": "floor 2, front left",
+       "precision": "floor", "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb", "note": "front/back/left/right are not resolved (no orientation in the plan)"}
+    ],
+    "fire": [{"kind": "flames", "where": "garage", "room_id": "xy2x8mpaaqknp7q2c3nnbw1ma"}, {"kind": "smoke", "where": "over the roof"}],
+    "hazards": [{"kind": "propane", "where": "garage (popping, caller unsure)", "room_id": "xy2x8mpaaqknp7q2c3nnbw1ma", "source": "caller"}],
+    "access": [{"note": "door from the garage into the house possibly left open", "source": "caller"}],
+    "contradictions": [],
+    "open_questions": ["Is the person seen above the garage the daughter, or someone else?", "Is the door from the garage into the house open?"]
+  },
+  "notes": "All three callers describe the same fire; their details complement each other. The call taker's 'back of the house' is not the caller's location and must not be used."
+}

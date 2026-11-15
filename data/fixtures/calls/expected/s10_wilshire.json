@@ -1,0 +1,20 @@
+{
+  "script_id": "S10_WILSHIRE",
+  "building": {"id": "fake_wilshire_tower", "address": "1200 Wilshire Boulevard", "plan_index": null},
+  "any_extractor": {
+    "facts": {"location.address": "1200 Wilshire Boulevard", "location.name": "Wilshire Tower", "incident.floor": 6, "incident.visible": ["smoke", "flames"], "alarm.sounding": true},
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {"incident.floor": 6, "people.reported": true},
+    "floor_phrases": {"c1": "the sixth floor", "c2": "floor six", "c3": "six floors up, if you count the restaurant", "c4": "right under the roof", "c5": "all the way at the top"},
+    "not_facts": {"incident.floor": [4]},
+    "people": [{"who": "someone banging on a door upstairs", "status": "reported", "call_id": "c2", "precision": "unknown"}],
+    "fire": [{"kind": "smoke", "floor_reported": 6}, {"kind": "flames", "floor_reported": 6, "call_id": "c4"}],
+    "hazards": [],
+    "contradictions": [],
+    "separate_incidents": [{"call_id": "c6", "what": "vehicle fire on a side street, a block off Wilshire", "merge": false}],
+    "open_questions": ["Who was banging on a door upstairs, and on which floor?"]
+  },
+  "notes": "All five floor phrasings mean floor 6 in this six-storey building (ground-floor restaurant): one corroborated value, no contradiction. 'I live on four' (c2) is the caller's own floor, not the fire floor. Call c6 is another incident."
+}

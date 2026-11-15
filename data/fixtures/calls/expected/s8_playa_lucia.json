@@ -1,0 +1,19 @@
+{
+  "script_id": "S8_PLAYA_LUCIA",
+  "building": {"id": "199958956", "address": "13722 Playa Lucia Court, Houston", "plan_index": "data/raw/199958956/derived/plan_index.json"},
+  "any_extractor": {
+    "facts": {"location.address": "13722 Playa Lucia Court", "incident.visible": ["smoke"], "alarm.sounding": true},
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {"people.reported": true},
+    "people": [{"who": "the caller, a teenager alone at home", "count": 1, "status": "reported", "where": "in the hallway, floor 1", "precision": "floor",
+                "floor_id": "tsmq1wak12rhgn0mawksxcwcd"}],
+    "fire": [{"kind": "smoke", "where": "under the door of 'the room next to the kitchen'", "precision": "floor", "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+              "note": "seven rooms are next to the kitchen: abstain, no room id"}],
+    "hazards": [],
+    "contradictions": [],
+    "open_questions": ["Is the caller outside yet, and through which exit?", "Which room is the smoke coming from?", "Pet unaccounted for (dog)"]
+  },
+  "notes": "One floor, no contradictions. The dog is not a person and must not be counted as an occupant."
+}

@@ -1,0 +1,30 @@
+{
+  "script_id": "S9_NWTC",
+  "description": "Two calls about Northwest Trade Center, 9700 Tanner Rd, Houston (CoStar property 23296, one floor, no interior scan, sprinklered per the record). Call 1, an employee from the warehouse side: smoke by the loading dock, three people still inside. Call 2, the manager from the parking lot: two people at most, in the back offices, and the smell of the forklift batteries. Expected: data/fixtures/calls/expected/s9_nwtc.json.",
+  "segments": [
+    {"call_id": "c1", "speaker": "call_taker", "text": "Emergency services, what's the address?", "t_start": 0.0, "t_end": 1.9},
+    {"call_id": "c1", "speaker": "caller", "text": "I'm at work, the Northwest Trade Center, on Tanner. 9700 Tanner Road.", "t_start": 2.6, "t_end": 7.2},
+    {"call_id": "c1", "speaker": "call_taker", "text": "What's going on there?", "t_start": 7.6, "t_end": 9.1},
+    {"call_id": "c1", "speaker": "caller", "text": "There's smoke by the loading dock, in the warehouse, it's coming from back by the dock doors.", "t_start": 9.8, "t_end": 16.3},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Are you out of the building?", "t_start": 16.7, "t_end": 19.0},
+    {"call_id": "c1", "speaker": "caller", "text": "I'm outside now, by the dock. I think there's still three people inside. Three guys from the shop.", "t_start": 19.7, "t_end": 26.6},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Three people still inside. Do you know where they are?", "t_start": 27.0, "t_end": 30.8},
+    {"call_id": "c1", "speaker": "caller", "text": "No, I... somewhere in there. I came out the dock door.", "t_start": 31.5, "t_end": 35.7},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Is the fire alarm going?", "t_start": 36.1, "t_end": 38.0},
+    {"call_id": "c1", "speaker": "caller", "text": "Yeah, the alarm's going off, it's loud.", "t_start": 38.7, "t_end": 41.4},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Can you see flames?", "t_start": 41.8, "t_end": 43.3},
+    {"call_id": "c1", "speaker": "caller", "text": "No, no flames, just a lot of smoke, gray, kind of white-gray.", "t_start": 44.0, "t_end": 48.6},
+    {"call_id": "c2", "speaker": "call_taker", "text": "Emergency services.", "t_start": 0.0, "t_end": 1.4},
+    {"call_id": "c2", "speaker": "caller", "text": "Yeah, I'm the manager at Northwest Trade Center, 9700 Tanner. We got smoke in the warehouse.", "t_start": 2.1, "t_end": 8.3},
+    {"call_id": "c2", "speaker": "call_taker", "text": "Units are on the way. Is anyone still inside?", "t_start": 8.7, "t_end": 12.2},
+    {"call_id": "c2", "speaker": "caller", "text": "Two, max. Two people, in the back offices. Everybody else is out here in the parking lot with me.", "t_start": 12.9, "t_end": 20.2},
+    {"call_id": "c2", "speaker": "call_taker", "text": "Another caller said three people.", "t_start": 20.6, "t_end": 22.5},
+    {"call_id": "c2", "speaker": "caller", "text": "No, it's two. I did a head count, it's two, they're in the offices in the back.", "t_start": 23.2, "t_end": 29.7},
+    {"call_id": "c2", "speaker": "call_taker", "text": "Okay. Anything else the firefighters should know?", "t_start": 30.1, "t_end": 32.8},
+    {"call_id": "c2", "speaker": "caller", "text": "The forklifts charge back there by the dock. It smells like the batteries, like burning batteries, that sour smell.", "t_start": 33.5, "t_end": 40.8},
+    {"call_id": "c2", "speaker": "call_taker", "text": "Forklift batteries near the dock. Got it.", "t_start": 41.2, "t_end": 43.9},
+    {"call_id": "c2", "speaker": "caller", "text": "And I think the sprinklers came on, I heard 'em.", "t_start": 44.6, "t_end": 48.4},
+    {"call_id": "c2", "speaker": "call_taker", "text": "Stay in the parking lot and meet the first engine.", "t_start": 48.8, "t_end": 52.6},
+    {"call_id": "c2", "speaker": "caller", "text": "Will do.", "t_start": 53.3, "t_end": 54.7}
+  ]
+}

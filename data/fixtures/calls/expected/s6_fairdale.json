@@ -1,0 +1,23 @@
+{
+  "script_id": "S6_FAIRDALE",
+  "building": {"id": "209217448", "address": "9660 Fairdale Lane, Houston", "plan_index": "data/raw/209217448/derived/plan_index.json"},
+  "any_extractor": {
+    "facts": {"location.address": "9660 Fairdale Lane", "incident.visible": ["smoke", "flames"], "hazards.reported": ["gas"], "alarm.sounding": true},
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {"people.reported": true},
+    "people": [
+      {"who": "two boys", "count": 2, "status": "contradicted", "group": "children_location",
+       "values": [{"call_id": "c1", "where": "floor 2, the loft", "precision": "room", "room_id": "n2yqr30509t7i8whfdf2htwic"},
+                  {"call_id": "c2", "where": "floor 1, a bedroom", "precision": "floor", "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+                   "note": "three bedrooms on floor 1 (d3slsxy3zlg, tt6gm2a0463x9wmnx7rn6gugc, 2qdmc5i9byxi79ry1pxdkqzea): stays at floor level, resolve_place asks"}]},
+      {"who": "the husband", "count": 1, "status": "reported", "where": "his office by the kitchen", "precision": "room", "room_id": "rewssvxhpxq"}
+    ],
+    "fire": [{"kind": "smoke", "where": "kitchen window", "room_id": "j7nhq2abkp0"}, {"kind": "flames", "where": "kitchen window", "room_id": "j7nhq2abkp0"}],
+    "hazards": [{"kind": "gas", "where": "by the garage", "room_id": "tfsfsskzu72", "source": "caller"}],
+    "contradictions": [{"key": "children_location", "values": ["floor 2 (loft)", "floor 1 (bedroom)"], "resolved_by_dispatcher": false}],
+    "open_questions": ["Which floor are the two boys on (neighbour: loft upstairs; mother saw them in a bedroom downstairs)?", "Which downstairs bedroom?", "Is the husband aware and able to get out?"]
+  },
+  "notes": "The neighbour only assumes the boys are home (he did not see them); the mother saw them. Nobody says anyone is trapped. The garage is a separate structure; floor 2 has no bedroom."
+}
