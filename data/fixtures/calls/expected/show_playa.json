@@ -1,0 +1,70 @@
+{
+  "script_id": "SHOW_PLAYA",
+  "building": {
+    "id": "199958956",
+    "address": "13722 Playa Lucia Court, Houston",
+    "plan_index": "data/raw/199958956/derived/plan_index.json"
+  },
+  "floor": {
+    "number": 1,
+    "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+    "note": "single-floor house"
+  },
+  "any_extractor": {
+    "facts": {
+      "location.address": "13722 Playa Lucia Court",
+      "incident.visible": [
+        "flames"
+      ],
+      "hazards.reported": [
+        "gas"
+      ],
+      "people.trapped": true
+    },
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {
+      "people.reported": true,
+      "incident.floor": 1
+    },
+    "people": [
+      {
+        "who": "the caller's grandmother",
+        "count": 1,
+        "status": "trapped",
+        "call_id": "c1",
+        "where": "in the den",
+        "precision": "room",
+        "room_id": "kogpvjihnk0",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "den",
+          "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+        }
+      }
+    ],
+    "fire": [
+      {
+        "kind": "flames",
+        "where": "garage",
+        "room_id": "i9ib8b4tvob",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "garage",
+          "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+        }
+      }
+    ],
+    "hazards": [
+      {
+        "kind": "gas",
+        "where": "gas cans in the garage",
+        "room_id": "i9ib8b4tvob",
+        "source": "caller"
+      }
+    ],
+    "contradictions": []
+  },
+  "notes": "One floor, so the floor is implied (llm_only). The den is the only den in the plan."
+}

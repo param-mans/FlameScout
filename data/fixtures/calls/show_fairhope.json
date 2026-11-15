@@ -1,0 +1,9 @@
+{
+  "script_id": "SHOW_FAIRHOPE",
+  "description": "Showcase, one short call from 18107 Fairhope Oak Street, Houston (hero 214905148). Fire in the media room on the second floor; the caller's father, on oxygen, is in the bedroom next to the bonus room (one bedroom matches). No contradictions. Expected: data/fixtures/calls/expected/show_fairhope.json.",
+  "segments": [
+    {"call_id": "c1", "speaker": "caller", "text": "18107 Fairhope Oak Street! Media room's on fire, second floor.", "t_start": 0.0, "t_end": 3.9},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Anyone inside?", "t_start": 4.2, "t_end": 5.0},
+    {"call_id": "c1", "speaker": "caller", "text": "My dad's in the bedroom next to the bonus room, on oxygen!", "t_start": 5.3, "t_end": 9.6}
+  ]
+}

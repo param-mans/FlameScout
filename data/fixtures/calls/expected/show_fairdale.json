@@ -1,0 +1,69 @@
+{
+  "script_id": "SHOW_FAIRDALE",
+  "building": {
+    "id": "209217448",
+    "address": "9660 Fairdale Lane, Houston",
+    "plan_index": "data/raw/209217448/derived/plan_index.json"
+  },
+  "floor": {
+    "number": 1,
+    "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+    "note": "fire floor"
+  },
+  "any_extractor": {
+    "facts": {
+      "location.address": "9660 Fairdale Lane",
+      "incident.floor": 1,
+      "incident.visible": [
+        "flames"
+      ],
+      "hazards.reported": [
+        "gas"
+      ]
+    },
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {
+      "people.reported": true
+    },
+    "people": [
+      {
+        "who": "the caller's two children",
+        "count": 2,
+        "status": "reported",
+        "call_id": "c1",
+        "where": "upstairs in the loft",
+        "precision": "room",
+        "room_id": "n2yqr30509t7i8whfdf2htwic",
+        "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+        "resolve": {
+          "type": "loft",
+          "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+        }
+      }
+    ],
+    "fire": [
+      {
+        "kind": "flames",
+        "where": "kitchen, first floor",
+        "room_id": "j7nhq2abkp0",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "kitchen",
+          "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+        }
+      }
+    ],
+    "hazards": [
+      {
+        "kind": "gas",
+        "where": "gas stove in the kitchen",
+        "room_id": "j7nhq2abkp0",
+        "source": "caller"
+      }
+    ],
+    "contradictions": []
+  },
+  "notes": "The loft is directly over the kitchen and living room, so the children are above the fire. No bedroom is mentioned (one downstairs bedroom has no window)."
+}

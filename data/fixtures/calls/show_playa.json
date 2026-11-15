@@ -1,0 +1,9 @@
+{
+  "script_id": "SHOW_PLAYA",
+  "description": "Showcase, one short call from 13722 Playa Lucia Court, Houston (hero 199958956, one floor). Garage fire with gas cans inside; the caller's grandmother is in the den (the only den) and cannot get out. No contradictions. Expected: data/fixtures/calls/expected/show_playa.json.",
+  "segments": [
+    {"call_id": "c1", "speaker": "caller", "text": "13722 Playa Lucia Court! The garage is on fire, gas cans inside.", "t_start": 0.0, "t_end": 4.3},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Anyone in the house?", "t_start": 4.6, "t_end": 5.8},
+    {"call_id": "c1", "speaker": "caller", "text": "My grandma, in the den. She can't get out!", "t_start": 6.1, "t_end": 9.3}
+  ]
+}

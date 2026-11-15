@@ -3,7 +3,8 @@
 Scenario files live in `data/fixtures/calls/<stem>.json`, in the same format as s1–s6. The schema is
 `{script_id, description, segments: [{call_id, speaker: call_taker|caller, text, t_start, t_end}]}`, with each call's
 clock starting at 0. The facts a good agent should extract are in `data/fixtures/calls/expected/<stem>.json`. They sit
-one folder down because the API lists every `calls/*.json` file as a script.
+one folder down because the API lists every `calls/*.json` file as a script (`manifest.json` sits in the same folder
+and must be excluded by anything that globs scripts; see "Manifest" below).
 
 All voices are synthetic: invented first names, no phone numbers, no emergency numbers.
 
@@ -14,6 +15,41 @@ All voices are synthetic: invented first names, no phone numbers, no emergency n
 | `s8_playa_lucia` | 13722 Playa Lucia Court, hero `199958956` (scan, one floor) | 1 | "The room next to the kitchen" matches 7 rooms, so no room is picked; open questions about the exit and the dog |
 | `s9_nwtc` | Northwest Trade Center, 9700 Tanner Rd, CoStar `23296` (no scan) | 2 | People count contradiction (3 vs two at most); floor-level locations only; a hazard reported by the caller (forklift batteries) |
 | `s10_wilshire` | Wilshire Tower, fixture `fake_wilshire_tower` | 6 | Five ways to say floor 6 (sixth floor, floor six, six up counting the restaurant, right under the roof, at the top) should give one value; call 6 is another incident (a car fire) |
+
+## Showcase scripts
+
+Short, fully consistent calls for demos: one call, 2-3 segments, at most 10 s and 28 words. Every fact resolves on the
+real plan with `resolve_place` (fire and people each land in exactly one room). No front/back/left/right.
+
+| Stem / id | Building | Text (caller / call taker) | Resolves to |
+|---|---|---|---|
+| `show_fairdale` / `SHOW_FAIRDALE` | 9660 Fairdale Lane, `209217448` | "9660 Fairdale Lane! Kitchen's on fire, first floor, gas stove." / "Anyone inside?" / "My two kids, upstairs in the loft!" (19 words, 8.0 s) | fire: kitchen `j7nhq2abkp0` (floor 1); kids: loft `n2yqr30509t7i8whfdf2htwic` (floor 2); hazard: gas |
+| `show_fairhope` / `SHOW_FAIRHOPE` | 18107 Fairhope Oak Street, `214905148` | "18107 Fairhope Oak Street! Media room's on fire, second floor." / "Anyone inside?" / "My dad's in the bedroom next to the bonus room, on oxygen!" (24 words, 9.6 s) | fire: media room `n81qfe51azs8iexnbqwspye6c` (floor 2); father: bedroom next to the bonus room `peina19mpqedsku6a3huu38md`; hazard: oxygen (LLM only) |
+| `show_playa` / `SHOW_PLAYA` | 13722 Playa Lucia Court, `199958956` (one floor) | "13722 Playa Lucia Court! The garage is on fire, gas cans inside." / "Anyone in the house?" / "My grandma, in the den. She can't get out!" (25 words, 9.3 s) | fire: garage `i9ib8b4tvob`; grandmother (trapped): den `kogpvjihnk0`; hazard: gas |
+
+The keyword extractor gets the address, flames and, where said literally, the floor (Fairdale 1, Fairhope 2) and the
+gas hazard; Playa adds `people.trapped`. Each showcase expected file also has a top-level `floor` (fire floor) and a
+`resolve` query on every fire/people entry, which the tests pass straight to `resolve_place`.
+
+## Manifest (what the UI lists)
+
+`data/fixtures/calls/manifest.json` is the contract read by `GET /api/calls/scripts` to filter the list:
+
+```json
+{"scripts": [{"id": "SHOW_FAIRDALE", "title": "SHOWCASE · 9660 Fairdale Lane", "group": "showcase",
+              "house": "209217448", "inconsistent": false, "visible": true}]}
+```
+
+- `group` is `showcase` or `test`; showcases come first and their titles start with `SHOWCASE · `.
+- `house` is the listing id in `apps/web/public/house-viewer/samples/index.json` (`id`), or `null` for fixture buildings.
+- Exactly one visible script is `inconsistent` and its title contains `INCONSISTENT`.
+- Scripts that are missing from the manifest or have `visible: false` are hidden from the UI but still load by id.
+
+Visible: `SHOW_FAIRDALE`, `SHOW_FAIRHOPE`, `SHOW_PLAYA`, `S6_FAIRDALE` (the only inconsistent one: callers disagree on
+the children's floor), `S7_FAIRHOPE_OAK` (3 callers, same fire, consistent) and `S8_PLAYA_LUCIA` (vague caller, the
+system must abstain). Hidden: S1, S2, S3, S4, S4B, S4Q, S5, S6, S9_NWTC, S10_WILSHIRE.
+
+## Expected files
 
 Each expected file has two levels:
 - `any_extractor`: facts in the fusion keys that any extractor must get, because the callers say them literally.
@@ -30,7 +66,8 @@ Two deviations from the brief:
 - API: `POST /api/calls/simulate {"script_id": "S7_FAIRHOPE_OAK"}` (script ids are up to 16 characters).
 - Scripts: `python scripts/run_fusion.py S7_FAIRHOPE_OAK`. It writes to `workspace/` and loads `.env`.
 
-`tests/test_call_fixtures.py` checks the structure of every scenario, that the new ones load like the old ones, that
+`tests/test_call_fixtures.py` checks the manifest contract, the showcase limits and their resolution on the real plan,
+the structure of every scenario, that the new ones load like the old ones, that
 the expected room and floor ids exist in `data/raw` (skipped without it), and that fusion accepts each scenario in
 memory.
 

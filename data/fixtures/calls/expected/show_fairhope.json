@@ -1,0 +1,70 @@
+{
+  "script_id": "SHOW_FAIRHOPE",
+  "building": {
+    "id": "214905148",
+    "address": "18107 Fairhope Oak Street, Houston",
+    "plan_index": "data/raw/214905148/derived/plan_index.json"
+  },
+  "floor": {
+    "number": 2,
+    "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+    "note": "fire floor"
+  },
+  "any_extractor": {
+    "facts": {
+      "location.address": "18107 Fairhope Oak Street",
+      "incident.floor": 2,
+      "incident.visible": [
+        "flames"
+      ]
+    },
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {
+      "people.reported": true
+    },
+    "people": [
+      {
+        "who": "the caller's father, on oxygen",
+        "count": 1,
+        "status": "reported",
+        "call_id": "c1",
+        "where": "the bedroom next to the bonus room",
+        "precision": "room",
+        "room_id": "peina19mpqedsku6a3huu38md",
+        "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+        "resolve": {
+          "type": "bedroom",
+          "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+          "next_to": "bonus room"
+        },
+        "resolved_by": [
+          "next_to: bonus room"
+        ]
+      }
+    ],
+    "fire": [
+      {
+        "kind": "flames",
+        "where": "media room, second floor",
+        "room_id": "n81qfe51azs8iexnbqwspye6c",
+        "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+        "resolve": {
+          "type": "media room",
+          "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+        }
+      }
+    ],
+    "hazards": [
+      {
+        "kind": "oxygen",
+        "where": "home oxygen with the father",
+        "room_id": "peina19mpqedsku6a3huu38md",
+        "source": "caller"
+      }
+    ],
+    "contradictions": []
+  },
+  "notes": "The keyword extractor has no 'oxygen' hazard word, so the hazard is llm_only. Fire and occupant are on the same floor."
+}

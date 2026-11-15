@@ -1,0 +1,9 @@
+{
+  "script_id": "SHOW_FAIRDALE",
+  "description": "Showcase, one short call from 9660 Fairdale Lane, Houston (hero 209217448). Kitchen fire on the first floor with a gas stove; two children upstairs in the loft (the only room of its type). No contradictions. Expected: data/fixtures/calls/expected/show_fairdale.json.",
+  "segments": [
+    {"call_id": "c1", "speaker": "caller", "text": "9660 Fairdale Lane! Kitchen's on fire, first floor, gas stove.", "t_start": 0.0, "t_end": 3.8},
+    {"call_id": "c1", "speaker": "call_taker", "text": "Anyone inside?", "t_start": 4.1, "t_end": 4.9},
+    {"call_id": "c1", "speaker": "caller", "text": "My two kids, upstairs in the loft!", "t_start": 5.2, "t_end": 8.0}
+  ]
+}
