@@ -13,6 +13,7 @@ export interface CallInCall {
 }
 
 type Phase = "recording" | "sending" | "failed";
+const POLL_LIMIT_MS = 10 * 60_000;   // two providers with retries stay well under this
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
@@ -32,8 +33,10 @@ export function CallIn({ feed, onStart, canClear, onClear }: {
   const recRef = useRef<MonologueRecorder | null>(null);
   const wavRef = useRef<Blob | null>(null);    // kept until the server has it, for Retry
   const mineRef = useRef<CallInCall | null>(null);
+  const sendToken = useRef(0);                 // bumped to stop an earlier send's polling
 
   const reset = () => {
+    sendToken.current++;
     recRef.current = null;
     wavRef.current = null;
     mineRef.current = null;
@@ -42,21 +45,40 @@ export function CallIn({ feed, onStart, canClear, onClear }: {
     setSecs(0);
   };
 
+  // Upload, then poll the call's status: transcription can take minutes, longer than a phone browser keeps
+  // a request open (Safari: "Fetch is aborted"), so the upload answers 202 at once. Polling survives a
+  // locked screen or a dropped socket; a failed poll is simply tried again.
   const send = async () => {
     const c = mineRef.current;
     const wav = wavRef.current;
     if (!c || !wav) return reset();
+    const token = ++sendToken.current;
     setPhase("sending");
     setError(null);
     try {
       const q = new URLSearchParams({ incident_id: c.incident_id, call_label: c.call_label });
       const r = await fetch(`/api/calls/web/callin/audio?${q}`, { method: "POST", headers: { "content-type": "audio/wav" }, body: wav });
       if (r.status === 404) { setNote("The call had already ended."); return reset(); }
-      if (!r.ok) throw new Error(r.status === 503 ? "Transcription failed." : `${r.status} ${await r.text()}`);
-      const body = (await r.json()) as { recorded: number };
-      setNote(body.recorded ? null : "No speech was heard in the recording.");
-      reset();
+      if (!r.ok && r.status !== 409) throw new Error(`${r.status} ${await r.text()}`);   // 409: already transcribing
+      const deadline = Date.now() + POLL_LIMIT_MS;
+      while (Date.now() < deadline) {
+        await new Promise((ok) => window.setTimeout(ok, 2000));
+        if (token !== sendToken.current) return;                 // canceled, unmounted or sent again
+        let s: Response;
+        try { s = await fetch(`/api/calls/web/callin/status?${q}`); } catch { continue; }   // offline for a moment
+        if (s.status === 404) { setNote("The call had already ended."); return reset(); }
+        if (!s.ok) continue;
+        const { call } = (await s.json()) as { call: { status: string; recorded: number | null } };
+        if (call.status === "transcription_failed") throw new Error("Transcription failed.");
+        if (call.status === "completed") {
+          setNote(call.recorded ? null : "No speech was heard in the recording.");
+          return reset();
+        }
+        if (call.status === "canceled") { setNote("The call was cleared."); return reset(); }
+      }
+      throw new Error("Transcription is taking too long.");
     } catch (e) {
+      if (token !== sendToken.current) return;
       setPhase("failed");
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -113,7 +135,7 @@ export function CallIn({ feed, onStart, canClear, onClear }: {
     }
   };
 
-  useEffect(() => () => { recRef.current?.stop(false); }, []);
+  useEffect(() => () => { sendToken.current++; recRef.current?.stop(false); }, []);
 
   const btn = "shrink-0 border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider disabled:opacity-50";
   const meter = Math.min(1, level * 12);
@@ -147,7 +169,7 @@ export function CallIn({ feed, onStart, canClear, onClear }: {
     body = (
       <span className="num flex items-center gap-1.5 text-[11px] font-semibold text-accent">
         <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" aria-hidden />
-        CALL IN PROGRESS · {feed.call_id.toUpperCase()} · {feed.status === "transcribing" ? "TRANSCRIBING…" : "CALLER SPEAKING"}
+        CALL IN PROGRESS · {feed.call_id.toUpperCase()} · {feed.status === "transcribing" ? "TRANSCRIBING…" : feed.status === "transcription_failed" ? "TRANSCRIPTION FAILED" : "CALLER SPEAKING"}
       </span>
     );
   } else {

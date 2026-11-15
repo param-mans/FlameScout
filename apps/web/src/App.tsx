@@ -6,6 +6,8 @@ import { DispatcherConsole } from "./components/DispatcherConsole";
 import { ScriptPicker, defaultScript } from "./components/ScriptPicker";
 import { MdtView, type IncidentInfo } from "./components/MdtView";
 import { CallIn } from "./components/CallIn";
+import { CameraLinkPage } from "./components/CameraLinkPage";
+import { api } from "./api/client";
 import { Btn } from "./components/ui";
 import { humanizeKeys } from "./labels";
 import { readSampleParam, setSampleParam, useSampleHouses } from "./components/viewer/BuildingViewer";
@@ -27,7 +29,14 @@ const EMPTY_INCIDENT: IncidentRecord = {
   confirmed_building_id: null, ready_to_brief: false,
 };
 
+// ?camera=<token>: the caller opened the camera link the dispatcher texted them. Only the camera page.
+const CAMERA_TOKEN = new URLSearchParams(window.location.search).get("camera");
+
 export default function App() {
+  return CAMERA_TOKEN ? <CameraLinkPage token={CAMERA_TOKEN} /> : <Console />;
+}
+
+function Console() {
   const [view, setView] = useState<View>("mdt");
   const [briefKey, setBriefKey] = useState<BriefKey>("v2 diff");
   const [mockConfirmed, setMockConfirmed] = useState<string | null>(null);
@@ -123,6 +132,9 @@ export default function App() {
             questions={questions}
             onSend={isLive ? (text, speaker, callId) => void live.sendLine(text, speaker, callId) : undefined}
             extracted={isLive ? st.extracted : undefined}
+            frames={isLive ? st.frames : undefined}
+            cameras={isLive ? st.cameras : undefined}
+            onInviteCamera={isLive && st.incidentId ? (phone) => api.cameraInvite(st.incidentId as string, phone) : undefined}
             progress={isLive ? st.progress : null}
             busy={isLive ? st.busy : null}
             held={isLive ? st.held : null}

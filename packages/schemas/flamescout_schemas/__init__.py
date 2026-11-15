@@ -25,8 +25,9 @@ def now() -> datetime:
 class Evidence(BaseModel):
     id: str
     kind: Literal["scan_frame", "scan_floorplan", "aerial_crop",
-                  "costar_record", "transcript_span", "rule_output", "crew_feedback"]
-    source: Literal["matterport", "vexcel", "costar", "call", "rules", "crew"]
+                  "costar_record", "transcript_span", "rule_output", "crew_feedback", "camera_frame"]
+    # camera = a photo from the caller's phone camera (camera_frame), read by the vision model
+    source: Literal["matterport", "vexcel", "costar", "call", "rules", "crew", "camera"]
     uri: Optional[str] = None
     captured_at: Optional[datetime] = None
     # {"call_id": "c1", "start": 3.2, "end": 7.9, "text": "..."} or {"sweep_id": ..., "bbox": [x, y, w, h]}
@@ -47,7 +48,8 @@ class Fact(BaseModel):
 
 class CallSegment(BaseModel):
     call_id: str
-    speaker: Literal["call_taker", "caller"]
+    # camera: one observation the vision model read from a frame of the caller's phone camera (call_id cam1, ...)
+    speaker: Literal["call_taker", "caller", "camera"]
     text: str
     t_start: float
     t_end: float
@@ -115,7 +117,8 @@ class CrewFeedback(BaseModel):
 
 EventType = Literal["transcript.segment", "incident.updated", "contradiction.raised",
                     "location.candidates", "dossier.progress", "brief.updated",
-                    "copilot.suggestion", "metric.tick", "overlay.updated", "call.status", "calls.cleared"]
+                    "copilot.suggestion", "metric.tick", "overlay.updated", "call.status", "calls.cleared",
+                    "camera.status"]
 
 
 class Event(BaseModel):

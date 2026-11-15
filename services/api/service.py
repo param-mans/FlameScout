@@ -261,9 +261,14 @@ class IncidentService:
         eng = FusionEngine(incident_id, replay)
         for item in self.ws.read_jsonl(self._dir(incident_id) / "inputs.jsonl"):
             if item["type"] == "segment":
+                seg = CallSegment(**item["segment"])
+                if seg.speaker == "camera":    # read from a frame, not by the extractor
+                    eng.ingest(seg, [ExtractedFact(**f) for f in item.get("extracted") or []],
+                               item.get("frame_uri"))
+                    continue
                 if item.get("extracted") is not None:
                     replay.queue.append([ExtractedFact(**f) for f in item["extracted"]])
-                eng.ingest(CallSegment(**item["segment"]))
+                eng.ingest(seg)
             elif item["type"] == "resolve":
                 eng.resolve(item["key"], item["value"])
         eng.extractor = RecordingExtractor(get_extractor())
@@ -308,7 +313,7 @@ class IncidentService:
                 if item.get("type") != "segment":
                     continue
                 ex = item.get("extracted") or []
-                out.append({"segment": item["segment"],
+                out.append({"segment": item["segment"], "frame_uri": item.get("frame_uri"),
                             "extracted": [{"key": f["key"], "value": f["value"], "quote": f["quote"]} for f in ex]})
             return out
 
@@ -325,7 +330,10 @@ class IncidentService:
         self.bus.forget(incident_id)
 
     # ---------------- ingest (FR-1/FR-2) ----------------
-    def ingest_segment(self, incident_id: str, seg: CallSegment) -> dict[str, Any]:
+    def ingest_segment(self, incident_id: str, seg: CallSegment,
+                       facts: Optional[list[ExtractedFact]] = None, frame_uri: Optional[str] = None) -> dict[str, Any]:
+        """One transcript segment through fusion. `facts` and `frame_uri`: a camera segment, already read
+        from the frame at `frame_uri` (services/agents/camera.py)."""
         t0 = time.perf_counter()
         with self._lock(incident_id):
             eng = self._engine(incident_id)
@@ -336,18 +344,21 @@ class IncidentService:
 
             assert isinstance(eng.extractor, RecordingExtractor)
             eng.extractor.last = None
-            changes = eng.ingest(seg)
-            extracted = eng.extractor.last
-            self.ws.append_jsonl(self._dir(incident_id) / "inputs.jsonl", {
-                "type": "segment", "segment": seg.model_dump(),
-                "extracted": [f.model_dump() for f in extracted] if extracted is not None else None})
+            changes = eng.ingest(seg, facts, frame_uri)
+            extracted = facts if facts is not None else eng.extractor.last
+            item = {"type": "segment", "segment": seg.model_dump(),
+                    "extracted": [f.model_dump() for f in extracted] if extracted is not None else None}
+            if frame_uri:
+                item["frame_uri"] = frame_uri
+            self.ws.append_jsonl(self._dir(incident_id) / "inputs.jsonl", item)
             self._save(rec, [seg])
             fusion_ms = _ms(t0)
 
             # What the extractor understood from this line (caller lines only), so the UI can show how it was received.
             extracted_out = [{"key": f.key, "value": f.value, "quote": f.quote} for f in extracted] if extracted else []
             self._emit(incident_id, "transcript.segment",
-                       {"segment": seg.model_dump(), "changes": changes, "extracted": extracted_out})
+                       {"segment": seg.model_dump(), "changes": changes, "extracted": extracted_out,
+                        "frame_uri": frame_uri})
             self._emit_incident(rec)
             for c in rec.contradictions:
                 if len(c.values) > contra_before.get(c.key, 0) and len(c.values) > 1:

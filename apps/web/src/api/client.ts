@@ -61,4 +61,28 @@ export const api = {
   callIn: () => request<{ incident_id: string; call_label: string }>("POST", "/api/calls/web/callin", {}),
   endCall: (c: { incident_id: string; call_label: string }) => request<unknown>("POST", "/api/calls/web/end", c),
   clearCalls: () => request<unknown>("POST", "/api/calls/web/clear", {}),
+  /** Ask the caller for their camera: a link, sent by iMessage (Photon Stable) when configured, else share it by hand. */
+  cameraInvite: (id: string, phone: string | null) =>
+    request<{ camera: CameraInfo; url: string; message: CameraMessage }>(
+      "POST", `/api/incidents/${id}/camera/invite`, { phone: phone || null }),
+  /** The caller's phone opens the texted link. */
+  cameraByToken: (token: string) => request<{ camera: CameraInfo }>("GET", `/api/camera/${encodeURIComponent(token)}`),
 };
+
+/** A camera call in an incident (camera.status events, /api/.../camera). */
+export interface CameraInfo {
+  incident_id: string;
+  call_id: string;
+  status: "invited" | "streaming" | "ended";
+  frames: number;
+  observations: number;
+  sent_to?: string | null;
+  invite?: CameraMessage | null;
+}
+
+/** The camera link sent by iMessage (Photon Stable, via the messenger service). */
+export interface CameraMessage {
+  state: "sent" | "failed" | "not_configured" | "none";
+  detail: string;
+  line?: string | null;
+}

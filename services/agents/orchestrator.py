@@ -814,7 +814,8 @@ def make_tools(s: Session) -> dict[str, BaseTool]:
 
     @tool
     def get_transcript() -> str:
-        """The calls so far, one line per segment, each with the span id to cite as evidence (caller lines only)."""
+        """The calls so far, one line per segment, each with the span id to cite as evidence (caller lines only).
+        [camera] lines are what the caller's phone camera showed (cam1, ...): context, never cited."""
         spans = overlay_mod.transcript(ws)
         if not spans:
             return "No transcript yet."

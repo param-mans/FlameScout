@@ -51,6 +51,8 @@ def _offline_by_default(request, monkeypatch, tmp_path):
     house_data_client.forget_failures()
     if "live" not in request.keywords:
         monkeypatch.setenv("EXTRACTOR", "keyword")
+        for k in ("PHOTON_API_KEY", "PHOTON_PROJECT_ID", "PHOTON_PROJECT_SECRET", "DEMO_CALLER_PHONE"):   # never text a real phone
+            monkeypatch.delenv(k, raising=False)
         monkeypatch.setenv("LANGSMITH_TRACING", "false")
         monkeypatch.delenv("TIGER_DATABASE_URL", raising=False)
         monkeypatch.delenv("MONGODB_URI", raising=False)

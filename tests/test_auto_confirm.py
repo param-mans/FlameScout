@@ -188,13 +188,14 @@ def test_real_calls_dir_never_lists_the_manifest(tmp_path, monkeypatch):
 def _callin_with_script(c, monkeypatch, script: str) -> str:
     """Call in + an uploaded recording whose 'transcription' is the script's caller lines (no model)."""
     from services.api import transcribe
-    from .test_transcribe import make_wav
+    from .test_transcribe import make_wav, settled
     lines = [s.text for s in load_script(script) if s.speaker == "caller"]
     monkeypatch.setattr(transcribe, "transcribe_monologue", lambda wav: lines)
     call = c.post("/api/calls/web/callin").json()
     r = c.post("/api/calls/web/callin/audio", content=make_wav(),
                params={"incident_id": call["incident_id"], "call_label": call["call_label"]})
-    assert r.status_code == 200, r.text
+    assert r.status_code == 202, r.text                  # transcribed in the background
+    assert settled(c, call)["status"] == "completed"
     c.app.state.svc.wait(call["incident_id"])
     return call["incident_id"]
 

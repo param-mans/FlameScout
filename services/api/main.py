@@ -9,25 +9,30 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import threading
 from contextlib import asynccontextmanager
 from typing import Any, Literal, Optional
 
-from fastapi import (Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket,
+from fastapi import (Depends, FastAPI, Header, HTTPException, Path, Query, Request, WebSocket,
                      WebSocketDisconnect)
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from flamescout_schemas import (Brief, BuildingDossier, CallSegment, CopilotSuggestion,
                                 CrewFeedback, IncidentRecord, LocationCandidate)
 
+from services.agents import camera as camera_vision
 from services.agents.extract import GeminiExtractor, get_extractor
+from services.agents.llm import chat_providers as llm_chat_providers
 from services.agents.llm import configured, critic_provider, fallback_provider, model_name, provider
 
 from .config import ROOT, Settings
-from . import transcribe
+from . import messaging, transcribe
 from .events import EventBus
 from .calls import CallRegistry, LiveCall
+from .cameras import MAX_FRAME_BYTES, Camera, CameraRegistry
 from .service import Conflict, IncidentService
 from .store import NotFound
 
@@ -78,6 +83,10 @@ class SimulateIn(BaseModel):
 class WebCallIn(BaseModel):
     incident_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
     call_label: str = Field(pattern=r"^c[0-9]{1,3}$")
+
+
+class CameraInviteIn(BaseModel):
+    phone: Optional[str] = Field(default=None, max_length=32)   # omitted: just make the link
 
 
 class ConfirmIn(BaseModel):
@@ -235,12 +244,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return [r for _, _, r in sorted(rows, key=lambda r: r[:2])]
 
     @app.post("/api/calls/simulate", status_code=202)
-    async def simulate(body: SimulateIn) -> dict:
+    async def simulate(body: SimulateIn, request: Request) -> dict:
         segs = _load_script(body.script_id)
         if body.incident_id and svc.ws.incident_exists(body.incident_id):
             incident_id = body.incident_id
         else:
             incident_id = (await asyncio.to_thread(svc.create_incident, body.incident_id)).incident_id
+        _auto_invite(incident_id, request)   # text the caller the camera link (DEMO_CALLER_PHONE)
         if body.realtime:
             task = asyncio.create_task(_replay_logged(body, incident_id, segs))
             tasks.add(task)
@@ -270,22 +280,49 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                                                     t_start=t0, t_end=t1))
 
     @app.post("/api/calls/web/callin")
-    async def callin_start() -> dict:
-        """The caller's device starts a call. Every open web app sees it on /ws/calls and follows it."""
+    async def callin_start(request: Request) -> dict:
+        """The caller's device starts a call. Every open web app sees it on /ws/calls and follows it. The
+        caller is texted the camera link (DEMO_CALLER_PHONE)."""
         call = await asyncio.to_thread(calls.start)
         call.status = "connected"
         _emit_call(call)
+        _auto_invite(call.incident_id, request)
         return {"incident_id": call.incident_id, "call_label": call.call_id}
 
-    @app.post("/api/calls/web/callin/audio")
+    transcribing: set[asyncio.Task] = set()   # strong refs: a bare create_task can be garbage-collected
+
+    async def _transcribe_call(call: LiveCall, wav: bytes, duration: float) -> None:
+        """Background half of the upload: transcribe, record each sentence, end the call. On failure the
+        call stays open as transcription_failed so the device can send the recording again."""
+        try:
+            sentences = await asyncio.to_thread(transcribe.transcribe_monologue, wav)
+        except Exception as e:  # noqa: BLE001 - quota, outage, bad model id
+            log.warning("transcription failed: %r", e)
+            if call.active:                   # not cleared meanwhile
+                call.status = "transcription_failed"
+                _emit_call(call)
+            return
+        if not call.active:                   # Clear call while transcribing: drop the transcript
+            return
+        for text, t0, t1 in transcribe.timed(sentences, duration):
+            await asyncio.to_thread(_record, call.incident_id, call.call_id, text, t0, t1)
+        call.recorded = len(sentences)
+        calls.end(call)
+        _emit_call(call)
+
+    @app.post("/api/calls/web/callin/audio", status_code=202)
     async def callin_audio(request: Request, incident_id: str = Query(pattern=r"^[A-Za-z0-9_-]{1,64}$"),
                            call_label: str = Query(pattern=r"^c[0-9]{1,3}$")) -> dict:
-        """The whole recording (audio/wav) at the end of the call: transcribed in one go, each
-        sentence becomes a caller segment, then the call ends (transcribe.py: LLM_PROVIDER, then the fallback). 503 = transcription failed; the call stays
-        open so the device can retry or end it."""
+        """The whole recording (audio/wav) at the end of the call. Answers 202 at once and transcribes in
+        the background (transcribe.py: LLM_PROVIDER, then the fallback), which can take minutes, longer
+        than a phone browser keeps a request open. Each sentence becomes a caller segment, then the call
+        ends. Follow it with GET /api/calls/web/callin/status: completed (with `recorded`), or
+        transcription_failed (the call stays open; send the recording again). 409 = already transcribing."""
         call = calls.get(incident_id, call_label)
         if call is None or not call.active:
             raise NotFound(f"live call {incident_id}/{call_label}")
+        if call.status == "transcribing":
+            raise HTTPException(409, "already transcribing this call")
         wav = await request.body()
         if len(wav) > transcribe.MAX_WAV_BYTES:
             raise HTTPException(413, f"at most {transcribe.MAX_SECONDS // 60} minutes of audio")
@@ -295,18 +332,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(422, str(e)) from e
         call.status = "transcribing"
         _emit_call(call)
-        try:
-            sentences = await asyncio.to_thread(transcribe.transcribe_monologue, wav)
-        except Exception as e:  # noqa: BLE001 - quota, outage, bad model id
-            log.warning("transcription failed: %r", e)
-            call.status = "connected"
-            _emit_call(call)
-            raise HTTPException(503, "transcription unavailable") from e
-        for text, t0, t1 in transcribe.timed(sentences, duration):
-            await asyncio.to_thread(_record, incident_id, call_label, text, t0, t1)
-        calls.end(call)
-        _emit_call(call)
-        return {"sentences": sentences, "recorded": len(sentences), "seconds": round(duration, 1)}
+        task = asyncio.create_task(_transcribe_call(call, wav, duration))
+        transcribing.add(task)
+        task.add_done_callback(transcribing.discard)
+        return {"call": call.public(), "seconds": round(duration, 1)}
+
+    @app.get("/api/calls/web/callin/status")
+    def callin_status(incident_id: str = Query(pattern=r"^[A-Za-z0-9_-]{1,64}$"),
+                      call_label: str = Query(pattern=r"^c[0-9]{1,3}$")) -> dict:
+        """The call's status, polled by the device that uploaded the recording."""
+        call = calls.get(incident_id, call_label)
+        if call is None:
+            raise NotFound(f"call {incident_id}/{call_label}")
+        return {"call": call.public()}
 
     @app.post("/api/calls/web/end")
     def web_call_end(body: WebCallIn) -> dict:
@@ -320,12 +358,181 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.post("/api/calls/web/clear")
     def web_calls_clear() -> dict:
-        """Clear call (any screen): cancel open calls; the next Call in starts a new incident."""
+        """Clear call (any screen): cancel open calls and stop their cameras; the next Call in starts a new
+        incident."""
         ended = calls.clear()
         for call in ended:
             _emit_call(call)
+        for cam in cameras.clear():
+            _emit_camera(cam)
         svc.bus.publish(CALLS_TOPIC, "calls.cleared", {})   # every open web app clears its screen
         return {"canceled": [c.public() for c in ended]}
+
+    # ---------------- caller camera: the calling device's camera as a sensor ----------------
+    cameras = CameraRegistry()
+    app.state.cameras = cameras
+    CAM_ID = r"^cam[0-9]{1,3}$"
+    FRAME_NAME = r"^cam[0-9]{1,3}-[0-9]{4}\.jpg$"
+
+    def _emit_camera(cam: Camera) -> None:
+        svc.bus.publish(cam.incident_id, "camera.status", {"camera": cam.public()}, svc.trace_id(cam.incident_id))
+
+    def _live_camera(incident_id: str, call_id: str) -> Camera:
+        cam = cameras.get(incident_id, call_id)
+        if cam is None or not cam.active:
+            raise NotFound(f"camera {incident_id}/{call_id}")
+        return cam
+
+    @app.post("/api/incidents/{incident_id}/camera", status_code=201)
+    def camera_start(incident_id: str) -> dict:
+        """The device that started a call turns its camera on: a new camera call (cam1, ...) in the incident.
+        503 when no vision model is configured (the device then doesn't stream)."""
+        svc.get_incident(incident_id)                       # 404 for an unknown incident
+        if not llm_chat_providers("vision"):
+            raise HTTPException(503, "no vision model configured (GEMINI_VISION_MODEL)")
+        cam = cameras.start(incident_id)
+        _emit_camera(cam)
+        return {"camera": cam.public()}
+
+    def _link_base(request: Request) -> str:
+        """Where the caller's phone reaches this app: SITE_ADDRESS (the deploy's Caddy site address; a bare
+        host means https://host), else the page the dispatcher is on (Origin: right behind ngrok). ":80" or
+        unset = no public address of its own."""
+        site = os.getenv("SITE_ADDRESS", "").strip().rstrip("/")
+        if site and not site.startswith(":"):
+            return site if "://" in site else f"https://{site}"
+        if origin := request.headers.get("origin"):
+            return origin.rstrip("/")
+        proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+        return f"{proto}://{host}"
+
+    def _invite(incident_id: str, to: Optional[str], base: str) -> tuple[Camera, str]:
+        """A camera call (invited) and its link, sent by iMessage to `to` (E.164) when Photon is configured
+        (messaging.py -> the messenger service). Blocking (a few seconds)."""
+        cam = cameras.start(incident_id, invite=True)
+        url = f"{base}/?camera={cam.token}"
+        text = ("FlameScout (simulation): the dispatcher asks to see what you see. "
+                f"Open this link and point your camera at the fire: {url}")
+        res = messaging.send_link(to, text) if to else messaging.Result(
+            "none", "No number given: share the link by hand.")
+        _set_invite(cam, res, to)
+        return cam, url
+
+    def _auto_invite(incident_id: str, request: Request) -> None:
+        """A new call: text the caller the camera link at once, in the background. The simulated calls have
+        no caller ID, so DEMO_CALLER_PHONE stands in for it; unset (or no vision model) = nothing. Once per
+        incident: a second caller joining it gets no second link."""
+        raw = os.getenv("DEMO_CALLER_PHONE", "").strip()
+        to = messaging.normalize(raw)
+        if not to:
+            log.info("no camera link texted for %s: %s", incident_id,
+                     "DEMO_CALLER_PHONE is not a phone number" if raw else "DEMO_CALLER_PHONE is not set")
+            return
+        if not llm_chat_providers("vision"):
+            log.info("no camera link texted for %s: no vision model configured", incident_id)
+            return
+        if cameras.active_in(incident_id):
+            return
+        base = _link_base(request)
+
+        def run() -> None:
+            try:
+                _invite(incident_id, to, base)
+            except Exception:  # noqa: BLE001 - background: log, never break the call
+                log.exception("automatic camera link for %s failed", incident_id)
+
+        threading.Thread(target=run, name=f"auto-invite-{incident_id}", daemon=True).start()
+
+    @app.post("/api/incidents/{incident_id}/camera/invite", status_code=201)
+    def camera_invite(incident_id: str, request: Request, body: CameraInviteIn = CameraInviteIn()) -> dict:
+        """The dispatcher asks the caller for their camera (_invite). The link is always returned to share
+        by hand."""
+        svc.get_incident(incident_id)
+        to = None
+        if body.phone:
+            to = messaging.normalize(body.phone)
+            if to is None:
+                raise HTTPException(422, "not a phone number")
+        if not llm_chat_providers("vision"):
+            raise HTTPException(503, "no vision model configured (GEMINI_VISION_MODEL)")
+        cam, url = _invite(incident_id, to, _link_base(request))
+        return {"camera": cam.public(), "url": url, "message": cam.invite}
+
+    def _set_invite(cam: Camera, res: "messaging.Result", to: Optional[str]) -> None:
+        cam.invite = {"state": res.state, "detail": res.detail, "line": res.line}
+        if res.state == "sent" and to:
+            cam.sent_to = messaging.masked(to)
+        _emit_camera(cam)
+
+    @app.get("/api/camera/{token}")
+    def camera_by_token(token: str = Path(pattern=r"^[A-Za-z0-9_-]{8,64}$")) -> dict:
+        """The caller's phone opens the texted link: which incident and camera call it streams into."""
+        cam = cameras.by_token(token)
+        if cam is None or not cam.active:
+            raise NotFound("camera link (ended or unknown)")
+        cameras.opened(cam)
+        _emit_camera(cam)
+        return {"camera": cam.public()}
+
+    def _read_frame(cam: Camera, jpeg: bytes) -> dict:
+        """Blocking: one vision reading, then (if anything is new) one camera segment through fusion."""
+        reading = camera_vision.read_frame(jpeg)
+        cam.frames += 1
+        if reading is None:
+            return {"reading": None, "observation": None, "extracted": []}
+        obs = camera_vision.observe(reading, cam.state)
+        out: dict = {"reading": reading.model_dump(), "observation": None, "extracted": []}
+        if obs is None or not cam.active:
+            return out
+        text, facts = obs
+        cam.observations += 1
+        name = f"{cam.call_id}-{cam.frames:04d}.jpg"
+        path = svc.ws.incident_dir(cam.incident_id) / "camera" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(jpeg)
+        t = cameras.elapsed(cam)
+        seg = CallSegment(call_id=cam.call_id, speaker="camera", text=text, t_start=t, t_end=t)
+        res = svc.ingest_segment(cam.incident_id, seg, facts,
+                                 frame_uri=f"/api/incidents/{cam.incident_id}/camera/frames/{name}")
+        out.update(observation=text, extracted=res["extracted"])
+        return out
+
+    @app.post("/api/incidents/{incident_id}/camera/{call_id}/frames")
+    async def camera_frame(request: Request, incident_id: str, call_id: str = Path(pattern=CAM_ID)) -> dict:
+        """One JPEG from the camera. Answers when it has been read (a few seconds): the reading and, if it
+        showed something new, the camera segment's text and facts. 409 = still reading the previous frame."""
+        cam = _live_camera(incident_id, call_id)
+        jpeg = await request.body()
+        if len(jpeg) > MAX_FRAME_BYTES:
+            raise HTTPException(413, "frame too large")
+        if not jpeg.startswith(b"\xff\xd8"):
+            raise HTTPException(422, "not a JPEG")
+        if not cam.busy.acquire(blocking=False):
+            raise HTTPException(409, "still reading the previous frame")
+        try:
+            out = await asyncio.to_thread(_read_frame, cam, jpeg)
+        finally:
+            cam.busy.release()
+        _emit_camera(cam)
+        return {**out, "camera": cam.public()}
+
+    @app.post("/api/incidents/{incident_id}/camera/{call_id}/end")
+    def camera_end(incident_id: str, call_id: str = Path(pattern=CAM_ID)) -> dict:
+        cam = cameras.get(incident_id, call_id)
+        if cam is None:
+            raise NotFound(f"camera {incident_id}/{call_id}")
+        cameras.end(cam)
+        _emit_camera(cam)
+        return {"camera": cam.public()}
+
+    @app.get("/api/incidents/{incident_id}/camera/frames/{name}")
+    def camera_frame_file(incident_id: str, name: str = Path(pattern=FRAME_NAME)) -> FileResponse:
+        """A frame that became camera evidence (Evidence.uri)."""
+        path = svc.ws.incident_dir(incident_id) / "camera" / name
+        if not path.is_file():
+            raise NotFound(f"frame {name}")
+        return FileResponse(path, media_type="image/jpeg")
 
     # ---------------- location (FR-3) ----------------
     @app.get("/api/incidents/{incident_id}/candidates", response_model=list[LocationCandidate])

@@ -10,6 +10,8 @@ const FACT_LABELS: Record<string, string> = {
   "people.reported": "Occupants",
   "smoke.visible": "Smoke visible",
   "alarm.sounding": "Alarm sounding",
+  "caller.room": "Caller's room",
+  "hazards.reported": "Hazards",
 };
 
 /** Label for a fact key; unknown keys fall back to their last segment, e.g. "fire.flames_visible" -> "Flames visible". */
@@ -20,7 +22,7 @@ export function factLabel(key: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-const FACT_KEY = /\b(?:incident|building|people|location|smoke|alarm|hazards|access)\.[a-z_]+\b/g;
+const FACT_KEY = /\b(?:incident|building|people|location|smoke|alarm|hazards|access|caller)\.[a-z_]+\b/g;
 
 /** Backend texts mention fact keys ("Callers disagree on incident.floor"): show their labels instead. */
 export function humanizeKeys(text: string): string {
