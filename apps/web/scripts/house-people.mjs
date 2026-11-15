@@ -109,7 +109,7 @@ try {
   await page.waitForTimeout(800);
   const f = vf();
   const attrs = () => f.evaluate(() => ({ ...document.body.dataset }));
-  const card = async () => ({ total: (await page.locator("[data-people-total]").innerText()).trim(), rooms: (await page.locator("[data-people-rooms]").innerText()).trim(), label: (await page.locator("[data-people-card] .label").innerText()).trim() });
+  const card = async () => ({ total: (await page.locator("[data-people-total]").innerText()).trim(), rooms: (await page.locator("[data-people-rooms]").innerText()).trim(), label: (await page.locator("[data-people-card] > div:first-child").innerText()).trim() });
 
   // no overlay yet
   let c = await card(), a = await attrs();

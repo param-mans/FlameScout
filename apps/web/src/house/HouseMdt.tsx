@@ -2,7 +2,6 @@
 // with or without the brief. Top: the address once and the 4 summary cards. Left: size-up (listing + plan, nothing
 // invented) and up to 5 considerations. Center + right: one viewer iframe in layout=house (3D full height; the 2D plan
 // and Surroundings stacked on the right). No inspector, legend, layers menu, version or live chip on this screen.
-import { StatusTag, fmt } from "../components/ui";
 import { BuildingViewer } from "../components/viewer/BuildingViewer";
 import type { Brief } from "../types/schemas";
 import { houseBrief, NA } from "./houseBrief";
@@ -10,14 +9,14 @@ import { peopleSummary } from "./people";
 import type { ConfirmedHouse } from "./liveFeed";
 import { useHouseData } from "./useHouseData";
 
-const HAZARDS = ["Gas", "Fireplace", "Garage", "Solar panels", "Pool"];   // listing mentions shown on this screen
+const HAZARDS = ["Gas", "Fireplace", "Garage", "Solar panels"];   // listing mentions shown on this screen (no pool)
 
 function Readout({ label, value, sub, tone = "text-ink" }: { label: string; value: string; sub?: React.ReactNode; tone?: string }) {
   return (
     <div className="bg-panel px-3 py-2 text-left">
-      <div className="label">{label}</div>
-      <div className={`num text-[28px] font-semibold leading-tight ${tone}`}>{value}</div>
-      <div className="h-4 text-[11px] text-dim">{sub}</div>
+      <div className="text-[15px] font-semibold uppercase tracking-wider text-dim">{label}</div>
+      <div className={`num text-[44px] font-bold leading-none ${tone}`}>{value}</div>
+      <div className="mt-1 h-5 text-[15px] text-dim">{sub}</div>
     </div>
   );
 }
@@ -44,7 +43,9 @@ export function HouseMdt({ house, brief }: { house: Extract<ConfirmedHouse, { st
     ["Exterior doors", plan ? String(exits) : NA],
     ["Stairs", plan ? (stairs ? String(stairs) : "Not detected") : NA],
   ];
-  const hazards = (hb?.extras.hazards ?? []).map((h) => h.label).filter((h) => HAZARDS.includes(h));
+  // only what this house has: a garage needs a garage on the plan (the listing may mention a neighbour's or a carport)
+  const hasRoom = (t: string) => floors.some((f) => f.rooms.some((r) => r.type === t));
+  const hazards = (hb?.extras.hazards ?? []).map((h) => h.label).filter((h) => HAZARDS.includes(h) && (h !== "Garage" || !plan || hasRoom("Garage")));
 
   // considerations: the brief's (by rank), then the incident overlay's; titles only, 5 at most
   const cons = [
@@ -53,47 +54,44 @@ export function HouseMdt({ house, brief }: { house: Extract<ConfirmedHouse, { st
   ].slice(0, 5);
 
   // summary cards: same as the brief screen, without version or scan text; before the brief, "—"
-  const floor = brief?.size_up["incident.floor"];
   const stairMarkers = brief?.markers.filter((m) => m.kind === "stair").length ?? 0;
   const stairwells = brief && stairMarkers ? stairMarkers : plan ? stairs : null;
   const people = peopleSummary(incident.overlay, plan);   // PEOPLE card: validated overlay only; without it, a dash
-  const hazardCount = brief ? brief.hazards.length : hb ? hb.brief.hazards.length : null;
+  const hazardCount = brief ? brief.hazards.length : hb ? hazards.length : null;
 
   return (
     <div className="flex h-full flex-col" data-confirmed-building={house.buildingId} data-house-mdt>
-      <header className="flex h-8 shrink-0 items-center border-b border-line bg-panel px-3 text-[13px] font-semibold uppercase">{address}</header>
+      <header className="flex h-11 shrink-0 items-center border-b border-line bg-panel px-3 text-[20px] font-bold uppercase">{address}</header>
 
-      <div className="grid shrink-0 grid-cols-4 gap-px border-b border-line bg-line">
-        <Readout label="Reported floor" value={fmt(floor?.value)} tone={floor?.status === "contradicted" ? "text-contradicted" : "text-ink"}
-          sub={floor && <StatusTag status={floor.status} confidence={floor.confidence} />} />
+      <div className="grid shrink-0 grid-cols-3 gap-px border-b border-line bg-line">
         <Readout label="Stairwells identified" value={stairwells == null ? "—" : String(stairwells)} sub={stairwells != null && stairwells < 2 ? "verify on arrival" : undefined} />
         <Readout label="Hazard flags" value={hazardCount == null ? "—" : String(hazardCount)} sub={brief ? "from tenants (inferred)" : hb ? "from listing" : undefined} />
         <div className="min-w-0 bg-panel px-3 py-2 text-left" data-people-card>
-          <div className="label">People</div>
-          <div className="num text-[28px] font-semibold leading-tight text-ink" data-people-total>{people ? String(people.total) : "—"}</div>
-          <div className="h-4 truncate whitespace-nowrap text-[12px] leading-4 text-ink" data-people-rooms>{people?.rooms}</div>
+          <div className="text-[15px] font-semibold uppercase tracking-wider text-dim">People</div>
+          <div className="num text-[44px] font-bold leading-none text-ink" data-people-total>{people ? String(people.total) : "—"}</div>
+          <div className="mt-1 h-5 truncate whitespace-nowrap text-[15px] leading-5 text-ink" data-people-rooms>{people?.rooms}</div>
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[224px_minmax(0,1fr)] gap-px bg-line max-[1100px]:grid-cols-[210px_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)] gap-px bg-line max-[1100px]:grid-cols-[236px_minmax(0,1fr)]">
         <aside className="min-h-0 overflow-y-auto bg-panel">
-          <div className="label border-b border-line bg-bg px-3 py-1.5">Size-up</div>
+          <div className="border-b border-line bg-bg px-3 py-1.5 text-[15px] font-semibold uppercase tracking-wider text-dim">Size-up</div>
           {rows.map(([k, v]) => (
             <div key={k} data-sizeup-row className="flex items-baseline justify-between gap-2 border-b border-line px-3 py-2">
-              <span data-k className="text-[16px] text-dim">{k}</span>
-              <span data-v className={`num text-right text-[20px] font-bold ${v === NA ? "text-faint" : "text-ink"}`}>{v}</span>
+              <span data-k className="text-[18px] text-dim">{k}</span>
+              <span data-v className={`num text-right text-[24px] font-bold ${v === NA ? "text-faint" : "text-ink"}`}>{v}</span>
             </div>
           ))}
           {hazards.length > 0 && (
-            <div data-hazards className="border-b border-line px-3 py-2 text-[16px]">
+            <div data-hazards className="border-b border-line px-3 py-2 text-[20px]">
               <span className="text-dim">Hazards </span><span className="font-semibold text-reported">{hazards.join(" · ")}</span>
             </div>
           )}
           {cons.length > 0 && (
             <>
-              <div className="label border-b border-line bg-bg px-3 py-1.5">Considerations</div>
+              <div className="border-b border-line bg-bg px-3 py-1.5 text-[15px] font-semibold uppercase tracking-wider text-dim">Considerations</div>
               {cons.map((c) => (
-                <div key={c.id} className="border-b border-line px-3 py-2 text-[14px] leading-snug text-ink"><span className="line-clamp-3">{c.text}</span></div>
+                <div key={c.id} className="border-b border-line px-3 py-2 text-[17px] leading-snug text-ink"><span className="line-clamp-3">{c.text}</span></div>
               ))}
             </>
           )}
