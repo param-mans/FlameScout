@@ -103,7 +103,8 @@ console.log(`offline Vite on ${BASE}, mock WebSocket on :${MOCK_PORT}`);
 
 // ---- browser runs
 const chip = (page) => page.locator("[data-live-status]");
-const version = (page) => page.locator("[data-incident-version]").first().getAttribute("data-incident-version").catch(() => null);
+// short timeouts: a locator on a missing attribute would otherwise wait (30 s) until it appears, e.g. until v1 arrives
+const version = (page) => page.locator("[data-incident-version]").first().getAttribute("data-incident-version", { timeout: 300 }).catch(() => null);
 async function open(browserType, query) {
   const browser = await browserType.launch();
   const ctx = await browser.newContext({ viewport: { width: 1180, height: 820 }, hasTouch: true, isMobile: browserType.name() === "webkit", deviceScaleFactor: 2 });
@@ -116,7 +117,7 @@ async function open(browserType, query) {
   return { browser, page, errors, sockets, openSockets };
 }
 const text = async (page) => (await chip(page).count()) ? (await chip(page).innerText()).trim() : "";
-const liveSample = (page) => page.locator("[data-live-sample]").first().getAttribute("data-live-sample").catch(() => null);
+const liveSample = (page) => page.locator("[data-live-sample]").first().getAttribute("data-live-sample", { timeout: 300 }).catch(() => null);
 const shot = async (page, name) => { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await page.screenshot({ path: path.join(SHOTS, name) }); } };
 const NOT_FOUND = "404"; // briefs/latest + overlay/latest before the first brief (the real API answers 404 too)
 const cleanConsole = (errors, allowed = []) => {
