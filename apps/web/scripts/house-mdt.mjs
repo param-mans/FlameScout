@@ -117,7 +117,10 @@ try {
     if (MEASURE) { await ctx.close(); continue; }
 
     // areas
-    const b = BEFORE[key];
+    // BEFORE was measured under a one-row top bar (36 px); scale it by the height the current bar leaves
+    const nav = Math.round((await page.locator("nav").first().boundingBox())?.height ?? 36), k = (h - nav) / (h - 36);
+    const b = { d3: Math.round(BEFORE[key].d3 * k), d2: Math.round(BEFORE[key].d2 * k) };
+    console.log(`   top bar ${nav} px (baseline x${k.toFixed(3)})`);
     if (d3 > b.d3) ok(`3D larger: ${d3} > ${b.d3} px² (+${Math.round((d3 / b.d3 - 1) * 100)} %)`); else fail(`3D not larger: ${d3} <= ${b.d3}`);
     if (d2 > b.d2) ok(`2D larger: ${d2} > ${b.d2} px² (+${Math.round((d2 / b.d2 - 1) * 100)} %)`); else fail(`2D not larger: ${d2} <= ${b.d2}`);
     const img = await visibleBox(f, "#oblicuas-body .obl-img"), plan = await visibleBox(f, "#vista2d");
