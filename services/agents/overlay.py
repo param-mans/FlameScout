@@ -4,7 +4,8 @@ The incident_mapper subagent decides WHAT was reported and WHERE on the plan, as
 
 - keeps the call transcript in the workspace (transcript.json), one span id per segment;
 - loads a building's plan index (data/raw/<id>/derived/plan_index.json, else the synthetic
-  data/fixtures/<id>/plan_index.json; missing = no interior scan);
+  data/fixtures/<id>/plan_index.json; missing = no interior scan). A catalog house (data/raw/catalog.csv) without a
+  folder gets it on demand from the house data service (tools/house_data_client.py), cached in data/raw;
 - resolves a spoken place to plan ids with Bruno's resolve_place.py (plan index v2 relations: next_to,
   over / under, at_stairs, size_rank). One room only when exactly one matches, never a guess;
 - assembles an IncidentOverlay from the mapper's draft: version = brief version, reported_at from the
@@ -111,6 +112,11 @@ def load_plan_index(building_id: Optional[str]) -> dict:
     """The building's plan index, or the empty one (no interior scan) when there is none or it is unreadable."""
     if not building_id or not re.fullmatch(r"[A-Za-z0-9_-]+", building_id):
         return dict(EMPTY_INDEX)
+    if not (PLAN_INDEX_ROOT / building_id / "derived" / "plan_index.json").exists() and re.fullmatch(r"[0-9]+", building_id):
+        # a catalog house (data/raw/catalog.csv) without a folder: fetched once from the house data service and cached
+        from .tools import house_data_client
+
+        house_data_client.ensure_plan(building_id, PLAN_INDEX_ROOT)
     for path in (PLAN_INDEX_ROOT / building_id / "derived" / "plan_index.json",
                  FIXTURE_PLAN_ROOT / building_id / "plan_index.json"):
         try:
@@ -264,9 +270,12 @@ def room_refs(overlay: IncidentOverlay, index: dict) -> list[tuple[str, str]]:
     return out
 
 
-def check(overlay: IncidentOverlay, index: dict, spans: list[Span], resolved: Iterable[str]) -> list[str]:
+def check(overlay: IncidentOverlay, index: dict, spans: list[Span], resolved: Iterable[str],
+          candidate_groups: Iterable[str] = ()) -> list[str]:
     """Why this overlay cannot be published. Empty list = valid. `resolved`: the room ids resolve_place
-    resolved for this version (plus those of the previous accepted version)."""
+    resolved for this version (plus those of the previous accepted version). `candidate_groups`: groups made in code
+    from ONE report that matches several plan rooms (the fast path's room candidates), exempt from the
+    different-calls rule; every other group is a contradiction between callers."""
     data = json.loads(dump(overlay))
     errors = list(validate_overlay.validate(data, index))
     callers = {s.span_id: s for s in spans if s.speaker == "caller"}
@@ -296,7 +305,10 @@ def check(overlay: IncidentOverlay, index: dict, spans: list[Span], resolved: It
     for e in reports:
         if e.group_id:
             groups.setdefault(e.group_id, []).append(e)
+    exempt = set(candidate_groups)
     for g, members in groups.items():
+        if g in exempt:
+            continue
         calls = {callers[ev].call_id for m in members for ev in m.evidence_ids if ev in callers}
         if len(calls) < 2:
             errors.append(f"group {g}: candidates must come from different calls (one caller changing their "

@@ -7,6 +7,14 @@ considerations. Code does the rest, with the same rules as the agent path:
 
 - every place goes through resolve_place.py: one matching room -> that room; several -> floor level (and a
   dispatcher question); none -> floor or unknown. The model never picks a room id;
+- INFERENCE (code, not the model): a report whose caller lines name no room but carry a cue (cooking / eggs / pan /
+  stove -> kitchen, shower / bathtub -> bathroom, sleeping / bed -> bedroom, car / tools -> garage, clothes / dryer
+  -> laundry) goes to the plan's ONLY room of that type (on the floor said, if any), status "inferred", confidence
+  <= 0.6, note "inferred from: <cue>"; no such single room -> floor level;
+- CANDIDATES: an occupant whose room matches 2 to MAX_ROOM_CANDIDATES plan rooms ("the bathroom", two bathrooms)
+  becomes one occupant per room, same count, one group_id, status "contradicted", plus its contradictions entry
+  (key "occupants.location_candidates"), so the viewer paints them as candidates; objectives and refs that named
+  the occupant name the group. More rooms than that -> floor level, as before;
 - the overlay is assembled and checked with overlay.assemble / overlay.check (validate_overlay.py + the
   incident mapper's rules); the considerations with brief.check_considerations;
 - anything wrong -> ONE retry that quotes the errors; wrong again -> FastPathFailed (the service falls back to
@@ -50,6 +58,21 @@ FAST_TIMEOUT_S = 25.0       # one model call; past it the attempt counts as fail
 MAX_ATTEMPTS = 2            # the call, plus ONE retry that quotes the errors
 MIN_CONSIDERATIONS, MAX_CONSIDERATIONS = 2, 4
 NO_CRITIC_GAP = "Considerations were not checked by the critic"  # same gap as the agent path without a critique
+MAX_ROOM_CANDIDATES = 4     # an occupant matching 2..4 rooms -> one candidate per room; more -> floor level
+INFERRED_CAP = 0.6
+CANDIDATE_KEY = "occupants.location_candidates"
+# activity cue -> plan room type. Only used when the caller's lines name no room (ROOM_WORDS).
+CUES: dict[str, tuple[str, ...]] = {
+    "kitchen": ("cooking", "cook", "cooked", "eggs", "egg", "pan", "frying", "stove", "stovetop", "oven", "grease"),
+    "bathroom": ("shower", "showering", "bathtub", "tub", "bath"),
+    "bedroom": ("sleeping", "asleep", "sleep", "napping", "bed"),
+    "garage": ("car", "cars", "tools", "workbench"),
+    "laundry": ("clothes", "dryer", "washer", "laundry"),
+}
+ROOM_WORDS = re.compile(r"\b(kitchen|bath ?rooms?|restrooms?|toilet|bed ?rooms?|garage|laundry room|living ?room|den|"
+                        r"office|study|loft|closet|hall(?:way)?|dining|pantry|media room|bonus room|family room|"
+                        r"basement|attic|nursery|lounge|foyer|entrance|staircase|stairs|porch|balcony|utility room)\b",
+                        re.I)
 
 FAST_PROMPT = """You map what 911 callers reported onto a building plan, for the fire crew's 3D viewer, and \
 draft 2 to 4 advisory considerations for the first-arriving crew. Answer once, in the structured format.
@@ -64,6 +87,9 @@ to a room; you never give room ids):
 - over / under / next_to: a room type the caller placed it against ("the bedroom over the kitchen" -> type
   "bedroom", over "kitchen"); at_stairs true for "by the stairs"; size "largest" / "smallest" for "the big /
   small one".
+- Never front / back / left / right: the plan has no orientation.
+- The caller names no room but says what they were doing ("I was cooking", "in the shower"): leave type out, code
+  infers it. Several rooms match ("the bathroom" with two bathrooms): give the place as said, code places it.
 - Leave place out when nothing locates the report.
 
 REPORTS (caller lines only; never anything the callers did not say):
@@ -186,6 +212,7 @@ class Prepared:
     model_id: str
     attempts: int
     timings: dict = field(default_factory=dict)
+    candidate_groups: set[str] = field(default_factory=set)   # room-candidate groups (one caller, several rooms)
 
 
 # ---------- model ----------
@@ -331,20 +358,113 @@ def _locate(index: dict, place: Optional[FastPlace], about: str, evidence_ids: l
     return {"kind": "floor", "floor_reported": floor} if floor else {"kind": "unknown"}
 
 
-def _to_draft(out: FastOutput, index: dict) -> tuple[OverlayDraft, set[str], list[dict]]:
+def _caller_text(e: _FastReport, spans: dict[str, Span]) -> str:
+    return " ".join(spans[ev].text for ev in e.evidence_ids if ev in spans and spans[ev].speaker == "caller")
+
+
+def _cue(text: str) -> Optional[tuple[str, str]]:
+    """(room type, cue word) when the caller's words name no room but carry an activity cue; the first cue said."""
+    if not text or ROOM_WORDS.search(text):
+        return None
+    words = re.findall(r"[a-z]+", text.lower())
+    for w in words:
+        for room_type, cues in CUES.items():
+            if w in cues:
+                return room_type, w
+    return None
+
+
+def _floor_no(index: dict, room_id: str) -> Optional[int]:
+    return _floor_of(index, [room_id])
+
+
+def _infer(index: dict, room_type: str, floor: Optional[int]) -> tuple[Optional[str], Optional[int]]:
+    """(the only room of that type, on the floor said if any) or (None, the floor level to use)."""
+    rooms = [rid for rid, r in (index.get("rooms") or {}).items()
+             if (r.get("type") or "") == room_type and (floor is None or _floor_no(index, rid) == floor)]
+    if len(rooms) == 1:
+        return rooms[0], None
+    if floor is not None:
+        return None, floor
+    if rooms:                                   # several, all on one floor: that floor
+        return None, _floor_of(index, rooms)
+    return None, (1 if len(index.get("floors") or []) == 1 else None)
+
+
+def _candidates(index: dict, place: Optional[FastPlace]) -> list[str]:
+    """Room ids an occupant's place matches when it is ambiguous among 2..MAX_ROOM_CANDIDATES rooms, else []."""
+    if place is None or not overlay_mod.has_scan(index):
+        return []
+    q = PlaceQuery(about="candidates", evidence_ids=[], **place.model_dump())
+    if not names_a_room(q):
+        return []
+    result = overlay_mod.resolve(index, q)
+    ids = list(result.get("ids") or [])
+    return ids if result["status"] == "ambiguous" and 2 <= len(ids) <= MAX_ROOM_CANDIDATES else []
+
+
+def _to_draft(out: FastOutput, index: dict, spans: Optional[list[Span]] = None
+              ) -> tuple[OverlayDraft, set[str], list[dict], set[str]]:
+    """(draft, resolved room ids, dispatcher questions, room-candidate group ids). Inference and candidates are
+    decided here, in code, whatever the model said (module docstring)."""
     resolved: set[str] = set()
     questions: list[dict] = []
+    by_span = {s.span_id: s for s in spans or []}
+    renames: dict[str, str] = {}                  # occupant id -> its candidate group id
+    contradictions = [{"group_id": c.group_id, "key": c.key, "resolved_by_dispatcher": False}
+                      for c in out.contradictions]
 
-    def entity(e: _FastReport, cls, **extra):
-        about = f"{e.note or e.id} ({e.id})"
-        data = e.model_dump(exclude={"place"}, exclude_none=True)
-        data.update(extra, location=_locate(index, e.place, about, e.evidence_ids, resolved, questions))
-        return cls(**data)
+    def inferred(e: _FastReport) -> Optional[tuple[dict, dict]]:
+        """(location, field overrides) when the report is placed by inference, else None."""
+        if e.status == "contradicted" or e.group_id:
+            return None
+        cue = _cue(_caller_text(e, by_span))
+        if cue is None or not overlay_mod.has_scan(index):
+            return None
+        room_type, word = cue
+        floor = e.place.floor_reported if e.place else None
+        room, level = _infer(index, room_type, floor)
+        if room:
+            resolved.add(room)
+            return ({"kind": "room", "room_id": room},
+                    {"status": "inferred", "confidence": min(e.confidence, INFERRED_CAP), "note": f"inferred from: {word}"})
+        loc = {"kind": "floor", "floor_reported": level} if level else {"kind": "unknown"}
+        return loc, {}
+
+    def entities(items: list[_FastReport], cls, expand: bool = False) -> list:
+        made = []
+        for e in items:
+            data = e.model_dump(exclude={"place"}, exclude_none=True)
+            if (hit := inferred(e)) is not None:
+                loc, extra = hit
+                made.append(cls(**{**data, **extra, "location": loc}))
+                continue
+            rooms = _candidates(index, e.place) if expand and not e.group_id and e.status != "contradicted" else []
+            if rooms:
+                group = f"grp-{e.id}"
+                renames[e.id] = group
+                resolved.update(rooms)
+                contradictions.append({"group_id": group, "key": CANDIDATE_KEY, "resolved_by_dispatcher": False})
+                q = PlaceQuery(about=f"{e.note or e.id} ({e.id})", evidence_ids=e.evidence_ids, **e.place.model_dump())
+                questions.append({"query": q, "result": overlay_mod.resolve(index, q)})
+                for k, room in enumerate(rooms, 1):
+                    made.append(cls(**{**data, "id": f"{e.id}-{k}", "status": "contradicted", "group_id": group,
+                                       "location": {"kind": "room", "room_id": room}}))
+                continue
+            about = f"{e.note or e.id} ({e.id})"
+            made.append(cls(**{**data, "location": _locate(index, e.place, about, e.evidence_ids, resolved, questions)}))
+        return made
+
+    occupants = entities(out.occupants, DraftOccupant, expand=True)
+    fire = entities(out.fire, DraftFire)
+    hazards = entities(out.hazards, DraftHazard)
 
     objectives = []
     for o in out.objectives:
         t = o.target
-        if t.kind in ("occupant", "occupant_group"):
+        if t.kind == "occupant" and t.ref_id in renames:
+            target = {"kind": "occupant_group", "ref_id": renames[t.ref_id]}
+        elif t.kind in ("occupant", "occupant_group"):
             target = {"kind": t.kind, "ref_id": t.ref_id}
         else:
             loc = _locate(index, t.place, f"objective {o.id}", o.evidence_ids, resolved, questions)
@@ -356,14 +476,11 @@ def _to_draft(out: FastOutput, index: dict) -> tuple[OverlayDraft, set[str], lis
                 log.info("objective %s has no locatable target; left out", o.id)
                 continue
         objectives.append({**o.model_dump(exclude={"target"}), "target": target})
-    draft = OverlayDraft(
-        occupants=[entity(e, DraftOccupant) for e in out.occupants],
-        fire=[entity(e, DraftFire) for e in out.fire],
-        hazards=[entity(e, DraftHazard) for e in out.hazards],
-        contradictions=[{"group_id": c.group_id, "key": c.key, "resolved_by_dispatcher": False}
-                        for c in out.contradictions],
-        objectives=objectives)
-    return draft, resolved, questions
+    draft = OverlayDraft(occupants=occupants, fire=fire, hazards=hazards, contradictions=contradictions,
+                         objectives=objectives)
+    for c in out.considerations:          # refs that named a split occupant name its group
+        c.refs = list(dict.fromkeys(renames.get(r, r) for r in c.refs))
+    return draft, resolved, questions, set(renames.values())
 
 
 def _drafts(out: FastOutput) -> list[ConsiderationDraft]:
@@ -392,19 +509,20 @@ def _consideration_errors(drafts: list[ConsiderationDraft], incident: IncidentRe
 
 def _check(out: FastOutput, incident: IncidentRecord, building_id: str, index: dict, spans: list[Span],
            dossier: BuildingDossier, memory: list, model_id: str):
-    """(draft, considerations, resolved, questions, errors). errors empty = publishable."""
+    """(draft, considerations, resolved, questions, candidate groups, errors). errors empty = publishable."""
+    out = out.model_copy(deep=True)       # _to_draft renames refs; the retry quotes the model's own answer
     try:
-        draft, resolved, questions = _to_draft(out, index)
+        draft, resolved, questions, groups = _to_draft(out, index, spans)
     except ValidationError as e:
-        return None, [], set(), [], [f"overlay: {err['loc']}: {err['msg']}" for err in e.errors()][:10]
+        return None, [], set(), [], set(), [f"overlay: {err['loc']}: {err['msg']}" for err in e.errors()][:10]
     try:
         ov = overlay_mod.assemble(draft, incident.incident_id, model_id, 1, index, spans)
     except (ValidationError, ValueError) as e:
-        return None, [], set(), [], [f"overlay: {str(e)[:600]}"]
-    errors = [f"overlay: {e}" for e in overlay_mod.check(ov, index, spans, resolved)]
+        return None, [], set(), [], set(), [f"overlay: {str(e)[:600]}"]
+    errors = [f"overlay: {e}" for e in overlay_mod.check(ov, index, spans, resolved, candidate_groups=groups)]
     drafts = _drafts(out)
     errors += _consideration_errors(drafts, incident, dossier, memory, spans, overlay_mod.overlay_ids(ov))
-    return draft, drafts, resolved, questions, errors
+    return draft, drafts, resolved, questions, groups, errors
 
 
 # ---------- public ----------
@@ -447,15 +565,16 @@ def prepare(incident: IncidentRecord, building_id: str, ws: Workspace, model: An
             timings["model_s"].append(round(time.perf_counter() - t_call, 2))
         if out is not None:
             t_check = time.perf_counter()
-            draft, drafts, resolved, questions, errors = _check(out, incident, building_id, index, spans, dossier,
-                                                                memory, model_id)
+            draft, drafts, resolved, questions, groups, errors = _check(out, incident, building_id, index, spans,
+                                                                        dossier, memory, model_id)
             timings["check_ms"] = round((time.perf_counter() - t_check) * 1000, 1)
             if not errors:
                 timings["prepare_s"] = round(time.perf_counter() - t0, 2)
                 log.info("fast path %s: valid answer on attempt %d (%s)", incident.incident_id, attempt, timings)
                 return Prepared(building_id=building_id, draft=draft, considerations=drafts, resolved=resolved,
                                 questions=questions, index=index, spans=spans, dossier=dossier, memory=memory,
-                                prefetched_at=prefetched_at, model_id=model_id, attempts=attempt, timings=timings)
+                                prefetched_at=prefetched_at, model_id=model_id, attempts=attempt, timings=timings,
+                                candidate_groups=groups)
         log.warning("fast path %s: attempt %d rejected: %s", incident.incident_id, attempt, "; ".join(errors)[:800])
         if attempt < MAX_ATTEMPTS:
             previous_answer = out.model_dump_json(exclude_none=True) if out is not None else "(none)"
@@ -477,7 +596,7 @@ def commit(p: Prepared, incident: IncidentRecord, ws: Workspace, version: int) -
     ValueError when it no longer passes (nothing written)."""
     previous = overlay_mod.read(ws, version - 1)
     ov = overlay_mod.assemble(p.draft, incident.incident_id, p.model_id, version, p.index, p.spans, previous=previous)
-    if errors := overlay_mod.check(ov, p.index, p.spans, p.resolved):
+    if errors := overlay_mod.check(ov, p.index, p.spans, p.resolved, candidate_groups=p.candidate_groups):
         raise ValueError("overlay: " + "; ".join(errors))
     prev_text = ws.read_or_none(f"brief_v{version - 1}.json")
     callers = [s for s in p.spans if s.speaker == "caller"]

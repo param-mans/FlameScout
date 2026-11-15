@@ -130,10 +130,16 @@ def test_fast_path_emits_overlay_then_brief_with_the_same_version(make_client, c
         assert overlay_mod.validate_overlay.validate(overlay, cedar_plan_index) == []
         assert overlay["fire"][0]["location"] == {"kind": "room", "room_id": "r4"}     # resolved by code
         assert overlay["fire"][0]["confidence"] == 0.6                                  # caller cap
-        assert overlay["occupants"][0]["location"] == {"kind": "floor", "floor_reported": 2, "floor_id": "f2"}
+        # "the back bedroom upstairs" matches two bedrooms: one candidate occupant per room, same count, one group
+        assert [(o["id"], o["location"], o["count"], o["status"], o["group_id"]) for o in overlay["occupants"]] == [
+            ("occ-1-1", {"kind": "room", "room_id": "r10"}, 2, "contradicted", "grp-occ-1"),
+            ("occ-1-2", {"kind": "room", "room_id": "r9"}, 2, "contradicted", "grp-occ-1")]
+        assert overlay["contradictions"] == [{"group_id": "grp-occ-1", "key": "occupants.location_candidates",
+                                              "resolved_by_dispatcher": False}]
+        assert overlay["objectives"][0]["target"] == {"kind": "occupant_group", "ref_id": "grp-occ-1"}
         assert overlay["routes"] == []
         brief = br.payload["brief"]
-        assert [c["refs"] for c in brief["considerations"]] == [["occ-1"], ["occ-1", "obj-1"]]
+        assert [c["refs"] for c in brief["considerations"]] == [["grp-occ-1"], ["grp-occ-1", "obj-1"]]
         assert brief["considerations"][0]["cross_layer"] and KIDS in brief["evidence"]
 
         # same files as the agent path: the latest endpoints, and the dispatcher question for the ambiguous bedroom
