@@ -128,11 +128,12 @@ def test_the_one_caller_group_needs_the_exemption():
     assert overlay_mod.check(ov, INDEX, SPANS, resolved, candidate_groups=groups) == []
 
 
-def test_too_many_matching_rooms_stay_at_floor_level():
-    ov, errors, questions, _ = run({"occupants": [occ(CLOSET, {"type": "closet"})]})
-    assert errors == [] and len(ov["occupants"]) == 1
-    assert ov["occupants"][0]["location"] == {"kind": "floor", "floor_reported": 1, "floor_id": "f1"}
-    assert ov["occupants"][0]["status"] == "reported" and len(questions) == 1
+def test_every_matching_room_gets_a_candidate():
+    # "a closet" with 5 closets on the plan: a yellow candidate in each one (up to MAX_ROOM_CANDIDATES), same group
+    ov, errors, questions, groups = run({"occupants": [occ(CLOSET, {"type": "closet"})]})
+    assert errors == [] and len(ov["occupants"]) == 5
+    assert {o["status"] for o in ov["occupants"]} == {"contradicted"} and len({o["group_id"] for o in ov["occupants"]}) == 1
+    assert all(o["location"]["kind"] == "room" for o in ov["occupants"])
 
 
 def test_fire_matching_two_rooms_is_not_split():

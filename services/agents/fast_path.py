@@ -58,7 +58,7 @@ FAST_TIMEOUT_S = 25.0       # one model call; past it the attempt counts as fail
 MAX_ATTEMPTS = 2            # the call, plus ONE retry that quotes the errors
 MIN_CONSIDERATIONS, MAX_CONSIDERATIONS = 2, 4
 NO_CRITIC_GAP = "Considerations were not checked by the critic"  # same gap as the agent path without a critique
-MAX_ROOM_CANDIDATES = 4     # an occupant matching 2..4 rooms -> one candidate per room; more -> floor level
+MAX_ROOM_CANDIDATES = 8     # an occupant matching 2..8 rooms -> one candidate per room (yellow); more -> floor level
 INFERRED_CAP = 0.6
 CANDIDATE_KEY = "occupants.location_candidates"
 # activity cue -> plan room type. Only used when the caller's lines name no room (ROOM_WORDS).
@@ -378,6 +378,11 @@ def _floor_no(index: dict, room_id: str) -> Optional[int]:
     return _floor_of(index, [room_id])
 
 
+def _rooms_of_type(index: dict, room_type: str, floor: Optional[int]) -> list[str]:
+    return [rid for rid, r in (index.get("rooms") or {}).items()
+            if (r.get("type") or "") == room_type and (floor is None or _floor_no(index, rid) == floor)]
+
+
 def _infer(index: dict, room_type: str, floor: Optional[int]) -> tuple[Optional[str], Optional[int]]:
     """(the only room of that type, on the floor said if any) or (None, the floor level to use)."""
     rooms = [rid for rid, r in (index.get("rooms") or {}).items()
@@ -428,6 +433,10 @@ def _to_draft(out: FastOutput, index: dict, spans: Optional[list[Span]] = None
             resolved.add(room)
             return ({"kind": "room", "room_id": room},
                     {"status": "inferred", "confidence": min(e.confidence, INFERRED_CAP), "note": f"inferred from: {word}"})
+        many = _rooms_of_type(index, room_type, floor)
+        if 2 <= len(many) <= MAX_ROOM_CANDIDATES:   # "she was sleeping", 3 bedrooms: a candidate in each (yellow)
+            return None, {"rooms": many, "note": f"inferred from: {word}",
+                          "loc": {"kind": "floor", "floor_reported": level} if level else {"kind": "unknown"}}
         loc = {"kind": "floor", "floor_reported": level} if level else {"kind": "unknown"}
         return loc, {}
 
@@ -435,18 +444,27 @@ def _to_draft(out: FastOutput, index: dict, spans: Optional[list[Span]] = None
         made = []
         for e in items:
             data = e.model_dump(exclude={"place"}, exclude_none=True)
-            if (hit := inferred(e)) is not None:
+            hit = inferred(e)
+            if hit is not None and hit[0] is not None:
                 loc, extra = hit
                 made.append(cls(**{**data, **extra, "location": loc}))
                 continue
-            rooms = _candidates(index, e.place) if expand and not e.group_id and e.status != "contradicted" else []
+            if hit is not None and expand:          # inferred room type with several rooms of that type
+                rooms = hit[1]["rooms"]
+                data = {**data, "note": hit[1]["note"], "confidence": min(e.confidence, INFERRED_CAP)}
+            else:
+                rooms = _candidates(index, e.place) if expand and not e.group_id and e.status != "contradicted" else []
+            if hit is not None and not rooms:       # fire / hazard: the floor level, as before
+                made.append(cls(**{**data, "location": hit[1]["loc"]}))
+                continue
             if rooms:
                 group = f"grp-{e.id}"
                 renames[e.id] = group
                 resolved.update(rooms)
                 contradictions.append({"group_id": group, "key": CANDIDATE_KEY, "resolved_by_dispatcher": False})
-                q = PlaceQuery(about=f"{e.note or e.id} ({e.id})", evidence_ids=e.evidence_ids, **e.place.model_dump())
-                questions.append({"query": q, "result": overlay_mod.resolve(index, q)})
+                if e.place is not None:
+                    q = PlaceQuery(about=f"{e.note or e.id} ({e.id})", evidence_ids=e.evidence_ids, **e.place.model_dump())
+                    questions.append({"query": q, "result": overlay_mod.resolve(index, q)})
                 for k, room in enumerate(rooms, 1):
                     made.append(cls(**{**data, "id": f"{e.id}-{k}", "status": "contradicted", "group_id": group,
                                        "location": {"kind": "room", "room_id": room}}))

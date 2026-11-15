@@ -34,8 +34,9 @@ house and adds the Copilot suggestion "Address not in catalog".
 - Inference (code-enforced): cooking/eggs/pan/stove → kitchen, shower/bathtub → bathroom, sleeping/bed → bedroom,
   car/tools → garage, clothes/dryer → laundry. Only when the plan (the said floor, if any) has exactly one such room:
   status `inferred`, confidence ≤ 0.6, note `inferred from: <cue>`; otherwise floor level.
-- Candidates: a description matching 2-4 rooms gives one occupant per room, same count and `group_id`, status
-  `contradicted`, plus a `contradictions` entry; 5+ rooms stays at floor level.
+- Candidates: a description matching 2-8 rooms ("the bathroom", or an inferred type with several rooms: "sleeping"
+  with 3 bedrooms) gives one occupant per room, same count and `group_id`, status `contradicted`, plus a
+  `contradictions` entry (yellow on screen); 9+ rooms stays at floor level.
 - Scripts: `TEST_COOKING` (visible, "TEST · cooking, room not named (inferred)") and the hidden `AMBIG_BATHROOMS`
   (ids are limited to 16 characters).
 
@@ -44,9 +45,11 @@ house and adds the Copilot suggestion "Address not in catalog".
 - Green figures: occupants in one room. Yellow: each candidate room of a contradicted group, and floor-level reports
   (one figure in the floor's at_stairs room, else its largest). Up to 5 figures per entity, no text.
 - Fire: radial red glow (radius min(8 m, 35 % of the floor's largest side)) clipped to the house outline, 2D and 3D.
-- Routes: red entrance → fire room; green entrance → every person (shortest order) → exit, avoiding the fire. A tapped
-  room shows its fastest exit in white. Hidden attributes on the viewer `<body>`: `data-people-green`,
+- Routes: red entrance → fire room; green entrance → every person (shortest order) → exit, avoiding the fire. Rooms the scan left without a doorway are
+  joined to the nearest connected room (penalised) so nobody is left out of the green route. A tapped room shows its
+  fastest exit in white. Hidden attributes on the viewer `<body>`: `data-people-green`,
   `data-people-yellow`, `data-route-red`, `data-route-green`, `data-unreachable`.
+- Cards: Stairwells, Hazard flags (only hazards this house has; no pool) and PEOPLE, large type.
 - PEOPLE card: total reported (an ambiguous group counts once) and the rooms on one line; a dash without overlay.
 - Test: `node apps/web/scripts/house-people.mjs` (WebKit, 1180x820), examples in
   `apps/web/public/house-viewer/incident/examples/fairdale_*.json`.
