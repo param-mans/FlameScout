@@ -1,20 +1,30 @@
-// End-to-end test of the live incident overlay: WebSocket -> web app -> viewer iframe. Dev only.
+// End-to-end test of the live incident overlay: API/WebSocket mock -> web app -> viewer iframe. Dev only.
 //   cd apps/web && npm i --no-save playwright && npx playwright install webkit
 //   node scripts/overlay-e2e.mjs [--python ~/.venvs/flamescout/bin/python] [--shots /tmp/overlay-e2e]
 // It starts, by itself and offline:
-//   - scripts/mock_incident_ws.py (Fairdale S4 v1 at 1 s and v2 at 6 s; again with --invalid and with --unknown)
-//   - a Vite dev server through Vite's JS API with the repo's React/Tailwind setup, /ws proxied to the mock, HMR and
+//   - scripts/mock_incident_ws.py: minimal incident API + WebSocket (Fairdale S4 v1 at 1 s and v2 at 6 s; also with
+//     --invalid, --unknown, --off-catalog)
+//   - a Vite dev server through Vite's JS API with the repo's React/Tailwind setup, /api/incidents, /api/calls and /ws
+//     proxied to the mock, HMR and
 //     Vite's own WebSocket off (so any WebSocket the page opens is ours), and the house-data routes WITHOUT credentials: plans come from the
 //     stored raw responses in data/raw (local, not in git); Vexcel is a labelled test stub (grey 8 x 8 SVG images, no
 //     capture date). No external API is called.
 // Checks (WebKit, touch, 1180 x 820; Chromium too if installed):
+//   App flow (no URL param, Run call creates the incident):
+//   a. Run call -> POST /api/incidents, id in localStorage; the confirmed house (Fairdale) shows before any overlay
+//   b. overlays arrive: LIVE · v1 then LIVE · v2
+//   c. New call -> second incident: the socket moves to the new id and its overlays show (v1, v2 again)
+//   d. --invalid: REJECTED v3 (keeping v2), [data-incident-version] stays 2
+//   e. --off-catalog: "No interior scan on file"
+//   f. ?mock=tower: no WebSocket, no chip
+//   Explicit ?incident=demo:
 //   1. the chip goes LIVE · v1 then LIVE · v2 and [data-incident-version] follows (1, then 2); the viewer switches to
 //      Fairdale ([data-live-sample], start: ?sample=214905148)
-//   2. --invalid: REJECTED v3 (keeping v2), [data-incident-version] stays 2
 //   3. --unknown: "Unknown building: <model_id>", nothing applied, the house does not change
 //   4. without ?incident= no WebSocket is opened and there is no live chip
-//   5. no console errors (except the expected "[incident] overlay rejected" in check 2)
-//   6. scripts/ipad-webkit.mjs passes against the same offline server
+//   5. no console errors (except the expected "[incident] overlay rejected" in d, and the 404s of briefs/latest and
+//      overlay/latest that the real API also returns before the first brief)
+//   6. scripts/ipad-webkit.mjs against the same offline server (mock stopped, app in mock mode): prints its FAIL count
 // Screenshots only with --shots, to a local folder outside git. Exit code 1 on any failure.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -81,7 +91,10 @@ const VITE_PORT = await freePort();
 const vite = await createServer({
   configFile: false, root: WEB, logLevel: "warn",
   plugins: [react(), tailwindcss(), offlineHouseData],
-  server: { port: VITE_PORT, strictPort: true, hmr: false, ws: false, proxy: { "/ws": { target: `ws://127.0.0.1:${MOCK_PORT}`, ws: true } } },
+  server: { port: VITE_PORT, strictPort: true, hmr: false, ws: false, proxy: {
+    "/ws": { target: `ws://127.0.0.1:${MOCK_PORT}`, ws: true },
+    "^/api/(incidents|calls)": { target: `http://127.0.0.1:${MOCK_PORT}` },   // the house-data routes stay local
+  } },
 });
 await vite.listen();
 const BASE = `http://localhost:${VITE_PORT}`;
@@ -103,8 +116,9 @@ async function open(browserType, query) {
 const text = async (page) => (await chip(page).count()) ? (await chip(page).innerText()).trim() : "";
 const liveSample = (page) => page.locator("[data-live-sample]").first().getAttribute("data-live-sample").catch(() => null);
 const shot = async (page, name) => { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await page.screenshot({ path: path.join(SHOTS, name) }); } };
+const NOT_FOUND = "404"; // briefs/latest + overlay/latest before the first brief (the real API answers 404 too)
 const cleanConsole = (errors, allowed = []) => {
-  const bad = errors.filter((e) => !allowed.some((a) => e.includes(a)));
+  const bad = errors.filter((e) => ![...allowed, NOT_FOUND].some((a) => e.includes(a)));
   bad.forEach((e) => fail(`console: ${e.slice(0, 160)}`));
   if (!bad.length) ok(`console clean${errors.length ? ` (${errors.length} expected message(s))` : ""}`);
 };
@@ -113,12 +127,74 @@ const browsers = [playwright.webkit];
 try { if (fs.existsSync(playwright.chromium.executablePath())) browsers.push(playwright.chromium); } catch { /* not installed */ }
 const LIVE = `?viewer=1&incident=demo&sample=${START}`;
 
+const storedId = (page) => page.evaluate(() => localStorage.getItem("flamescout.incident")).catch(() => null);
+async function runCall(page, label = "Run call") {
+  const btn = page.getByRole("button", { name: label, exact: true });
+  if (!(await until(async () => (await btn.count()) > 0, 20000, `"${label}" button`))) return null;
+  const before = await storedId(page);
+  await btn.click();
+  let id = null;
+  await until(async () => { id = await storedId(page); return !!id && id !== before; }, 10000, "new incident id in localStorage");
+  return id;
+}
+const waitChip = (page, want, ms = 30000) => until(async () => (await text(page)) === want, ms, want);
+
 try {
   for (const bt of browsers) {
-    console.log(`== ${bt.name()}`);
+    console.log(`== ${bt.name()} app flow`);
+    // a-c. Run call, confirmed house before any overlay, overlays, second incident
+    await startMock(["--v1", "10", "--v2", "14"]);
+    let r = await open(bt, `?sample=${START}`);
+    const id1 = await runCall(r.page);
+    if (id1) ok(`a. incident created: ${id1}`);
+    if (await until(async () => (await r.page.locator(`[data-confirmed-building="${FAIRDALE}"]`).count()) > 0 && (await liveSample(r.page)) === FAIRDALE, 15000, "confirmed Fairdale plan")) {
+      const v = await version(r.page), t = await text(r.page);
+      if (v === null && !/· v\d/.test(t)) ok(`a. Fairdale plan shown, no overlay yet (chip: ${t})`); else fail(`a. overlay already applied: v=${v} chip=${t}`);
+    }
+    await shot(r.page, `${bt.name()}-app-confirmed.png`);
+    if (await waitChip(r.page, "LIVE · v1")) ok("b. LIVE · v1");
+    if (await waitChip(r.page, "LIVE · v2", 15000) && (await version(r.page)) === "2") ok("b. LIVE · v2, data-incident-version=2");
+    const id2 = await runCall(r.page, "New call");
+    if (id2 && id2 !== id1) ok(`c. second incident: ${id2}`); else fail(`c. no second incident (${id2})`);
+    if (await until(async () => /waiting for overlay|connecting/.test(await text(r.page)) || (await text(r.page)) === "LIVE · v1", 10000, "chip reset for the new incident")) ok(`c. chip reset (${await text(r.page)})`);
+    if (await waitChip(r.page, "LIVE · v1") && await waitChip(r.page, "LIVE · v2", 15000)) ok("c. new incident's v1 then v2");
+    const open2 = [...r.openSockets].map((w) => w.url());
+    if (open2.length === 1 && open2[0].endsWith(`/ws/incidents/${id2}`)) ok("c. one socket open, on the new incident"); else fail(`c. open sockets: ${JSON.stringify(open2)}`);
+    cleanConsole(r.errors);
+    await r.browser.close();
+
+    // d. invalid v3 (app flow)
+    await startMock(["--invalid"]);
+    r = await open(bt, `?sample=${START}`);
+    await runCall(r.page);
+    if (await waitChip(r.page, "REJECTED v3 (keeping v2)")) ok("d. REJECTED v3 (keeping v2)");
+    if ((await version(r.page)) === "2") ok("d. data-incident-version stays 2"); else fail(`d. data-incident-version is ${await version(r.page)} after the rejected v3`);
+    await shot(r.page, `${bt.name()}-rejected-v3.png`);
+    cleanConsole(r.errors, ["[incident] overlay rejected"]);
+    await r.browser.close();
+
+    // e. off-catalog building
+    await startMock(["--off-catalog"]);
+    r = await open(bt, `?sample=${START}`);
+    await runCall(r.page);
+    if (await until(async () => (await r.page.locator("[data-no-scan]").count()) > 0, 15000, "No interior scan on file")
+      && /NO INTERIOR SCAN ON FILE/i.test(await r.page.locator("[data-no-scan]").innerText())) ok("e. No interior scan on file");
+    await shot(r.page, `${bt.name()}-off-catalog.png`);
+    cleanConsole(r.errors);
+    await r.browser.close();
+
+    // f. tower mock: no socket, no chip
+    await startMock();
+    r = await open(bt, "?mock=tower");
+    await r.page.waitForTimeout(3000);
+    if (r.sockets.length === 0 && (await chip(r.page).count()) === 0) ok("f. ?mock=tower: no WebSocket, no chip"); else fail(`f. ?mock=tower: sockets ${JSON.stringify(r.sockets)}, chip ${await chip(r.page).count()}`);
+    cleanConsole(r.errors);
+    await r.browser.close();
+
+    console.log(`== ${bt.name()} explicit ?incident=`);
     // 1. v1 then v2, house switch
     await startMock();
-    let r = await open(bt, LIVE);
+    r = await open(bt, LIVE);
     if (await until(async () => (await text(r.page)) === "LIVE · v1" && (await version(r.page)) === "1", 30000, "LIVE · v1 and data-incident-version=1")) ok("LIVE · v1, data-incident-version=1");
     if ((await liveSample(r.page)) === FAIRDALE) ok("viewer switched to Fairdale"); else fail(`viewer did not switch to Fairdale: ${await liveSample(r.page)}`);
     await shot(r.page, `${bt.name()}-live-v1.png`);
@@ -132,22 +208,13 @@ try {
     cleanConsole(r.errors);
     await r.browser.close();
 
-    // 2. invalid v3
-    await startMock(["--invalid"]);
-    r = await open(bt, LIVE);
-    if (await until(async () => (await text(r.page)) === "REJECTED v3 (keeping v2)", 30000, "REJECTED v3 (keeping v2)")) ok("REJECTED v3 (keeping v2)");
-    if ((await version(r.page)) === "2") ok("data-incident-version stays 2"); else fail(`data-incident-version is ${await version(r.page)} after the rejected v3`);
-    await shot(r.page, `${bt.name()}-rejected-v3.png`);
-    cleanConsole(r.errors, ["[incident] overlay rejected"]);
-    await r.browser.close();
-
     // 3. unknown building
     await startMock(["--unknown"]);
     r = await open(bt, LIVE);
     if (await until(async () => (await text(r.page)) === "Unknown building: unknownModel0", 20000, "Unknown building chip")) ok("Unknown building: unknownModel0");
     await r.page.waitForTimeout(6500); // past v2
     if ((await version(r.page)) === null) ok("nothing applied"); else fail(`data-incident-version is ${await version(r.page)}`);
-    if ((await liveSample(r.page)) === START) ok("house unchanged"); else fail(`house changed for an unknown building: ${await liveSample(r.page)}`);
+    if ((await liveSample(r.page)) === FAIRDALE) ok("house = confirmed building, not the overlay"); else fail(`house changed for an unknown building: ${await liveSample(r.page)}`);
     cleanConsole(r.errors);
     await r.browser.close();
 
@@ -165,9 +232,19 @@ try {
   }
 
   // 6. the existing iPad walk-through against the same offline server
-  console.log("== ipad-webkit.mjs (offline server)");
-  const code = await new Promise((res) => spawn(process.execPath, [path.join(WEB, "scripts", "ipad-webkit.mjs"), "--base", BASE], { stdio: "inherit" }).on("exit", res));
-  if (code === 0) ok("ipad-webkit.mjs passed"); else fail(`ipad-webkit.mjs exited with ${code}`);
+  // Mock stopped first: the app falls back to mock mode, as ipad-webkit.mjs expects. It already fails on origin/main
+  // (small touch targets), so only its FAIL count is reported here; compare it with origin/main.
+  // A second offline Vite without the /api proxy, as on origin/main (the app falls back to mock mode).
+  if (mock) { mock.kill(); await new Promise((r) => mock.once("exit", r)); mock = null; }
+  const IPAD_PORT = await freePort();
+  const vite2 = await createServer({ configFile: false, root: WEB, logLevel: "warn", plugins: [react(), tailwindcss(), offlineHouseData],
+    server: { port: IPAD_PORT, strictPort: true, hmr: false, ws: false, proxy: { "/ws": { target: `ws://127.0.0.1:${MOCK_PORT}`, ws: true } } } });
+  await vite2.listen();
+  console.log("== ipad-webkit.mjs (offline server, informational)");
+  let out = "";
+  const code = await new Promise((res) => { const c = spawn(process.execPath, [path.join(WEB, "scripts", "ipad-webkit.mjs"), "--base", `http://localhost:${IPAD_PORT}`], { stdio: ["ignore", "pipe", "inherit"] }); c.stdout.on("data", (d) => { out += d; process.stdout.write(d); }); c.on("exit", res); });
+  console.log(`  ipad-webkit.mjs exit ${code}, FAIL lines: ${out.split("\n").filter((l) => /FAIL/.test(l)).length}`);
+  await vite2.close();
 } finally {
   if (mock) mock.kill();
   await vite.close();

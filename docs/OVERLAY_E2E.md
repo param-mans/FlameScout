@@ -6,8 +6,9 @@
    fallback.
 2. The API (`services/api/service.py`, `_emit_overlay`) publishes `overlay.updated` right after `brief.updated`. Both
    events have the same version and trace id.
-3. The web app's main MDT viewer (`BuildingViewer` with `layout="split"`), only with `?incident=<id>`, listens on
-   `/ws/incidents/<id>` through `apps/web/src/house/useIncidentSocket.ts`. Vite proxies `/ws` to the API on :8000.
+3. The app creates the incident on Run call (`POST /api/incidents`, id kept in localStorage `flamescout.incident`) and
+   listens on `/ws/incidents/<id>` (`src/api/useLiveIncident.ts`). The MDT viewer gets `overlay.updated` from that socket
+   (`house/liveFeed.ts`), no second socket; its own socket is only for `?incident=<id>` with the API down.
 4. When an overlay arrives, the viewer loads that overlay's house, the app waits until the viewer reports the house
    `ready`, and then posts `{type: 'setIncident', overlay}` to the iframe.
 5. The viewer validates the overlay against the plan (`incident/validate.js`) and draws it. It answers
@@ -52,24 +53,23 @@ With no match, nothing is applied and the chip says `Unknown building: <model_id
 
 ## Demo with the mock (no backend, no keys)
 
-The mock is dev only and not deployed. In terminal 1, from the repo root:
+`scripts/mock_incident_ws.py` is dev only and not deployed. Besides `/ws/incidents/<id>` it answers the minimal REST the
+app calls at startup and on Run call: `GET /api/calls/scripts` (from `data/fixtures/calls/manifest.json`),
+`POST /api/incidents` (new id), `GET /api/incidents/<id>` (any id: `confirmed_building_id` 209217448 = Fairdale,
+`confirmed_by: "auto"`, status `briefing`), `POST /api/calls/simulate` (202, replays nothing), `candidates`/`copilot`
+(`[]`) and `briefs/latest`/`overlay/latest` (404, as the real API before the first brief). On connect the socket sends
+the `incident.updated` snapshot with the confirmed fields, then Fairdale S4 v1 (1 s) and v2 (6 s).
+
+Flags: `--invalid` (adds a v3 the viewer rejects), `--unknown` (model_id in no catalog; the house stays the confirmed one),
+`--off-catalog` (`confirmed_building_id` 99999999: the MDT shows "No interior scan on file").
 
 ```sh
-~/.venvs/flamescout/bin/python scripts/mock_incident_ws.py --port 8000   # Fairdale S4: v1 after 1 s, v2 after 6 s
+~/.venvs/flamescout/bin/python scripts/mock_incident_ws.py --port 8000   # terminal 1, repo root
+cd apps/web && npm run dev                                                # terminal 2
 ```
 
-It accepts `--invalid` (adds a v3 the viewer rejects) and `--unknown` (sends a model_id that matches no house).
-
-In terminal 2:
-
-```sh
-cd apps/web && npm run dev
-```
-
-Then open `http://localhost:5173/?viewer=1&incident=demo`.
-
-The mock's overlays come from the viewer's debug scenario S4. To regenerate them, run
-`node apps/web/scripts/export-fairdale-overlays.mjs` (needs `data/raw`).
+Open `http://localhost:5173/` and press Run call (or `/?incident=demo`). The overlays come from the viewer's debug
+scenario S4; regenerate with `node apps/web/scripts/export-fairdale-overlays.mjs` (needs `data/raw`).
 
 ## End-to-end test
 
@@ -78,16 +78,16 @@ cd apps/web && npm i --no-save playwright && npx playwright install webkit
 node scripts/overlay-e2e.mjs            # add --shots <folder outside the repo> for screenshots
 ```
 
-The test starts the mock and its own offline Vite by itself. That Vite serves stored plans from `data/raw`, has a
-Vexcel test stub and calls no external API.
-
-It runs in WebKit with touch at 1180×820, and also in Chromium if it is installed. It checks:
-- the chip shows `LIVE · v1` then `LIVE · v2`, `data-incident-version` follows, and the house switches to Fairdale;
-- with `--invalid` the chip shows `REJECTED v3 (keeping v2)`;
-- with `--unknown` the chip shows `Unknown building` and nothing is applied;
-- no WebSocket opens without `?incident=`;
-- the console is clean;
-- `scripts/ipad-webkit.mjs` still passes.
+The test starts the mock and its own offline Vite (proxies `/api/incidents`, `/api/calls` and `/ws` to the mock; plans
+from `data/raw`, Vexcel test stub, no external API). WebKit with touch at 1180×820, plus Chromium if installed:
+- app flow: Run call creates the incident (id in localStorage), the Fairdale plan shows before any overlay, then
+  `LIVE · v1` / `LIVE · v2`; New call moves the one socket to the new incident and its overlays show;
+  `--invalid` → `REJECTED v3 (keeping v2)`; `--off-catalog` → "No interior scan on file"; `?mock=tower` → no socket;
+- explicit `?incident=demo`: v1/v2 and house switch, `--unknown` → `Unknown building`, no socket without an incident;
+- console clean, except the expected rejection log and the 404s of `briefs/latest` / `overlay/latest` (the real API
+  answers 404 too before the first brief);
+- `scripts/ipad-webkit.mjs` runs afterwards with the mock stopped (app in mock mode). It already fails on origin/main
+  (small touch targets), so its FAIL count is printed, not counted; compare with origin/main.
 
 ## Deployment
 
