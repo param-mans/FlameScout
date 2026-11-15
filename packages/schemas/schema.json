@@ -699,7 +699,8 @@
             "brief.updated",
             "copilot.suggestion",
             "metric.tick",
-            "overlay.updated"
+            "overlay.updated",
+            "call.status"
           ],
           "title": "Type",
           "type": "string"

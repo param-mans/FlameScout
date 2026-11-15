@@ -52,4 +52,7 @@ export const api = {
     request<IncidentRecord>("POST", `/api/incidents/${id}/contradictions/resolve`, { key, value }),
   latestBrief: (id: string) => request<Brief>("GET", `/api/incidents/${id}/briefs/latest?published_only=true`),
   copilot: (id: string) => request<CopilotSuggestion[]>("GET", `/api/incidents/${id}/copilot`),
+  /** Call in: starts a call every open web app follows (/ws/calls). The recording goes to /api/calls/web/callin/audio. */
+  callIn: () => request<{ incident_id: string; call_label: string }>("POST", "/api/calls/web/callin", {}),
+  endCall: (c: { incident_id: string; call_label: string }) => request<unknown>("POST", "/api/calls/web/end", c),
 };

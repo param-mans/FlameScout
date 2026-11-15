@@ -115,7 +115,7 @@ class CrewFeedback(BaseModel):
 
 EventType = Literal["transcript.segment", "incident.updated", "contradiction.raised",
                     "location.candidates", "dossier.progress", "brief.updated",
-                    "copilot.suggestion", "metric.tick", "overlay.updated"]
+                    "copilot.suggestion", "metric.tick", "overlay.updated", "call.status"]
 
 
 class Event(BaseModel):

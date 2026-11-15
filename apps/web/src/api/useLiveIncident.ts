@@ -211,6 +211,18 @@ export function useLiveIncident(forceMock: boolean) {
     try { patch({ brief: await api.review(id), held: null, busy: null }); } catch (e) { fail(e); }
   }, [s.incidentId, patch, fail]);
 
+  /** Follow an incident created elsewhere (a Call in from any device): load it, open its socket, rebuild from REST. */
+  const attach = useCallback(async (id: string) => {
+    if (id === wanted.current) return;
+    try {
+      const incident = await api.getIncident(id);
+      store(id);
+      setS((prev) => ({ ...initialState("live"), scripts: prev.scripts, incidentId: id, incident }));
+      connect(id);
+      void hydrate(id);
+    } catch (e) { fail(e); }
+  }, [connect, hydrate, fail]);
+
   const reset = useCallback(() => {
     wanted.current = null; window.clearTimeout(retry.current); ws.current?.close(); store(null);
     setS((prev) => ({ ...initialState("live"), scripts: prev.scripts }));
@@ -218,5 +230,5 @@ export function useLiveIncident(forceMock: boolean) {
 
   const retryApi = useCallback(() => window.location.reload(), []);
 
-  return { state: s, startCall, sendLine, confirm, resolve, approveHeld, reset, retryApi };
+  return { state: s, startCall, sendLine, confirm, resolve, approveHeld, attach, reset, retryApi };
 }

@@ -142,6 +142,20 @@ def test_websocket_streams_events(client):
         assert "location.candidates" in types
 
 
+def test_websocket_late_joiner_gets_the_transcript_so_far(client):
+    """A device that follows a Call in connects after lines were said: it catches up first."""
+    client.post("/api/incidents", json={"incident_id": "inc_late"})
+    segs = load_script("S1")[:2]
+    for seg in segs:
+        client.post("/api/incidents/inc_late/segments", json=seg.model_dump())
+    with client.websocket_connect("/ws/incidents/inc_late") as ws:
+        assert ws.receive_json()["type"] == "incident.updated"
+        past = [ws.receive_json() for _ in segs]
+        assert [e["type"] for e in past] == ["transcript.segment"] * len(segs)
+        assert [e["payload"]["segment"]["text"] for e in past] == [s.text for s in segs]
+        assert all(e["snapshot"] and "extracted" in e["payload"] for e in past)
+
+
 def test_restart_replays_from_workspace(tmp_path):
     s = Settings(data_mode="fixture", workspace=tmp_path / "ws", fixtures=FIXTURES, tiger_url=None, pipeline="rules")
     with TestClient(create_app(s)) as c:

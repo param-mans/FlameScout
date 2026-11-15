@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { useLiveIncident } from "./api/useLiveIncident";
+import { useCallFeed } from "./live/callFeed";
 import { DemoControls } from "./components/DemoControls";
 import { DispatcherConsole } from "./components/DispatcherConsole";
 import { MdtView, type IncidentInfo } from "./components/MdtView";
+import { CallIn } from "./components/CallIn";
 import { Btn } from "./components/ui";
 import { humanizeKeys } from "./labels";
 import { readSampleParam, setSampleParam, useSampleHouses } from "./components/viewer/BuildingViewer";
@@ -32,6 +34,12 @@ export default function App() {
   const live = useLiveIncident(FORCE_MOCK);
   const st = live.state;
   const isLive = st.mode === "live";
+  // Call in on any device: every open instance follows that call's incident in the Dispatcher view.
+  const activeCall = useCallFeed((c) => {
+    if (FORCE_MOCK) return;
+    void live.attach(c.incident_id);
+    setView("dispatcher");
+  });
 
   // Incident building for the MDT viewer: the sample picked in Demo / Controls (?sample=<id>), else the first sample.
   // TODO: map the confirmed API building to a sample house once the heroes have scans in the viewer.
@@ -89,6 +97,7 @@ export default function App() {
                 {scriptValue === "" ? (st.incidentId ? "New blank incident" : "Start blank incident") : st.incidentId ? "New call" : "Run call"}
               </Btn>
               {st.incidentId && <span className="num text-[11px] text-faint" title="Incident id">{st.incidentId}</span>}
+              <CallIn feed={activeCall} onStart={(c) => { void live.attach(c.incident_id); setView("dispatcher"); }} />
             </>
           )}
           {st.mode === "mock" && <Btn onClick={live.retryApi}>Retry API</Btn>}

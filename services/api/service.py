@@ -226,6 +226,20 @@ class IncidentService:
         with self._lock(incident_id):
             return self._engine(incident_id).record
 
+    def transcript(self, incident_id: str) -> list[dict[str, Any]]:
+        """Every segment so far as transcript.segment payloads ({segment, extracted}), in order. Lets a
+        client that joins or reconnects mid-call (another device following a Call in) catch up."""
+        with self._lock(incident_id):
+            self._engine(incident_id)
+            out = []
+            for item in self.ws.read_jsonl(self._dir(incident_id) / "inputs.jsonl"):
+                if item.get("type") != "segment":
+                    continue
+                ex = item.get("extracted") or []
+                out.append({"segment": item["segment"],
+                            "extracted": [{"key": f["key"], "value": f["value"], "quote": f["quote"]} for f in ex]})
+            return out
+
     def delete_incident(self, incident_id: str) -> None:
         with self._lock(incident_id):
             self.ws.delete_incident(check_id(incident_id))

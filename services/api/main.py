@@ -25,7 +25,9 @@ from services.agents.extract import GeminiExtractor, get_extractor
 from services.agents.llm import configured, critic_provider, fallback_provider, model_name, provider
 
 from .config import ROOT, Settings
+from . import transcribe
 from .events import EventBus
+from .calls import CallRegistry, LiveCall
 from .service import Conflict, IncidentService
 from .store import NotFound
 
@@ -33,7 +35,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("flamescout.api")
 CALLS_DIR = ROOT / "data" / "fixtures" / "calls"
 Role = Literal["dispatcher", "officer", "admin"]
-
+CALLS_TOPIC = "_calls"   # event bus topic for /ws/calls (not an incident id: those never start with "_")
 
 # ---------------- request bodies ----------------
 
@@ -52,6 +54,11 @@ class SimulateIn(BaseModel):
     speed: float = Field(default=1.0, gt=0, le=20)
     confirm_building_id: Optional[str] = None   # simulate the dispatcher's tap ...
     confirm_after_segment: Optional[int] = None  # ... after this segment index (default: when located)
+
+
+class WebCallIn(BaseModel):
+    incident_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    call_label: str = Field(pattern=r"^c[0-9]{1,3}$")
 
 
 class ConfirmIn(BaseModel):
@@ -89,6 +96,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     app = FastAPI(title="FlameScout API", version="0.1.0", lifespan=lifespan,
                   description="Advisory size-up briefs from simulated dispatch calls. Simulation only.")
+
     app.state.svc, app.state.bus = svc, bus
     app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True,
                        allow_methods=["*"], allow_headers=["*"])
@@ -208,6 +216,71 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return {"incident_id": incident_id, "status": "done", "segments": len(segs),
                 "incident": rec.model_dump(mode="json")}
 
+    # ---------------- Call in: one device records, every open web app follows (/ws/calls) ----------------
+    def _new_call_incident() -> str:
+        return svc.create_incident().incident_id
+
+    calls = CallRegistry(_new_call_incident, svc.ws.incident_exists, settings.call_incident_window_s)
+    app.state.calls = calls
+
+    def _emit_call(call: LiveCall) -> None:
+        svc.bus.publish(call.incident_id, "call.status", {"call": call.public()}, svc.trace_id(call.incident_id))
+        svc.bus.publish(CALLS_TOPIC, "call.status", {"call": call.public()})   # every open web app (/ws/calls)
+
+    def _record(incident_id: str, call_label: str, text: str, t0: float, t1: float) -> None:
+        """One transcribed caller sentence -> fusion."""
+        svc.ingest_segment(incident_id, CallSegment(call_id=call_label, speaker="caller", text=text,
+                                                    t_start=t0, t_end=t1))
+
+    @app.post("/api/calls/web/callin")
+    async def callin_start() -> dict:
+        """The caller's device starts a call. Every open web app sees it on /ws/calls and follows it."""
+        call = await asyncio.to_thread(calls.start)
+        call.status = "connected"
+        _emit_call(call)
+        return {"incident_id": call.incident_id, "call_label": call.call_id}
+
+    @app.post("/api/calls/web/callin/audio")
+    async def callin_audio(request: Request, incident_id: str = Query(pattern=r"^[A-Za-z0-9_-]{1,64}$"),
+                           call_label: str = Query(pattern=r"^c[0-9]{1,3}$")) -> dict:
+        """The whole recording (audio/wav) at the end of the call: Gemini transcribes it in one go, each
+        sentence becomes a caller segment, then the call ends. 503 = transcription failed; the call stays
+        open so the device can retry or end it."""
+        call = calls.get(incident_id, call_label)
+        if call is None or not call.active:
+            raise NotFound(f"live call {incident_id}/{call_label}")
+        wav = await request.body()
+        if len(wav) > transcribe.MAX_WAV_BYTES:
+            raise HTTPException(413, f"at most {transcribe.MAX_SECONDS // 60} minutes of audio")
+        try:
+            duration = transcribe.duration_s(wav)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        call.status = "transcribing"
+        _emit_call(call)
+        try:
+            sentences = await asyncio.to_thread(transcribe.transcribe_monologue, wav)
+        except Exception as e:  # noqa: BLE001 - quota, outage, bad model id
+            log.warning("transcription failed: %r", e)
+            call.status = "connected"
+            _emit_call(call)
+            raise HTTPException(503, "transcription unavailable") from e
+        for text, t0, t1 in transcribe.timed(sentences, duration):
+            await asyncio.to_thread(_record, incident_id, call_label, text, t0, t1)
+        calls.end(call)
+        _emit_call(call)
+        return {"sentences": sentences, "recorded": len(sentences), "seconds": round(duration, 1)}
+
+    @app.post("/api/calls/web/end")
+    def web_call_end(body: WebCallIn) -> dict:
+        """Cancel: the caller's device hung up without sending a recording."""
+        call = calls.get(body.incident_id, body.call_label)
+        if call is None:
+            raise NotFound(f"live call {body.incident_id}/{body.call_label}")
+        calls.end(call)
+        _emit_call(call)
+        return {"call": call.public()}
+
     # ---------------- location (FR-3) ----------------
     @app.get("/api/incidents/{incident_id}/candidates", response_model=list[LocationCandidate])
     def get_candidates(incident_id: str, refresh: bool = False) -> list[LocationCandidate]:
@@ -300,6 +373,24 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return svc.metrics.stage_summary()
 
     # ---------------- websocket ----------------
+    @app.websocket("/ws/calls")
+    async def ws_calls(websocket: WebSocket) -> None:
+        """Every call's status, for every open web app: the active calls first, then each change. A web
+        app follows a call-in from another device by attaching to its incident."""
+        await websocket.accept()
+        q = bus.subscribe(CALLS_TOPIC)
+        try:
+            for c in calls.calls(active_only=True):
+                await websocket.send_json({"type": "call.status", "incident_id": c.incident_id, "snapshot": True,
+                                           "payload": {"call": c.public()}})
+            while True:
+                ev = await q.get()
+                await websocket.send_json(ev.model_dump(mode="json"))
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+        finally:
+            bus.unsubscribe(CALLS_TOPIC, q)
+
     @app.websocket("/ws/incidents/{incident_id}")
     async def ws_incident(websocket: WebSocket, incident_id: str) -> None:
         await websocket.accept()
@@ -307,12 +398,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         try:
             try:   # snapshot first so a late client has the full picture
                 rec = await asyncio.to_thread(svc.get_incident, incident_id)
-                await websocket.send_json({"type": "incident.updated", "incident_id": incident_id,
-                                           "trace_id": svc.trace_id(incident_id), "snapshot": True,
-                                           "payload": {"incident": rec.model_dump(mode="json")}})
+                past = await asyncio.to_thread(svc.transcript, incident_id)
             except (NotFound, ValueError):
                 await websocket.close(code=4404)
                 return
+            trace = svc.trace_id(incident_id)
+            await websocket.send_json({"type": "incident.updated", "incident_id": incident_id,
+                                       "trace_id": trace, "snapshot": True,
+                                       "payload": {"incident": rec.model_dump(mode="json")}})
+            # The transcript so far, as the same events a live client got. A line recorded between
+            # subscribe and this read can arrive twice; clients dedupe by (call, t_start, text).
+            for p in past:
+                await websocket.send_json({"type": "transcript.segment", "incident_id": incident_id,
+                                           "trace_id": trace, "snapshot": True, "payload": p})
             while True:
                 ev = await q.get()
                 await websocket.send_json(ev.model_dump(mode="json"))

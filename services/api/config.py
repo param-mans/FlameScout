@@ -22,5 +22,9 @@ class Settings:
     cors_origins: list[str] = field(default_factory=lambda: [
         o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()])
 
+    # Call in: a second call within this many seconds joins the same incident as c2.
+    call_incident_window_s: float = field(
+        default_factory=lambda: float(os.getenv("CALL_INCIDENT_WINDOW_S", "600")))
+
     def env(self) -> dict[str, str]:
         return dict(os.environ)
