@@ -240,15 +240,40 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         _emit_call(call)
         return {"incident_id": call.incident_id, "call_label": call.call_id}
 
-    @app.post("/api/calls/web/callin/audio")
+    transcribing: set[asyncio.Task] = set()   # strong refs: a bare create_task can be garbage-collected
+
+    async def _transcribe_call(call: LiveCall, wav: bytes, duration: float) -> None:
+        """Background half of the upload: transcribe, record each sentence, end the call. On failure the
+        call stays open as transcription_failed so the device can send the recording again."""
+        try:
+            sentences = await asyncio.to_thread(transcribe.transcribe_monologue, wav)
+        except Exception as e:  # noqa: BLE001 - quota, outage, bad model id
+            log.warning("transcription failed: %r", e)
+            if call.active:                   # not cleared meanwhile
+                call.status = "transcription_failed"
+                _emit_call(call)
+            return
+        if not call.active:                   # Clear call while transcribing: drop the transcript
+            return
+        for text, t0, t1 in transcribe.timed(sentences, duration):
+            await asyncio.to_thread(_record, call.incident_id, call.call_id, text, t0, t1)
+        call.recorded = len(sentences)
+        calls.end(call)
+        _emit_call(call)
+
+    @app.post("/api/calls/web/callin/audio", status_code=202)
     async def callin_audio(request: Request, incident_id: str = Query(pattern=r"^[A-Za-z0-9_-]{1,64}$"),
                            call_label: str = Query(pattern=r"^c[0-9]{1,3}$")) -> dict:
-        """The whole recording (audio/wav) at the end of the call: transcribed in one go, each
-        sentence becomes a caller segment, then the call ends (transcribe.py: LLM_PROVIDER, then the fallback). 503 = transcription failed; the call stays
-        open so the device can retry or end it."""
+        """The whole recording (audio/wav) at the end of the call. Answers 202 at once and transcribes in
+        the background (transcribe.py: LLM_PROVIDER, then the fallback), which can take minutes, longer
+        than a phone browser keeps a request open. Each sentence becomes a caller segment, then the call
+        ends. Follow it with GET /api/calls/web/callin/status: completed (with `recorded`), or
+        transcription_failed (the call stays open; send the recording again). 409 = already transcribing."""
         call = calls.get(incident_id, call_label)
         if call is None or not call.active:
             raise NotFound(f"live call {incident_id}/{call_label}")
+        if call.status == "transcribing":
+            raise HTTPException(409, "already transcribing this call")
         wav = await request.body()
         if len(wav) > transcribe.MAX_WAV_BYTES:
             raise HTTPException(413, f"at most {transcribe.MAX_SECONDS // 60} minutes of audio")
@@ -258,18 +283,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(422, str(e)) from e
         call.status = "transcribing"
         _emit_call(call)
-        try:
-            sentences = await asyncio.to_thread(transcribe.transcribe_monologue, wav)
-        except Exception as e:  # noqa: BLE001 - quota, outage, bad model id
-            log.warning("transcription failed: %r", e)
-            call.status = "connected"
-            _emit_call(call)
-            raise HTTPException(503, "transcription unavailable") from e
-        for text, t0, t1 in transcribe.timed(sentences, duration):
-            await asyncio.to_thread(_record, incident_id, call_label, text, t0, t1)
-        calls.end(call)
-        _emit_call(call)
-        return {"sentences": sentences, "recorded": len(sentences), "seconds": round(duration, 1)}
+        task = asyncio.create_task(_transcribe_call(call, wav, duration))
+        transcribing.add(task)
+        task.add_done_callback(transcribing.discard)
+        return {"call": call.public(), "seconds": round(duration, 1)}
+
+    @app.get("/api/calls/web/callin/status")
+    def callin_status(incident_id: str = Query(pattern=r"^[A-Za-z0-9_-]{1,64}$"),
+                      call_label: str = Query(pattern=r"^c[0-9]{1,3}$")) -> dict:
+        """The call's status, polled by the device that uploaded the recording."""
+        call = calls.get(incident_id, call_label)
+        if call is None:
+            raise NotFound(f"call {incident_id}/{call_label}")
+        return {"call": call.public()}
 
     @app.post("/api/calls/web/end")
     def web_call_end(body: WebCallIn) -> dict:

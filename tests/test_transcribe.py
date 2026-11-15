@@ -1,5 +1,6 @@
 """Call-in monologue: one recording -> Gemini sentences -> caller segments; /ws/calls follows it. Offline."""
 import io
+import time
 import wave
 
 import pytest
@@ -47,6 +48,18 @@ def upload(client, call, body=None):
                        params={"incident_id": call["incident_id"], "call_label": call["call_label"]})
 
 
+def settled(client, call, timeout=5.0):
+    """Poll the call's status until the background transcription is over (as the web app does)."""
+    params = {"incident_id": call["incident_id"], "call_label": call["call_label"]}
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        c = client.get("/api/calls/web/callin/status", params=params).json()["call"]
+        if c["status"] != "transcribing":
+            return c
+        time.sleep(0.02)
+    raise AssertionError("still transcribing")
+
+
 def test_callin_is_announced_to_every_open_app(client):
     with client.websocket_connect("/ws/calls") as feed:
         call = client.post("/api/calls/web/callin").json()
@@ -65,10 +78,12 @@ def test_monologue_is_transcribed_in_one_go_and_ends_the_call(client, monkeypatc
     call = client.post("/api/calls/web/callin").json()
     with client.websocket_connect("/ws/calls") as feed:
         feed.receive_json()                                    # snapshot: the active call
-        r = upload(client, call).json()
+        r = upload(client, call)
         statuses = [feed.receive_json()["payload"]["call"]["status"] for _ in range(2)]
-    assert r == {"sentences": said, "recorded": 3, "seconds": 4.0}
+    assert r.status_code == 202 and r.json()["seconds"] == 4.0          # answered before transcribing
     assert statuses == ["transcribing", "completed"]
+    done = settled(client, call)
+    assert done["status"] == "completed" and done["recorded"] == 3
     inc = client.get(f"/api/incidents/{call['incident_id']}").json()
     assert inc["facts"]["location.address"]["value"] == "1200 Wilshire Boulevard"
     assert inc["facts"]["incident.floor"]["value"] == 3 and inc["facts"]["people.trapped"]["value"] is True
@@ -83,9 +98,23 @@ def test_failed_transcription_keeps_the_call_open_for_a_retry(client, monkeypatc
     def boom(wav):
         raise RuntimeError("quota")
     monkeypatch.setattr(transcribe, "transcribe_monologue", boom)
-    assert upload(client, call).status_code == 503
+    assert upload(client, call).status_code == 202
+    assert settled(client, call)["status"] == "transcription_failed"      # still open: retry
     monkeypatch.setattr(transcribe, "transcribe_monologue", lambda wav: ["Smoke on the third floor."])
-    assert upload(client, call).json()["recorded"] == 1
+    assert upload(client, call).status_code == 202
+    assert settled(client, call)["recorded"] == 1
+
+
+def test_second_upload_while_transcribing_is_409(client, monkeypatch):
+    import threading
+
+    gate = threading.Event()
+    monkeypatch.setattr(transcribe, "transcribe_monologue", lambda wav: gate.wait(5) and ["Fire."])
+    call = client.post("/api/calls/web/callin").json()
+    assert upload(client, call).status_code == 202
+    assert upload(client, call).status_code == 409
+    gate.set()
+    assert settled(client, call)["status"] == "completed"
 
 
 def test_bad_audio_is_rejected(client, monkeypatch):

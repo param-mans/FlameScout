@@ -21,9 +21,12 @@ class LiveCall:
     incident_id: str
     call_id: str                       # c1, c2, ... within the incident (CallSegment.call_id)
     direction: str = "callin"
-    status: str = "started"            # started | connected | transcribing | completed | canceled | failed
+    # started | connected | transcribing | transcription_failed (still open: the device can retry) |
+    # completed | canceled | failed
+    status: str = "started"
     started_at: float = field(default_factory=time.time)
     ended_at: Optional[float] = None
+    recorded: Optional[int] = None     # caller sentences from the recording, once transcribed
 
     @property
     def active(self) -> bool:
@@ -31,7 +34,8 @@ class LiveCall:
 
     def public(self) -> dict[str, Any]:
         return {"incident_id": self.incident_id, "call_id": self.call_id, "direction": self.direction,
-                "status": self.status, "started_at": self.started_at, "ended_at": self.ended_at}
+                "status": self.status, "started_at": self.started_at, "ended_at": self.ended_at,
+                "recorded": self.recorded}
 
 
 class CallRegistry:

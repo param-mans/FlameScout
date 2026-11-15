@@ -6,7 +6,7 @@ export interface CallInfo {
   incident_id: string;
   call_id: string;            // c1, c2, ... within the incident
   direction: string;          // "callin" for the web app's Call in
-  status: string;             // connected | transcribing | completed | failed | ...
+  status: string;             // connected | transcribing | transcription_failed | completed | failed | ...
   started_at: number;
 }
 
