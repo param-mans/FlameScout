@@ -59,6 +59,8 @@ export interface IncidentRecord {
   contradictions: Contradiction[];
   open_questions: string[];
   confirmed_building_id?: string | null;
+  /** who confirmed the location: "auto" (AUTO_CONFIRM_LOCATION) or "dispatcher" */
+  confirmed_by?: string | null;
   ready_to_brief: boolean;
 }
 

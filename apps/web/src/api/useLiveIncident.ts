@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ApiEvent, Brief, BuildingCandidate, CallSegment, CopilotSuggestion, ExtractedFact, IncidentRecord, Progress } from "../types/schemas";
 import { api, ApiError, type ScriptInfo } from "./client";
+import { overlayFromEvent } from "../house/useIncidentSocket";
+import { INCIDENT_OFF, publishLiveFeed } from "../house/liveFeed";
 
 // Live data for the Dispatcher console and the MDT: REST for actions and hydration, one WebSocket per incident
 // (/ws/incidents/{id}) for everything that changes. Falls back to mock data (see App) when the API is down.
@@ -27,22 +29,26 @@ export interface LiveState {
   scripts: ScriptInfo[];
   busy: string | null;     // what the dispatcher just asked for, until the next event
   error: string | null;
+  /** Last overlay.updated overlay and last event type: handed to the house viewer (house/liveFeed.ts), no second socket. */
+  overlay: Record<string, unknown> | null;
+  lastEvent: string | null;
 }
 
 const STORE_KEY = "flamescout.incident";
 const initialState = (mode: Mode): LiveState => ({
   mode, conn: "idle", incidentId: null, incident: null, segments: [], extracted: {}, candidates: [], brief: null, held: null,
-  progress: null, suggestions: [], scripts: [], busy: null, error: null,
+  progress: null, suggestions: [], scripts: [], busy: null, error: null, overlay: null, lastEvent: null,
 });
 
 const readStored = (): string | null => {
   const q = new URLSearchParams(window.location.search).get("incident");
-  if (q) return q;
+  if (q && q !== "off") return q;   // ?incident=off only turns the viewer overlay off
   try { return window.localStorage.getItem(STORE_KEY); } catch { return null; }
 };
 const store = (id: string | null) => {
   try { id ? window.localStorage.setItem(STORE_KEY, id) : window.localStorage.removeItem(STORE_KEY); } catch { /* private mode */ }
   const url = new URL(window.location.href);
+  if (INCIDENT_OFF) return;   // keep ?incident=off in the URL
   id ? url.searchParams.set("incident", id) : url.searchParams.delete("incident");
   window.history.replaceState(window.history.state, "", url);
 };
@@ -63,7 +69,12 @@ export function useLiveIncident(forceMock: boolean) {
   // ---- event reducer: one WebSocket message -> state ----
   const onEvent = useCallback((ev: ApiEvent) => {
     const p = ev.payload as Record<string, any>;  // eslint-disable-line @typescript-eslint/no-explicit-any
+    if (typeof ev.type === "string") patch({ lastEvent: ev.type });
     switch (ev.type) {
+      case "overlay.updated": {
+        const overlay = overlayFromEvent(ev);
+        return overlay ? patch({ overlay }) : undefined;
+      }
       case "incident.updated":
         return patch({ incident: p.incident as IncidentRecord });
       case "transcript.segment": {
@@ -87,7 +98,7 @@ export function useLiveIncident(forceMock: boolean) {
           : patch({ held: { version: brief.version, needsReview: (p.needs_review as string[]) ?? [], brief }, busy: null });
       }
       default:
-        return undefined;   // contradiction.raised (incident.updated covers it), metric.tick, overlay.updated
+        return undefined;   // contradiction.raised (incident.updated covers it), metric.tick
     }
   }, [patch]);
 
@@ -115,11 +126,12 @@ export function useLiveIncident(forceMock: boolean) {
 
   // Everything the socket does not replay: after (re)connect, rebuild what we can from REST.
   const hydrate = useCallback(async (id: string) => {
-    const [cands, brief, sugg] = await Promise.allSettled([api.candidates(id), api.latestBrief(id), api.copilot(id)]);
+    const [cands, brief, sugg, ov] = await Promise.allSettled([api.candidates(id), api.latestBrief(id), api.copilot(id), api.latestOverlay(id)]);
     patch((prev) => ({
       candidates: cands.status === "fulfilled" && cands.value.length ? cands.value : prev.candidates,
       brief: brief.status === "fulfilled" ? brief.value : prev.brief,
       suggestions: sugg.status === "fulfilled" ? sugg.value : prev.suggestions,
+      overlay: prev.overlay ?? (ov.status === "fulfilled" ? overlayFromEvent({ type: "overlay.updated", payload: ov.value }) : null),
     }));
   }, [patch]);
 
@@ -147,6 +159,11 @@ export function useLiveIncident(forceMock: boolean) {
     })();
     return () => { alive = false; wanted.current = null; window.clearTimeout(retry.current); ws.current?.close(); };
   }, [forceMock, connect, hydrate, patch]);
+
+  // Share the incident with the house viewer (BuildingViewer reads it instead of opening its own socket).
+  useEffect(() => {
+    publishLiveFeed({ mode: s.mode, incidentId: s.incidentId, conn: s.conn, incident: s.incident, overlay: s.overlay, lastEvent: s.lastEvent });
+  }, [s.mode, s.incidentId, s.conn, s.incident, s.overlay, s.lastEvent]);
 
   const fail = useCallback((e: unknown) => patch({ busy: null, error: message(e) }), [patch]);
 

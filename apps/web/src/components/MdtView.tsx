@@ -7,6 +7,8 @@ import { SitePlan, type Layers } from "./SitePlan";
 import { Btn, KV, Panel, StatusTag, fmt } from "./ui";
 import { BuildingViewer, HOUSE_VIEWER_DEFAULT } from "./viewer/BuildingViewer";
 import { HouseMdtView } from "../house/HouseMdtView";
+import { useConfirmedHouse } from "../house/liveFeed";
+import { ConfirmedHouseView } from "../house/ConfirmedHouseView";
 
 // House viewer mode (HOUSE_VIEWER_DEFAULT or ?viewer=1; ?viewer=0 turns it off): one central "Floor plan + 3D" view
 // instead of the Map / Floor 2D / 3D scan tabs. It loads the incident building (sampleId) directly; the temporary
@@ -84,6 +86,8 @@ function MdtWaiting({ info, progress, waiting }: { info: IncidentInfo; progress?
 }
 
 export function MdtView({ brief, ...rest }: MdtProps) {
+  const house = useConfirmedHouse();   // live incident's confirmed building: its plan shows before the first brief
+  if (!brief && house.state !== "none") return <ConfirmedHouseView house={house} info={rest.info} progress={rest.progress} waiting={rest.waiting} />;
   return brief ? <MdtBrief brief={brief} {...rest} /> : <MdtWaiting info={rest.info} progress={rest.progress} waiting={rest.waiting} />;
 }
 
@@ -98,6 +102,7 @@ function MdtBrief({ brief, info, sampleId, sampleError }: MdtProps & { brief: Br
 
   const exposures = brief.exposures as Exposure[];
   const stairs = brief.markers.filter((m) => m.kind === "stair").length; // computed in code, not by an LLM
+  const house = useConfirmedHouse();   // live: the confirmed building decides the viewer (catalog + stored plan), not the markers
   const noScan = brief.markers.length === 0;
   const closest = exposures.length ? exposures.reduce((a, b) => (a.distance_m <= b.distance_m ? a : b)) : null;
   const floor = brief.size_up["incident.floor"];
@@ -185,7 +190,7 @@ function MdtBrief({ brief, info, sampleId, sampleError }: MdtProps & { brief: Br
           </div>
           <div className="relative min-h-0 flex-1">
             {VIEWER ? (
-              noScan ? (
+              (house.state === "none" ? noScan : house.state === "noScan") ? (
                 <div className="grid h-full place-items-center text-center">
                   <div>
                     <div className="num text-[15px] text-unverified">○ NO INTERIOR SCAN ON FILE</div>
@@ -193,7 +198,7 @@ function MdtBrief({ brief, info, sampleId, sampleError }: MdtProps & { brief: Br
                   </div>
                 </div>
               ) : (
-                <BuildingViewer layout="split" sampleId={sampleId} sampleError={sampleError} />
+                <BuildingViewer layout="split" sampleId={house.state === "house" ? house.sampleId : house.state === "loading" ? null : sampleId} sampleError={sampleError} />
               )
             ) : tab === "map" ? (
               <SitePlan brief={brief} layers={layers} selectedKey={sel?.key ?? null} highlightIds={highlightIds} onSelect={onMapSelect} />

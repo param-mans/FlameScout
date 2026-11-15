@@ -29,7 +29,11 @@ async function request<T>(method: string, path: string, body?: unknown, timeoutM
   }
 }
 
-export interface ScriptInfo { script_id: string; description?: string | null; segments: number }
+export interface ScriptInfo {
+  script_id: string; description?: string | null; segments: number;
+  /** From data/fixtures/calls/manifest.json; older APIs omit them. */
+  title?: string | null; group?: "showcase" | "test" | string | null; inconsistent?: boolean | null; house?: string | null;
+}
 
 export const api = {
   // Not /health: Vite (and the deploy proxy) only forward /api and /ws, so /health would return the page's HTML.
@@ -51,6 +55,7 @@ export const api = {
   resolveContradiction: (id: string, key: string, value: unknown) =>
     request<IncidentRecord>("POST", `/api/incidents/${id}/contradictions/resolve`, { key, value }),
   latestBrief: (id: string) => request<Brief>("GET", `/api/incidents/${id}/briefs/latest?published_only=true`),
+  latestOverlay: (id: string) => request<{ version: number; overlay: Record<string, unknown> }>("GET", `/api/incidents/${id}/overlay/latest`),
   copilot: (id: string) => request<CopilotSuggestion[]>("GET", `/api/incidents/${id}/copilot`),
   /** Call in: starts a call every open web app follows (/ws/calls). The recording goes to /api/calls/web/callin/audio. */
   callIn: () => request<{ incident_id: string; call_label: string }>("POST", "/api/calls/web/callin", {}),

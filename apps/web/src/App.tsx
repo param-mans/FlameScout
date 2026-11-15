@@ -3,6 +3,7 @@ import { useLiveIncident } from "./api/useLiveIncident";
 import { useCallFeed } from "./live/callFeed";
 import { DemoControls } from "./components/DemoControls";
 import { DispatcherConsole } from "./components/DispatcherConsole";
+import { ScriptPicker, defaultScript } from "./components/ScriptPicker";
 import { MdtView, type IncidentInfo } from "./components/MdtView";
 import { CallIn } from "./components/CallIn";
 import { Btn } from "./components/ui";
@@ -30,7 +31,7 @@ export default function App() {
   const [view, setView] = useState<View>("mdt");
   const [briefKey, setBriefKey] = useState<BriefKey>("v2 diff");
   const [mockConfirmed, setMockConfirmed] = useState<string | null>(null);
-  const [script, setScript] = useState("S2");
+  const [script, setScript] = useState<string | null>(null);   // null: first showcase script
   const live = useLiveIncident(FORCE_MOCK);
   const st = live.state;
   const isLive = st.mode === "live";
@@ -69,7 +70,7 @@ export default function App() {
 
   const waiting = st.busy ?? (candidates.length === 0 ? (st.incidentId ? "LISTENING…" : "NO ACTIVE INCIDENT") : undefined);
   const scriptIds = st.scripts.map((x) => x.script_id);
-  const scriptValue = script === "" || scriptIds.includes(script) ? script : scriptIds[0] ?? script;   // "" = blank incident
+  const scriptValue = script !== null && (script === "" || scriptIds.includes(script)) ? script : defaultScript(st.scripts);   // "" = blank incident
 
   return (
     <div className="flex h-full flex-col">
@@ -83,6 +84,17 @@ export default function App() {
         <Btn active={view === "mdt"} onClick={() => setView("mdt")}>MDT</Btn>
 
         <div className="ml-auto flex items-center gap-2 lg:order-last lg:ml-0">
+          {isLive && (
+            <>
+              <ScriptPicker scripts={st.scripts} value={scriptValue} onChange={setScript} />
+              <Btn onClick={() => void live.startCall(scriptValue)}>
+                {scriptValue === "" ? (st.incidentId ? "New blank incident" : "Start blank incident") : st.incidentId ? "New call" : "Run call"}
+              </Btn>
+              {st.incidentId && <span className="num text-[11px] text-faint" title="Incident id">{st.incidentId}</span>}
+              <CallIn feed={activeCall} onStart={(c) => { void live.attach(c.incident_id); setView("dispatcher"); }}
+                canClear={!!st.incidentId} onClear={live.reset} />
+            </>
+          )}
           {st.mode === "mock" && <Btn onClick={live.retryApi}>Retry API</Btn>}
           <span className="num hidden text-[10px] font-semibold tracking-wider text-dim sm:inline" title="Simulation only: no real emergency lines are called">SIMULATION</span>
           <span

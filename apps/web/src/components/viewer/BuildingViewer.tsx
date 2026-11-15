@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { liveText, useIncidentSocket, type IncidentResult } from "../../house/useIncidentSocket";
+import { liveText, useIncidentSocket, type IncidentResult, type LiveIncident } from "../../house/useIncidentSocket";
+import { useConfirmedHouse } from "../../house/liveFeed";
 
 // Static house viewer from public/house-viewer, embedded in an iframe (same origin).
 // layout "split" -> 3D + 2D plan side by side in one iframe; otherwise mode "floor" (2D) or "scan3d" (3D).
@@ -139,13 +140,16 @@ export function SamplePicker({ samples, value, onChange }: { samples: SampleHous
 }
 
 export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId: pickedId, sampleError, host = false, onIncidentState, onPlanIndex, highlightRefs }: Props) {
-  // Live overlay (only the split viewer, only with ?incident=<id>; see house/useIncidentSocket.ts): the overlay's house
-  // replaces the picked one, and the overlay is posted once the viewer reports that house ready.
+  // Live overlay (only the split viewer; the app's live incident or ?incident=<id>, see house/useIncidentSocket.ts): the
+  // overlay's house replaces the picked one, and the overlay is posted once the viewer reports that house ready.
+  // Without an overlay, the live incident's confirmed building (when it is in the catalog with a plan) comes next.
   const live = useIncidentSocket(layout === "split");
-  const sampleId = live.sampleId ?? pickedId;
+  const confirmed = useConfirmedHouse();
+  const sampleId = live.sampleId ?? (layout === "split" && confirmed.state === "house" ? confirmed.sampleId : null) ?? pickedId;
   const [result, setResult] = useState<IncidentResult | null>(null);
   const [lastApplied, setLastApplied] = useState<number | null>(null);
   const liveOn = useRef(live.enabled);
+  liveOn.current = live.enabled;
   const frame = useRef<HTMLIFrameElement>(null);
   // Sample in the iframe URL: fixed once the iframe exists; later changes go by postMessage (no reload).
   const [frameSample, setFrameSample] = useState<string | null>(sampleId);
@@ -269,11 +273,49 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId: p
   return (
     <div className="flex h-full w-full flex-col bg-bg" data-incident-version={lastApplied ?? undefined} data-live-sample={sampleId ?? undefined}>
       <div className="flex shrink-0 items-center justify-end border-b border-line bg-panel px-2 py-0.5">
-        <div role="status" data-live-status className={`num flex min-h-[44px] items-center border px-3 text-[12px] ${bad ? "border-contradicted text-contradicted" : "border-accent text-accent"}`}>
-          {liveText(live, result, lastApplied)}
-        </div>
+        <LiveChip live={live} text={liveText(live, result, lastApplied)} bad={bad} />
       </div>
       <div className="relative min-h-0 flex-1">{viewer}</div>
+    </div>
+  );
+}
+
+/** Live overlay chip (44 px). Tap: full incident id, last event type and the last overlay's model_id. */
+function LiveChip({ live, text, bad }: { live: LiveIncident; text: string; bad: boolean }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", esc);
+    return () => { window.removeEventListener("pointerdown", close); window.removeEventListener("keydown", esc); };
+  }, [open]);
+  const rows: [string, string][] = [
+    ["Incident", live.incidentId ?? "none"],
+    ["Socket", live.connection],
+    ["Last event", live.lastEvent ?? "none yet"],
+    ["Last overlay model_id", live.lastModelId ?? "none yet"],
+  ];
+  return (
+    <div ref={box} className="relative">
+      <button
+        type="button" aria-live="polite" data-live-status aria-expanded={open} aria-haspopup="dialog"
+        onClick={() => setOpen((o) => !o)}
+        className={`num flex min-h-[44px] items-center border px-3 text-[12px] ${bad ? "border-contradicted text-contradicted" : "border-accent text-accent"}`}
+      >{text}</button>
+      {open && (
+        <div role="dialog" aria-label="Live overlay details" data-live-details
+          className="absolute right-0 top-full z-30 mt-1 w-[340px] border border-line-hi bg-panel p-2 text-[12px] shadow-[0_8px_24px_rgba(0,0,0,0.5)]">
+          {rows.map(([k, v]) => (
+            <div key={k} className="grid grid-cols-[140px_1fr] gap-2 border-b border-line py-1 last:border-0">
+              <span className="label">{k}</span>
+              <span className="num break-all text-ink">{v}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

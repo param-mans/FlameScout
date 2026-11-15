@@ -3,6 +3,7 @@ import { factLabel } from "../labels";
 import { segKey } from "../api/useLiveIncident";
 import type { BuildingCandidate, CallSegment, ExtractedFact, IncidentRecord, Progress } from "../types/schemas";
 import { PlanList } from "./PlanList";
+import { LocationStatus, useShowConfirm } from "./ConfirmGate";
 import { ExtractedChips, TranscriptComposer } from "./TranscriptComposer";
 import { Btn, KV, Panel, fmt } from "./ui";
 
@@ -33,6 +34,7 @@ export function DispatcherConsole({
   // Dispatcher's choice per contradicted key, shown at once; the API confirms it with incident.updated.
   const [resolved, setResolved] = useState<Record<string, unknown>>({});
   const isResolved = (key: string) => key in resolved;
+  const showConfirm = useShowConfirm(incident, candidates, confirmedId);   // hidden after an automatic confirmation
 
   return (
     // Below lg (phones, iPad portrait): one scrolling column. lg+: three columns that scroll on their own.
@@ -97,7 +99,7 @@ export function DispatcherConsole({
         </Panel>
 
         <div className="order-2 grid min-h-0 grid-rows-[auto_1fr] gap-px bg-line lg:order-none">
-          <Panel title="Confirm location" right={busy ?? (confirmedId ? "confirmed" : "awaiting")} className="shadow-[inset_0_2px_0_var(--color-accent)]">
+          {!showConfirm ? <LocationStatus incident={incident} candidates={candidates} confirmedId={confirmedId} progress={progress} busy={busy} /> : <Panel title="Confirm location" right={busy ?? (confirmedId ? "confirmed" : "awaiting")} className="shadow-[inset_0_2px_0_var(--color-accent)]">
             {candidates.length === 0 && <div className="p-3 text-dim">Awaiting address…</div>}
             {candidates.map((c) => {
               const on = confirmedId === c.building_id;
@@ -121,7 +123,7 @@ export function DispatcherConsole({
             })}
             {!confirmedId && candidates.length > 0 && <div className="px-3 py-2 text-[12px] text-faint">No brief is produced until the dispatcher confirms.</div>}
             <PlanList progress={progress ?? null} />
-          </Panel>
+          </Panel>}
           <Panel title="Copilot" right="suggested questions">
             {(questions ?? incident.open_questions).map((q) => (
               <div key={q} className="border-b border-line px-2.5 py-1.5">{q}</div>
