@@ -8,7 +8,13 @@ set -euo pipefail
 APP_DIR=/opt/flamescout
 
 if [ "${1:-}" = "--sync" ]; then
+  # Keep the server's SITE_ADDRESS (Caddy's HTTPS name) when the local .env has none: without it the site
+  # falls back to plain HTTP on :80.
+  site=$(ssh "$VULTR_HOST" "grep '^SITE_ADDRESS=' $APP_DIR/.env 2>/dev/null || true")
   scp .env "$VULTR_HOST:$APP_DIR/.env"
+  if [ -n "$site" ] && ! grep -q '^SITE_ADDRESS=' .env; then
+    ssh "$VULTR_HOST" "echo '$site' >> $APP_DIR/.env"
+  fi
   if [ -f data/costar/properties.jsonl ]; then
     scp data/costar/properties.jsonl "$VULTR_HOST:$APP_DIR/data/costar/properties.jsonl"
   fi
