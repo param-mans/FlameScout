@@ -16,7 +16,8 @@
 //   c. New call -> second incident: the socket moves to the new id and its overlays show (v1, v2 again)
 //   d. --invalid: REJECTED v3 (keeping v2), [data-incident-version] stays 2
 //   e. --off-catalog: "No interior scan on file"
-//   f. ?mock=tower: no WebSocket, no chip
+//   f. ?mock=tower: no incident WebSocket, no chip (/ws/calls, the Call in feed, is not counted)
+//   g. Clear call clears the screen; a Call in from another device -> the viewer follows its incident
 //   Explicit ?incident=demo:
 //   1. the chip goes LIVE · v1 then LIVE · v2 and [data-incident-version] follows (1, then 2); the viewer switches to
 //      Fairdale ([data-live-sample], start: ?sample=214905148)
@@ -109,7 +110,8 @@ async function open(browserType, query) {
   const page = await ctx.newPage(), errors = [], sockets = [], openSockets = new Set();
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
   page.on("pageerror", (e) => errors.push(String(e)));
-  page.on("websocket", (ws) => { sockets.push(ws.url()); openSockets.add(ws); ws.on("close", () => openSockets.delete(ws)); });
+  // only the incident sockets count: /ws/calls (Call in feed, origin/main) opens on every screen, ?mock=tower included
+  page.on("websocket", (ws) => { if (/\/ws\/calls$/.test(ws.url())) return; sockets.push(ws.url()); openSockets.add(ws); ws.on("close", () => openSockets.delete(ws)); });
   await page.goto(`${BASE}/${query}`, { waitUntil: "load" });
   return { browser, page, errors, sockets, openSockets };
 }
@@ -118,7 +120,9 @@ const liveSample = (page) => page.locator("[data-live-sample]").first().getAttri
 const shot = async (page, name) => { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await page.screenshot({ path: path.join(SHOTS, name) }); } };
 const NOT_FOUND = "404"; // briefs/latest + overlay/latest before the first brief (the real API answers 404 too)
 const cleanConsole = (errors, allowed = []) => {
-  const bad = errors.filter((e) => ![...allowed, NOT_FOUND].some((a) => e.includes(a)));
+  // /ws/calls is the Call in feed (live/callFeed.ts, origin/main): StrictMode closes its first socket while connecting,
+  // the same messages show on origin/main; only this test's own sockets (/ws/incidents) are judged here.
+  const bad = errors.filter((e) => ![...allowed, NOT_FOUND, "/ws/calls"].some((a) => e.includes(a)));
   bad.forEach((e) => fail(`console: ${e.slice(0, 160)}`));
   if (!bad.length) ok(`console clean${errors.length ? ` (${errors.length} expected message(s))` : ""}`);
 };
@@ -143,7 +147,7 @@ try {
   for (const bt of browsers) {
     console.log(`== ${bt.name()} app flow`);
     // a-c. Run call, confirmed house before any overlay, overlays, second incident
-    await startMock(["--v1", "10", "--v2", "14"]);
+    await startMock(["--v1", "20", "--v2", "24"]);
     let r = await open(bt, `?sample=${START}`);
     const id1 = await runCall(r.page);
     if (id1) ok(`a. incident created: ${id1}`);
@@ -160,6 +164,15 @@ try {
     if (await waitChip(r.page, "LIVE · v1") && await waitChip(r.page, "LIVE · v2", 15000)) ok("c. new incident's v1 then v2");
     const open2 = [...r.openSockets].map((w) => w.url());
     if (open2.length === 1 && open2[0].endsWith(`/ws/incidents/${id2}`)) ok("c. one socket open, on the new incident"); else fail(`c. open sockets: ${JSON.stringify(open2)}`);
+    // g. Clear call, then a Call in from another device: the screen clears and the viewer follows the new incident
+    await r.page.getByRole("button", { name: /Clear call/ }).first().tap();
+    if (await until(async () => (await version(r.page)) === null && (await r.page.evaluate(() => localStorage.getItem("flamescout.incident"))) === null, 10000, "cleared")) ok("g. Clear call: overlay and incident cleared");
+    const id3 = (await (await r.page.request.post(`${BASE}/api/calls/web/callin`)).json()).incident_id;
+    if (await until(async () => (await r.page.evaluate(() => localStorage.getItem("flamescout.incident"))) === id3, 10000, "attached to the Call in")) ok(`g. app follows the Call in: ${id3}`);
+    await r.page.getByRole("button", { name: /^MDT$/ }).first().tap();
+    if (await waitChip(r.page, "LIVE · v1") && await waitChip(r.page, "LIVE · v2", 15000)) ok("g. viewer shows the new incident's v1 then v2");
+    const open3 = [...r.openSockets].map((w) => w.url());
+    if (open3.length === 1 && open3[0].endsWith(`/ws/incidents/${id3}`)) ok("g. one incident socket, on the Call in's incident"); else fail(`g. open sockets: ${JSON.stringify(open3)}`);
     cleanConsole(r.errors);
     await r.browser.close();
 

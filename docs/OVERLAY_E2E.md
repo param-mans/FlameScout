@@ -92,3 +92,11 @@ from `data/raw`, Vexcel test stub, no external API). WebKit with touch at 1180×
 ## Deployment
 
 The deployed site needs Caddy to forward `/ws/*`, with WebSocket upgrade, to the API. That is not part of this change.
+
+### Call in and Clear call
+
+The mock also answers `POST /api/calls/web/callin` (a call from another device: a new incident on `/ws/calls`) and
+`POST /api/calls/web/clear` (`calls.cleared`). Case g: Clear call clears the overlay and the stored incident, then a Call
+in moves the app and the viewer to the new incident (one incident socket, its v1 and v2). The socket checks count only
+`/ws/incidents/*`: the Call in feed (`/ws/calls`) opens on every screen, `?mock=tower` included, as on origin/main, and its StrictMode console messages (also on origin/main) are not judged.
+

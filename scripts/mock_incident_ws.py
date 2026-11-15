@@ -26,6 +26,7 @@ import asyncio
 import copy
 import json
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -112,6 +113,38 @@ def create_app(args: argparse.Namespace) -> FastAPI:
     @app.get("/api/incidents/{incident_id}/overlay/latest")
     def none_yet(incident_id: str) -> dict:
         raise HTTPException(404, "not found: no brief yet")
+
+    # Call in / Clear call (services/api/main.py /api/calls/web/*, /ws/calls): another device starts a call
+    call_socks: set = set()
+
+    async def broadcast(msg: dict) -> None:
+        for ws in list(call_socks):
+            try:
+                await ws.send_json(msg)
+            except Exception:  # noqa: BLE001 - client gone
+                call_socks.discard(ws)
+
+    @app.post("/api/calls/web/callin")
+    async def callin() -> dict:
+        iid = f"inc_{uuid.uuid4().hex[:10]}"
+        await broadcast({"type": "call.status", "payload": {"call": {
+            "incident_id": iid, "call_id": "c1", "direction": "callin", "status": "connected", "started_at": time.time()}}})
+        return {"incident_id": iid, "call_label": "c1"}
+
+    @app.post("/api/calls/web/clear")
+    async def clear() -> dict:
+        await broadcast({"type": "calls.cleared", "payload": {}})
+        return {"canceled": []}
+
+    @app.websocket("/ws/calls")
+    async def ws_calls(websocket: WebSocket) -> None:
+        await websocket.accept()
+        call_socks.add(websocket)
+        try:
+            while True:
+                await websocket.receive_text()
+        except (WebSocketDisconnect, RuntimeError):
+            call_socks.discard(websocket)
 
     @app.websocket("/ws/incidents/{incident_id}")
     async def ws_incident(websocket: WebSocket, incident_id: str) -> None:
