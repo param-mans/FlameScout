@@ -46,6 +46,34 @@ export function housePeople(plan, ev, overlay) {
   return out
 }
 
+// Rooms the plan leaves without a doorway to the rest (a missed door in the scan, a garage with its own door): join each
+// such component to the nearest room of the first door's part on the same floor, through the closest pair of wall points, with a penalty.
+// Without this the person in that room is "unreachable" and the green route is not drawn at all.
+const BRIDGE_PEN = 4
+function bridge(ev, ady, doors) {
+  const vis = (from) => { const seen = new Set(from), q = [...from]; while (q.length) for (const e of ady.get(q.pop()) || []) if (!seen.has(e.to)) { seen.add(e.to); q.push(e.to) } return seen }
+  for (let guard = 0; guard < 50; guard++) {
+    const ok = vis(doors.length ? [doors[0].to] : []), lost = [...ev.nodos.keys()].filter((k) => !ok.has(k))
+    if (!lost.length || !ok.size) return
+    let best = null
+    for (const a of lost) {
+      const A = ev.nodos.get(a)
+      for (const b of ok) {
+        const B = ev.nodos.get(b); if (B.fi !== A.fi) continue
+        for (const p of A.room.polygon) for (const q of B.room.polygon) {
+          const d = Math.hypot(p[0] - q[0], p[1] - q[1])
+          if (!best || d < best.d) best = { a, b, d, p: [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2] }
+        }
+      }
+    }
+    if (!best) return
+    const A = ev.nodos.get(best.a), B = ev.nodos.get(best.b)
+    const len = Math.hypot(A.c[0] - best.p[0], A.c[1] - best.p[1]) + Math.hypot(B.c[0] - best.p[0], B.c[1] - best.p[1])
+    const e = { len, cost: len + BRIDGE_PEN, near: false, via: { p: best.p } }
+    ady.get(best.a).push({ ...e, to: best.b }); ady.get(best.b).push({ ...e, to: best.a })
+  }
+}
+
 function dijkstra(ady, sources, useLen) {
   const d = new Map(), pred = new Map(), done = new Set()
   for (const [k, c] of sources) if (!d.has(k) || c < d.get(k)) { d.set(k, c); pred.set(k, null) }
@@ -78,6 +106,7 @@ function legGeom(ev, pred, to) {
 export function houseRoutes(plan, ev = evacuacion(plan), overlay, people = housePeople(plan, ev, overlay)) {
   const { ady, entries: all } = incidentGraph(plan, overlay, ev)
   const doors = all.filter((e) => e.opening.type === 'doorway')
+  bridge(ev, ady, doors)
   // fire target: the highest-confidence fire, smoke or heat report with a room
   let fireKey = null, best = -1
   for (const f of overlay?.fire || []) {
