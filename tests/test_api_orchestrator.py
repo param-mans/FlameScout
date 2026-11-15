@@ -17,6 +17,7 @@ BUILDING = "fake_wilshire_tower"
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("AUTO_CONFIRM_LOCATION", "0")   # these tests drive the dispatcher's confirmation
+    monkeypatch.setenv("FAST_PIPELINE", "0")   # the agent path (tests/test_fast_path.py: the fast path)
     app = create_app(Settings(data_mode="fixture", workspace=tmp_path / "ws", fixtures=FIXTURES,
                               tiger_url=None, cors_origins=["*"], pipeline="orchestrator"))
     with TestClient(app) as c:

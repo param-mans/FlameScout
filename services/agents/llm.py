@@ -153,20 +153,21 @@ def model_name(kind: Kind = "fast", prov: Optional[str] = None) -> Optional[str]
 
 def make_chat(kind: Kind = "fast", *, timeout: float = 20, max_retries: int = 1,
               thinking: Thinking = "default", temperature: Optional[float] = None,
-              prov: Optional[str] = None) -> Any:
+              prov: Optional[str] = None, model_id: Optional[str] = None) -> Any:
     """A LangChain chat model for a provider (default: LLM_PROVIDER). Raises KeyError when it is not
-    configured.
+    configured. model_id: use this model instead of the provider's <KIND>_MODEL (e.g. GEMINI_OVERLAY_MODEL).
 
     thinking: Gemini's thinking level ("low" = thinking_level low, "none" = thinking_budget 0).
     OpenAI ignores it and uses OPENAI_REASONING_EFFORT when set (reasoning models only); xAI ignores it.
     """
     prov = prov or provider()
     key, model = _env(kind, prov)
+    name = model_id or os.environ[model]
     extra: dict[str, Any] = {} if temperature is None else {"temperature": temperature}
     if prov == "xai":
         from langchain_xai import ChatXAI
 
-        return ChatXAI(model=os.environ[model], api_key=os.environ[key],
+        return ChatXAI(model=name, api_key=os.environ[key],
                        timeout=timeout, max_retries=max_retries, **extra)
     if prov == "openai":
         from langchain_openai import ChatOpenAI
@@ -175,7 +176,7 @@ def make_chat(kind: Kind = "fast", *, timeout: float = 20, max_retries: int = 1,
             extra["reasoning_effort"] = effort
         # An empty OPENAI_BASE_URL (copied from .env.example) would become the client's base URL.
         extra["base_url"] = os.getenv("OPENAI_BASE_URL", "").strip() or "https://api.openai.com/v1"
-        return ChatOpenAI(model=os.environ[model], api_key=os.environ[key],
+        return ChatOpenAI(model=name, api_key=os.environ[key],
                           timeout=timeout, max_retries=max_retries, **extra)
 
     from langchain_google_genai import ChatGoogleGenerativeAI
@@ -184,7 +185,7 @@ def make_chat(kind: Kind = "fast", *, timeout: float = 20, max_retries: int = 1,
         extra["thinking_level"] = "low"
     elif thinking == "none":
         extra["thinking_budget"] = 0
-    return ChatGoogleGenerativeAI(model=os.environ[model], google_api_key=os.environ[key],
+    return ChatGoogleGenerativeAI(model=name, google_api_key=os.environ[key],
                                   timeout=timeout, max_retries=max_retries, **extra)
 
 

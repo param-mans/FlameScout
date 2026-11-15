@@ -23,6 +23,12 @@ class Settings:
     # best score >= 0.8 and >= 0.2 ahead of the second); 0: always wait for POST /confirm-location.
     auto_confirm_location: bool = field(default_factory=lambda: os.getenv(
         "AUTO_CONFIRM_LOCATION", "1").strip().lower() not in ("0", "false", "no", "off", ""))
+    # 1 (default): after confirmation, ONE structured model call writes the overlay and the considerations
+    # (services/agents/fast_path.py, docs/FAST_PIPELINE.md); the agent path runs only as its fallback. 0: agent path.
+    fast_pipeline: bool = field(default_factory=lambda: os.getenv(
+        "FAST_PIPELINE", "1").strip().lower() not in ("0", "false", "no", "off", ""))
+    # The fast path's model (Gemini); unset: the usual fast model (GEMINI_FAST_MODEL).
+    overlay_model: str | None = field(default_factory=lambda: os.getenv("GEMINI_OVERLAY_MODEL") or None)
     cors_origins: list[str] = field(default_factory=lambda: [
         o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()])
 

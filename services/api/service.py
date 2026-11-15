@@ -31,12 +31,13 @@ import uuid
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator, Optional, Sequence
 
 from flamescout_schemas import (Brief, BuildingDossier, CallSegment, CopilotSuggestion,
                                 CrewFeedback, IncidentRecord, LocationCandidate, Progress)
 
-from services.agents import copilot, locator, memory, mongo_store, orchestrator
+from services.agents import copilot, fast_path, locator, memory, mongo_store, orchestrator
 from services.agents.extract import ExtractedFact, Extractor, get_extractor
 from services.agents.fusion import FusionEngine
 from services.agents.rules_brief import build_brief
@@ -56,6 +57,24 @@ LOCATION_KEYS = ("location.address", "location.name")
 PIPELINES = ("orchestrator", "rules")
 AUTO_CONFIRM_MIN_SCORE = 0.8    # AUTO_CONFIRM_LOCATION: the best candidate's score ...
 AUTO_CONFIRM_MIN_MARGIN = 0.2   # ... and its lead over the second (a single candidate always qualifies)
+FAST_DEBOUNCE_S = 1.0           # FAST_PIPELINE: a change after confirmation runs the fast path this long after the last one
+FAST_RUNS_PER_CALL = 2          # ... at most this many times per call (mid-call, at the end)
+FAST_TODOS = ("Map reports onto the plan", "CoStar property record", "Matterport interior scan",
+              "Vexcel aerial imagery", "Draft considerations", "Brief ready")
+
+
+@dataclass(eq=False)
+class FastState:
+    """FAST_PIPELINE for one confirmed building of one incident (docs/FAST_PIPELINE.md)."""
+    building_id: str
+    t0: float                                  # perf_counter() at the confirmation, for time_to_brief
+    started: int = 0                           # runs started (each run's generation number)
+    emitted: int = 0                           # generation of the newest run that was emitted (last one wins)
+    runs: dict = field(default_factory=lambda: defaultdict(int))  # call_id -> runs started for that call
+    timer: Optional[threading.Timer] = None    # the debounce of the next run
+    pending_call: Optional[str] = None
+    futures: list = field(default_factory=list)
+    failed: bool = False                       # fell back to the agent path: that path owns the incident now
 
 
 def auto_confirm_pick(cands: Sequence[LocationCandidate]) -> Optional[str]:
@@ -116,6 +135,9 @@ class IncidentService:
         self._traces: dict[str, str] = {}
         self._jobs: dict[str, ThreadPoolExecutor] = {}
         self._notes: dict[str, list[str]] = defaultdict(list)   # change notes waiting for update_incident
+        self._fast: dict[str, FastState] = {}                    # FAST_PIPELINE state per incident
+        self._fast_pool = ThreadPoolExecutor(8, thread_name_prefix="fast")
+        self.fast_model: Any = None   # tests put a fake chat model here; None = fast_path.make_model()
         self.set_data_mode(settings.data_mode)
 
     # ---------------- plumbing ----------------
@@ -179,12 +201,35 @@ class IncidentService:
         return ex.submit(run)
 
     def wait(self, incident_id: str, timeout: Optional[float] = None) -> None:
-        """Block until every brief job queued so far for the incident has finished."""
-        self._submit(incident_id, lambda: None).result(timeout)
+        """Block until every brief job queued so far for the incident has finished (fast-path runs, a pending
+        debounce, and the incident's worker)."""
+        while True:
+            with self._guard:
+                st = self._fast.get(incident_id)
+                timer, futures = (st.timer, list(st.futures)) if st else (None, [])
+            if timer is not None:
+                timer.join(timeout)
+            for f in futures:
+                try:
+                    f.result(timeout)
+                except Exception:  # noqa: BLE001 - logged by the run itself
+                    pass
+            self._submit(incident_id, lambda: None).result(timeout)
+            with self._guard:
+                st = self._fast.get(incident_id)
+                busy = st is not None and ((st.timer is not None and st.timer.is_alive())
+                                           or any(not f.done() for f in st.futures))
+            if not busy:
+                return
 
     def shutdown(self) -> None:
         with self._guard:
             jobs, self._jobs = list(self._jobs.values()), {}
+            fast, self._fast = list(self._fast.values()), {}
+        for st in fast:
+            if st.timer is not None:
+                st.timer.cancel()
+        self._fast_pool.shutdown(wait=False, cancel_futures=True)
         for ex in jobs:
             ex.shutdown(wait=False, cancel_futures=True)
 
@@ -272,6 +317,7 @@ class IncidentService:
             self.ws.delete_incident(check_id(incident_id))
             self._engines.pop(incident_id, None)
             self._notes.pop(incident_id, None)
+            self._drop_fast(incident_id)
             try:
                 self._agents_ws(incident_id).clear()
             except Exception:  # noqa: BLE001
@@ -318,15 +364,17 @@ class IncidentService:
                 candidates = self._locate(incident_id, rec)
                 self._maybe_auto_confirm(incident_id, candidates)
             if changes and confirmed_before:
-                self._queue_update(incident_id, changes)
+                self._queue_update(incident_id, changes, seg.call_id)
 
         self.metrics.record(incident_id, "fusion", fusion_ms, changes=len(changes))
         self.metrics.log_segment(incident_id, seg)
         return {"changes": changes, "incident": rec, "fusion_ms": round(fusion_ms, 1),
                 "candidates": candidates, "extracted": extracted_out}
 
-    def _queue_update(self, incident_id: str, notes: list[str]) -> None:
-        """New facts after confirmation: the next brief version, on the incident's worker."""
+    def _queue_update(self, incident_id: str, notes: list[str], call_id: Optional[str] = None) -> None:
+        """New facts after confirmation: the next brief version, on the incident's worker (or the fast path)."""
+        if self._fast_schedule(incident_id, call_id):
+            return
         if self.pipeline(incident_id) == "orchestrator":
             self._notes[incident_id].extend(notes)
             self._submit(incident_id, self._drain_updates, incident_id)
@@ -359,7 +407,8 @@ class IncidentService:
         t0 = time.perf_counter()
         cands = self._orchestrator_candidates(rec)
         if cands:
-            self._submit(incident_id, self._start_job, incident_id)
+            if not self.fast_enabled():   # the fast path needs no agent waiting at the confirmation
+                self._submit(incident_id, self._start_job, incident_id)
         else:
             cands = locator.locate(rec, self.providers)
             for c in cands:
@@ -415,13 +464,21 @@ class IncidentService:
                     raise NotFound(f"building {building_id}") from e
             self._set_pipeline(incident_id, pipeline)
             self._notes.pop(incident_id, None)   # notes so far are in the record the new brief reads
+            self._drop_fast(incident_id)         # a re-confirmation: runs for the earlier building are void
+            fast = pipeline == "orchestrator" and self.fast_enabled()
             eng.confirm(building_id)
             eng.record.status = "briefing"
             self.ws.write_json(self._dir(incident_id) / "confirmation.json",
                                {"building_id": building_id, "confirmed_by": confirmed_by})
             self._save(eng.record)
             self._emit_incident(eng.record)
-        self._submit(incident_id, self._confirm_job, incident_id, building_id, pipeline, t0)
+            call_id = eng.record.call_ids[-1] if eng.record.call_ids else None
+        if fast:
+            with self._guard:
+                self._fast[incident_id] = FastState(building_id, t0)
+            self._fast_start(incident_id, call_id)   # at once: the first run is the mid-call one
+        else:
+            self._submit(incident_id, self._confirm_job, incident_id, building_id, pipeline, t0)
         return {"incident_id": incident_id, "building_id": building_id, "status": "briefing",
                 "pipeline": pipeline, "confirmed_by": confirmed_by}
 
@@ -583,6 +640,139 @@ class IncidentService:
             if eng.record.confirmed_building_id:
                 self._queue_update(incident_id, [f"Dispatcher resolved the contradiction on {key}: {value}"])
             return eng.record
+
+    # ---------------- fast path (FAST_PIPELINE=1, docs/FAST_PIPELINE.md) ----------------
+    def fast_enabled(self) -> bool:
+        return self.settings.fast_pipeline and fast_path.available(self.fast_model, self.settings.overlay_model)
+
+    def _drop_fast(self, incident_id: str) -> None:
+        with self._guard:
+            st = self._fast.pop(incident_id, None)
+        if st is not None and st.timer is not None:
+            st.timer.cancel()
+
+    def _fast_state(self, incident_id: str) -> Optional[FastState]:
+        """The incident's fast-path state while the fast path owns it (None after a fall back)."""
+        st = self._fast.get(incident_id)
+        return st if st is not None and not st.failed else None
+
+    def _fast_schedule(self, incident_id: str, call_id: Optional[str]) -> bool:
+        """A change after confirmation: (re)arm the 1 s debounce of the next run. False when the fast path
+        does not own the incident. A call that already had its FAST_RUNS_PER_CALL runs gets no more; what it
+        adds is in the transcript the next call's run reads."""
+        with self._guard:
+            st = self._fast_state(incident_id)
+            if st is None:
+                return False
+            if call_id is not None and st.runs[call_id] >= FAST_RUNS_PER_CALL:
+                log.info("fast path %s: call %s already had %d runs; change not run", incident_id, call_id,
+                         FAST_RUNS_PER_CALL)
+                return True
+            if st.timer is not None:
+                st.timer.cancel()
+            st.pending_call = call_id
+            st.timer = threading.Timer(FAST_DEBOUNCE_S, self._fast_fire, (incident_id, st))
+            st.timer.daemon = True
+            st.timer.start()
+        return True
+
+    def _fast_fire(self, incident_id: str, st: FastState) -> None:
+        with self._guard:
+            if self._fast.get(incident_id) is not st:
+                return
+            st.timer, call_id = None, st.pending_call
+        self._fast_start(incident_id, call_id)
+
+    def _fast_start(self, incident_id: str, call_id: Optional[str]) -> None:
+        with self._guard:
+            st = self._fast_state(incident_id)
+            if st is None:
+                return
+            if call_id is not None:
+                if st.runs[call_id] >= FAST_RUNS_PER_CALL:
+                    return
+                st.runs[call_id] += 1
+            st.started += 1
+            st.futures = [f for f in st.futures if not f.done()]
+            st.futures.append(self._fast_pool.submit(self._fast_run, incident_id, st, st.started))
+
+    def _fast_progress(self, incident_id: str, status: str, done: bool) -> None:
+        todos = [{"content": t, "status": "completed" if done else "in_progress"} for t in FAST_TODOS]
+        self._emit(incident_id, "dossier.progress", Progress(
+            incident_id=incident_id, status=status, version=len(self._brief_versions(incident_id)) + (0 if done else 1),
+            todos=todos).model_dump(mode="json"))
+
+    def _fast_run(self, incident_id: str, st: FastState, gen: int) -> None:
+        """One run: the model call and checks (no lock held), then, under the incident's lock, number it and
+        emit overlay.updated -> brief.updated (same version) -> incident.updated (-> metric.tick for v1).
+        An older run that finishes after a newer one was emitted is dropped: the last one wins."""
+        t_run = time.perf_counter()
+        try:
+            self._fast_progress(incident_id, "running", False)
+            with self._lock(incident_id):
+                rec = self._engine(incident_id).record.model_copy(deep=True)
+            prep = fast_path.prepare(rec, st.building_id, self._agents_ws(incident_id), model=self.fast_model,
+                                     model_override=self.settings.overlay_model)
+        except Exception as e:  # noqa: BLE001 - FastPathFailed, or the layers / context could not be read
+            log.warning("fast path %s run %d failed: %s", incident_id, gen, e)
+            self.metrics.record(incident_id, "fast_path", _ms(t_run), run=gen, ok=False,
+                                attempts=getattr(e, "attempts", None), timings=getattr(e, "timings", None),
+                                errors=getattr(e, "errors", [str(e)])[:5])
+            self._fast_failed(incident_id, st, gen)
+            return
+        t_commit = time.perf_counter()
+        with self._lock(incident_id):
+            if self._fast.get(incident_id) is not st or st.failed or gen < st.emitted:
+                log.info("fast path %s run %d dropped: a newer run was emitted or the path changed", incident_id, gen)
+                return
+            versions = self._brief_versions(incident_id)
+            version = (versions[-1] + 1) if versions else 1
+            rec = self._engine(incident_id).record
+            try:
+                ov, brief = fast_path.commit(prep, rec.model_copy(deep=True), self._agents_ws(incident_id), version)
+            except Exception as e:  # noqa: BLE001 - nothing was written
+                log.exception("fast path %s run %d could not be committed", incident_id, gen)
+                commit_error: Optional[Exception] = e
+            else:
+                commit_error = None
+                st.emitted = gen
+                rec.status = "confirmed" if version == 1 else "updated"
+                self._save(rec)
+                self._emit(incident_id, "overlay.updated",
+                           {"version": version, "overlay": json.loads(fast_path.overlay_mod.dump(ov))})
+                self._emit(incident_id, "brief.updated", self._brief_event(brief, "fast", "briefed"))
+                self._emit_incident(rec)
+        if commit_error is not None:
+            self._fast_failed(incident_id, st, gen)
+            return
+        self.metrics.log_brief(brief)
+        timings = {**prep.timings, "commit_ms": round(_ms(t_commit), 1), "run_s": round(time.perf_counter() - t_run, 2)}
+        self.metrics.record(incident_id, "fast_path", _ms(t_run), run=gen, ok=True, version=version,
+                            attempts=prep.attempts, timings=timings)
+        log.info("fast path %s run %d emitted v%d (attempts %d, %s)", incident_id, gen, version, prep.attempts, timings)
+        if version == 1:
+            row = self.metrics.record(incident_id, "time_to_brief", _ms(st.t0), cached_dossier=prep.prefetched_at
+                                      is not None, building_id=st.building_id, version=1, pipeline="fast")
+            self._emit(incident_id, "metric.tick", row)
+        self._fast_progress(incident_id, "done", True)
+
+    def _fast_failed(self, incident_id: str, st: FastState, gen: int) -> None:
+        """Two attempts failed. Nothing emitted yet for this building: the agent path takes the incident, exactly
+        as without FAST_PIPELINE. A version is already out: keep it (nothing invalid is sent); the next change
+        runs again."""
+        with self._guard:
+            if self._fast.get(incident_id) is not st or st.failed:
+                return
+            if st.emitted:
+                log.warning("fast path %s run %d failed; v%d stays", incident_id, gen, len(self._brief_versions(incident_id)))
+                return
+            st.failed = True
+            if st.timer is not None:
+                st.timer.cancel()
+                st.timer = None
+        log.warning("fast path %s: falling back to the agent path", incident_id)
+        self.audit(incident_id, "system", "fast_path_fallback", {"run": gen})
+        self._submit(incident_id, self._confirm_job, incident_id, st.building_id, "orchestrator", st.t0)
 
     # ---------------- rules pipeline (fallback) ----------------
     def dossier(self, building_id: str, refresh: bool = False,
