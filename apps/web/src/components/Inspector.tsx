@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Evidence, FactStatus } from "../types/schemas";
 import { Btn, Panel, StatusTag, fmt } from "./ui";
 
@@ -37,7 +38,48 @@ function EvidenceItem({ e }: { e: Evidence }) {
   );
 }
 
-export function Inspector({ sel, pool }: { sel: Selection | null; pool: Record<string, Evidence> }) {
+export type Verdict = "confirmed" | "wrong" | "outdated";
+
+/** Crew feedback only exists for facts, hazards and markers; the backend keys them by fact key or marker id. */
+export const feedbackItemId = (sel: Selection): string | null =>
+  sel.key.startsWith("fact:") ? sel.key.slice(5) : sel.key.startsWith("marker:") ? sel.key.slice(7) : null;
+
+function FeedbackBar({ sel, onFeedback }: { sel: Selection; onFeedback?: (itemId: string, verdict: Verdict) => Promise<void> }) {
+  const [state, setState] = useState<{ key: string; msg: string; ok: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const item = feedbackItemId(sel);
+  const mine = state?.key === sel.key ? state : null;
+  const send = async (v: Verdict) => {
+    if (!item || !onFeedback) return;
+    setBusy(true);
+    try {
+      await onFeedback(item, v);
+      setState({ key: sel.key, ok: true, msg: `Recorded as ${v}. It applies to the next brief and to later incidents at this building.` });
+    } catch (e) {
+      setState({ key: sel.key, ok: false, msg: e instanceof Error ? e.message : "Could not record the feedback" });
+    } finally { setBusy(false); }
+  };
+  const enabled = !!item && !!onFeedback && !busy;
+  return (
+    <div className="p-2.5">
+      <div className="flex flex-wrap gap-1.5">
+        <Btn onClick={enabled ? () => void send("confirmed") : undefined}>Confirm</Btn>
+        <Btn onClick={enabled ? () => void send("wrong") : undefined}>Mark wrong</Btn>
+        <Btn onClick={enabled ? () => void send("outdated") : undefined}>Mark outdated</Btn>
+      </div>
+      <div className={`mt-1.5 text-[12px] ${mine ? (mine.ok ? "text-verified" : "text-contradicted") : "text-faint"}`} role="status">
+        {mine ? mine.msg : !onFeedback ? "Feedback needs a live incident." : !item ? "Feedback applies to facts, hazards and markers." : ""}
+      </div>
+    </div>
+  );
+}
+
+export function Inspector({ sel, pool, onFeedback }: {
+  sel: Selection | null;
+  pool: Record<string, Evidence>;
+  /** Live mode: record crew feedback for a fact key or marker id (POST /api/incidents/{id}/feedback). */
+  onFeedback?: (itemId: string, verdict: Verdict) => Promise<void>;
+}) {
   if (!sel) {
     return (
       <Panel title="Inspector">
@@ -81,11 +123,7 @@ export function Inspector({ sel, pool }: { sel: Selection | null; pool: Record<s
           )}
         </ul>
       )}
-      <div className="flex gap-1.5 p-2.5">
-        {/* TODO: POST /api/incidents/{id}/feedback */}
-        <Btn>Mark wrong</Btn>
-        <Btn>Mark outdated</Btn>
-      </div>
+      <FeedbackBar sel={sel} onFeedback={onFeedback} />
     </Panel>
   );
 }

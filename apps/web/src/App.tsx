@@ -6,6 +6,7 @@ import { DispatcherConsole } from "./components/DispatcherConsole";
 import { ScriptPicker, defaultScript } from "./components/ScriptPicker";
 import { MdtView, type IncidentInfo } from "./components/MdtView";
 import { CallIn } from "./components/CallIn";
+import { MetricsChip } from "./components/MetricsChip";
 import { Btn } from "./components/ui";
 import { humanizeKeys } from "./labels";
 import { readSampleParam, setSampleParam, useSampleHouses } from "./components/viewer/BuildingViewer";
@@ -85,6 +86,7 @@ export default function App() {
 
         <div className="ml-auto flex items-center gap-2 lg:order-last lg:ml-0">
           {st.mode === "mock" && <Btn onClick={live.retryApi}>Retry API</Btn>}
+          {isLive && <span className="hidden xl:inline"><MetricsChip /></span>}
           <span className="num hidden text-[10px] font-semibold tracking-wider text-dim sm:inline" title="Simulation only: no real emergency lines are called">SIMULATION</span>
           <span
             className={`num border px-1.5 py-0.5 text-[10px] font-semibold tracking-wider ${
@@ -134,7 +136,7 @@ export default function App() {
           />
         ) : (
           <MdtView key={isLive ? st.incidentId ?? "none" : briefKey} brief={brief} info={info} sampleId={sampleId} sampleError={samplesError}
-            progress={isLive ? st.progress : null} waiting={isLive ? waiting : undefined} />
+            progress={isLive ? st.progress : null} waiting={isLive ? waiting : undefined} canFeedback={isLive} />
         )}
       </main>
     </div>

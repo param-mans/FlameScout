@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { factLabel } from "../labels";
 import type { Brief, Fact, Progress } from "../types/schemas";
+import { api } from "../api/client";
 import { Inspector, type Selection } from "./Inspector";
 import { PlanList } from "./PlanList";
 import { SitePlan, type Layers } from "./SitePlan";
@@ -65,6 +66,8 @@ interface MdtProps {
   /** Shown while there is no brief yet. */
   progress?: Progress | null;
   waiting?: string;
+  /** Live incident: the Inspector can record crew feedback. False for mock data. */
+  canFeedback?: boolean;
 }
 
 /** Before the first brief: the empty states from PRD section 10, with the orchestrator's plan once it is running. */
@@ -93,7 +96,7 @@ export function MdtView({ brief, ...rest }: MdtProps) {
   return brief ? <MdtBrief brief={brief} {...rest} /> : <MdtWaiting info={rest.info} progress={rest.progress} waiting={rest.waiting} />;
 }
 
-function MdtBrief({ brief, info, sampleId, sampleError }: MdtProps & { brief: Brief }) {
+function MdtBrief({ brief, info, sampleId, sampleError, canFeedback }: MdtProps & { brief: Brief }) {
   const [sel, setSel] = useState<Selection | null>(null);
   const [tab, setTab] = useState<"map" | "floor" | "scan3d">("map");
   const [layers, setLayers] = useState<Layers>({ markers: true, exposures: true, route: true });
@@ -242,7 +245,8 @@ function MdtBrief({ brief, info, sampleId, sampleError }: MdtProps & { brief: Br
               </button>
             ))}
           </Panel>
-          <Inspector sel={sel} pool={brief.evidence} />
+          <Inspector sel={sel} pool={brief.evidence}
+            onFeedback={canFeedback ? (item, verdict) => api.feedback(brief.incident_id, item, verdict).then(() => undefined) : undefined} />
         </div>
       </div>
 

@@ -142,7 +142,7 @@ class KitCoStarProvider:
 
     def _records(self) -> dict[str, dict]:
         if self._by_id is None:
-            with self.path.open() as f:
+            with self.path.open(encoding="utf-8") as f:
                 recs = (json.loads(line) for line in f if line.strip())
                 self._by_id = {r["property_id"]: r for r in recs}
         return self._by_id

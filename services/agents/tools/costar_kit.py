@@ -41,7 +41,7 @@ class Enums:
 
     @classmethod
     def load(cls, kit: Path) -> "Enums":
-        return cls(json.loads((kit / "schemas" / "enums.json").read_text()))
+        return cls(json.loads((kit / "schemas" / "enums.json").read_text(encoding="utf-8")))
 
     def name(self, enum: str, code: Any) -> Optional[str]:
         if code is None:
@@ -171,7 +171,7 @@ def normalize_property(rec: dict, e: Enums, as_of: str, model_ids: Iterable[str]
 # ---------------- streaming build ----------------
 
 def _jsonl(path: Path) -> Iterator[dict]:
-    with path.open() as f:
+    with path.open(encoding="utf-8") as f:
         for line in f:
             if line.strip():
                 yield json.loads(line)
@@ -179,7 +179,7 @@ def _jsonl(path: Path) -> Iterator[dict]:
 
 def _model_ids_from_csv(kit: Path) -> dict[str, list[str]]:
     out: dict[str, list[str]] = defaultdict(list)
-    with (kit / "commercial-properties.csv").open(newline="") as f:
+    with (kit / "commercial-properties.csv").open(newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             if row.get("MatterportModelId"):
                 out[row["PropertyId"]].append(row["MatterportModelId"])
@@ -242,7 +242,7 @@ def build_index(kit: Path, out_path: Path, as_of: str, with_tenants: bool = True
     out_path.parent.mkdir(parents=True, exist_ok=True)
     n = 0
     tmp = out_path.with_suffix(".tmp")
-    with tmp.open("w") as f:
+    with tmp.open("w", encoding="utf-8") as f:
         for rec in _jsonl(kit / "data" / "commercial-property.jsonl"):
             pid = str(rec["id"])
             f.write(json.dumps(normalize_property(rec, e, as_of, models.get(pid, []), tenants.get(pid))) + "\n")
