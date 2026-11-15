@@ -1211,7 +1211,7 @@ function mensaje(e) {
   if (d.type === 'setIncident') return recibirIncidente(d.overlay)
   if (d.type === 'highlightRefs') { INC.resaltar = new Set(Array.isArray(d.refs) ? d.refs.filter((x) => typeof x === 'string').slice(0, 50) : []); return reconstruirIncidente() }
   if (d.type === 'loadSample') {
-    if (!LISTA.some((x) => x.id === d.id)) return fallo('Unknown sample: ' + String(d.id).slice(0, 40))
+    if (!LISTA.some((x) => x.id === d.id) && !anadirCatalogo(d.id)) return fallo('Unknown sample: ' + String(d.id).slice(0, 40))
     $('modelo').value = d.id
     return cargar(d.id)
   }
@@ -1496,7 +1496,11 @@ function animarIncidente() {
   const w = (q, h = 0.35) => { const v = m3(q.p[0], q.p[1], h); v.y += P[q.fi] ? P[q.fi].cur.y : plantaY(q.fi); return v }
   const t = (performance.now() / 4000) % 1
   for (const R of incRutas.rutas) {
-    R.segs.forEach(({ l, a, b }) => { l.geometry.setFromPoints([w(a), w(b)]) })
+    R.segs.forEach(({ l, cil, a, b, h }) => {
+      if (l) return l.geometry.setFromPoints([w(a), w(b)])
+      const A = w(a, h), B = w(b, h), len = A.distanceTo(B) || 1e-3
+      cil.position.copy(A).add(B).multiplyScalar(0.5); cil.scale.set(1, len, 1); cil.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize())
+    })
     const P3 = R.pts.map((q) => w(q)), L = P3.slice(1).map((p, i) => p.distanceTo(P3[i])), tot = L.reduce((x, y) => x + y, 0) || 1
     R.cuentas.forEach((m, k) => {
       let d = (((t + k / R.cuentas.length) % 1) * tot), i = 0
@@ -1607,6 +1611,27 @@ function texFuego() {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; return t
 }
 const colorPersona = (x) => (x.color === 'green' ? IC.green : YELLOW)
+// tramos entre plantas por la escalera real: centro de la sala -> pie de la escalera (planta baja) -> cabeza (planta alta)
+// -> centro de la sala de arriba, en vez de una vertical en el centro de la sala y un corte recto por la planta de arriba
+function porEscalera(pts) {
+  const out = []
+  for (let i = 0; i < pts.length; i++) {
+    const b = pts[i], a = out[out.length - 1]
+    if (a && a.fi !== b.fi) {
+      const lo = Math.min(a.fi, b.fi), cand = (S.escaleras || []).filter((E) => E.fi === lo && E.rect && E.e)
+      const near = (E) => { const q = a.fi === lo ? a.p : b.p, c = E.e.m; return Math.hypot(q[0] - c[0], q[1] - c[1]) }
+      const E = cand.sort((x, y) => near(x) - near(y))[0]
+      if (E) {
+        const R = E.rect, e = E.e, pt = (sv) => [e.m[0] + e.u[0] * sv + e.v[0] * R.tc, e.m[1] + e.u[1] * sv + e.v[1] * R.tc]
+        const pie = pt(E.dir < 0 ? R.s1 : R.s0), cabeza = pt(E.dir < 0 ? R.s0 : R.s1)
+        const [p1, p2] = a.fi === lo ? [pie, cabeza] : [cabeza, pie]
+        out.push({ p: p1, fi: a.fi, near: b.near }, { p: p2, fi: b.fi, near: b.near, stairs: true })
+      }
+    }
+    out.push(b)
+  }
+  return out
+}
 const posFiguras = (x) => Array.from({ length: x.n }, (_, i) => { const a = (i / x.n) * Math.PI * 2 + Math.PI / 2, r = x.n > 1 ? 0.38 : 0; return [x.p[0] + Math.cos(a) * r, x.p[1] + Math.sin(a) * r] })
 function dibujarCasa3D(ov) {
   const pon = (fi, o) => { P[fi].g.add(o); incG.push(o) }
@@ -1634,15 +1659,15 @@ function dibujarCasa3D(ov) {
         cil.position.copy(A).add(B).multiplyScalar(0.5); cil.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize()); cil.renderOrder = 36
         cil.userData.ruta = color; pon(a.fi, cil)
       } else {
-        const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: C(color), transparent: true, opacity: 0.9, depthTest: false, fog: false }))
-        l.renderOrder = 36; grupo.add(l); segs.push({ l, a, b })
+        const cil = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1, 8), mat()); cil.renderOrder = 36; cil.userData.ruta = color
+        grupo.add(cil); segs.push({ cil, a, b, h }) // sube por la escalera: se coloca en cada fotograma (vista explosionada)
       }
     }
     for (let k = 0; k < 3; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), mat()); m.renderOrder = 37; grupo.add(m); cuentas.push(m) }
     incRutas.rutas.push({ pts, segs, cuentas })
   }
-  if (c && c.red) ruta3D(c.red.pts, IC.red, 0.3)
-  if (c && c.green) ruta3D(c.green.pts, IC.green, 0.42)
+  if (c && c.red) ruta3D(porEscalera(c.red.pts), IC.red, 0.3)
+  if (c && c.green) ruta3D(porEscalera(c.green.pts), IC.green, 0.42)
   rotSucio = true
 }
 function svgCasa2D(fi, ns, ov) {
@@ -1660,8 +1685,8 @@ function svgCasa2D(fi, ns, ov) {
     for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i]; if (a.fi === fi && b.fi === fi) d += `M${a.p[0]} ${-a.p[1]}L${b.p[0]} ${-b.p[1]}` }
     return `<g data-route="${tipo}" pointer-events="none">${d ? `<path d="${d}" fill="none" stroke="#080a0e" stroke-opacity="0.55" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" ${ns}/><path d="${d}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" ${ns}/>` : ''}</g>`
   }
-  if (c && c.red) h += linea(c.red.pts, IC.red, 'red')
-  if (c && c.green) h += linea(c.green.pts, IC.green, 'green')
+  if (c && c.red) h += linea(porEscalera(c.red.pts), IC.red, 'red')
+  if (c && c.green) h += linea(porEscalera(c.green.pts), IC.green, 'green')
   if (c) for (const x of c.people) if (x.fi === fi) for (const [px, py] of posFiguras(x)) {
     const y = -py, col = colorPersona(x)
     h += `<g data-person="${x.color}" pointer-events="none"><circle cx="${px}" cy="${y - 0.2}" r="0.13" fill="${col}" stroke="#080a0e" stroke-width="0.8" ${ns}/><path d="M${px - 0.17} ${y + 0.24} Q${px} ${y - 0.16} ${px + 0.17} ${y + 0.24} Z" fill="${col}" stroke="#080a0e" stroke-width="0.8" ${ns}/></g>`
@@ -1748,6 +1773,7 @@ async function cargar(id) {
     const j = await r.json().catch(() => null)
     if (!r.ok) throw new Error(j && j.error ? 'Floor plan unavailable: ' + j.error : r.status >= 500 ? 'House data server not reachable (npm run dev or npm run preview)' : 'Sample not found (HTTP ' + r.status + ')')
     doc = j
+    etiquetaCatalogo(id, doc)
     if (doc && doc.no_scan) return sinEscaneo(id, doc)
     if (!doc || !doc.plan || !Array.isArray(doc.plan.floors) || !doc.plan.floors.length) throw new Error('The API returned no floor plan')
   } catch (e) { return fallo(e.message === 'Failed to fetch' ? 'House data server not reachable' : e.message) }
@@ -1800,7 +1826,23 @@ function medirRendimiento() {
   panelIzq(); aplicarPlantas(); avisoHud()
 }
 
-let LISTA = [] // samples/index.json
+let LISTA = [] // samples/index.json (+ casas del catalogo pedidas por id, ver anadirCatalogo)
+// Casa del catalogo de casas (data/raw/catalog.csv) que no esta en samples/index.json: un id de anuncio (solo digitos) se
+// anade a la lista y cargar() lo pide a la API (/api/house-viewer/sample/<id>), que lo resuelve o responde 404.
+function anadirCatalogo(id) {
+  if (typeof id !== 'string' || !/^[0-9]{1,20}$/.test(id)) return false
+  if (!LISTA.some((x) => x.id === id)) {
+    LISTA.push({ id, address: id, catalog: true })
+    const o = document.createElement('option'); o.value = id; o.textContent = id; $('modelo').appendChild(o)
+  }
+  return true
+}
+function etiquetaCatalogo(id, doc) { // la direccion llega con el documento de la API
+  const x = LISTA.find((y) => y.id === id)
+  if (!x || !x.catalog || !doc || typeof doc.address !== 'string') return
+  x.address = doc.address
+  const o = [...$('modelo').options].find((y) => y.value === id); if (o) o.textContent = doc.address
+}
 async function inicio() {
   if (SOLO_2D) $('der').appendChild($('inspector')) // en la vista embebida 2D el inspector va sobre el plano
   if (SPLIT) montarSplit()
@@ -1814,7 +1856,10 @@ async function inicio() {
   const ids = LISTA.map((x) => x.id), pedido = Q.get('sample')
   const id = pedido || ids[0]
   $('modelo').innerHTML = LISTA.map((x) => `<option value="${esc(x.id)}" ${x.id === id ? 'selected' : ''}>${esc(x.address || x.id)}</option>`).join('')
-  if (!ids.includes(id)) return fallo('Unknown sample: ' + id)
+  if (!ids.includes(id)) {
+    if (!anadirCatalogo(id)) return fallo('Unknown sample: ' + id)
+    $('modelo').value = id
+  }
   await cargar(id)
 }
 inicio()

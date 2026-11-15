@@ -3,14 +3,14 @@
 // between floors, fire penalty on edges near a reported fire, never a block). Pure module (no DOM).
 //   housePeople(plan, ev, overlay) -> [{ fi, roomId, key, p, n, color: 'green' | 'yellow', id }]
 //     green: occupant in one room (room or anchor), not contradicted. yellow: each candidate of a contradicted group (or a
-//     contradicted occupant), and floor-level occupants (in the floor's at_stairs room, else its largest room).
-//     n = figures for that entity (count, or the top of count_range), 5 at most; 1 for a floor-level report.
+//     contradicted occupant), and floor-level occupants (one in every room of that floor a person can be in).
+//     n = figures for that entity (count, or the top of count_range), 5 at most; 1 per room for a floor-level report.
 //   houseRoutes(plan, ev, overlay, people) -> { red, green, entrance, unreachable }
 //     red: entrance -> room of the highest-confidence fire (length only). green: entrance -> every person (shortest order:
 //     all permutations up to 8 stops, nearest neighbour above) -> nearest exterior door, with the fire penalty.
 //     entrance: the ground-floor exterior door that minimizes the green route (the red one when nobody is reported).
 //     Each route: { pts: [{ p, fi, near?, stairs? }] } (same geometry as planRoutes). unreachable: stops not drawn.
-import { evacuacion, poligonoValido, dibujable, puntoInterior } from '../evac.js'
+import { evacuacion, poligonoValido, dibujable, puntoInterior, dentroSala } from '../evac.js'
 import { incidentGraph, floorOf, anchorPoint } from './planner.js'
 
 export const MAX_FIGURES = 5
@@ -24,6 +24,12 @@ export function floorRoom(plan, ev, fi) {
   return big(rooms.filter((r) => r.at_stairs === true)) || big(rooms)
 }
 
+// rooms a person can be in (no closets, hallways, stairs, porches...), in the evacuation graph
+const NOT_A_ROOM = new Set(['closet', 'hallway', 'staircase', 'stairs', 'landing', 'entrance', 'foyer', 'porch', 'patio', 'balcony', 'deck', 'void', 'other', 'pantry'])
+export function everyRoom(plan, ev, fi) {
+  return plan.floors[fi].rooms.filter((r) => dibujable(r) && !NOT_A_ROOM.has(String(r.type || 'other').toLowerCase()) && ev.nodos.has(ev.clave(fi, r)))
+}
+
 export function housePeople(plan, ev, overlay) {
   const out = []
   for (const o of overlay?.occupants || []) {
@@ -31,7 +37,12 @@ export function housePeople(plan, ev, overlay) {
     if (fi === null) continue
     const n = loc.kind === 'floor' ? 1 : Math.min(MAX_FIGURES, count(o))   // floor level: one yellow figure
     let room, p
-    if (loc.kind === 'floor') { room = floorRoom(plan, ev, fi); if (!room) continue; p = ev.nodos.get(ev.clave(fi, room)).c }
+    if (loc.kind === 'floor') { // room unknown: a yellow figure in EVERY room of that floor, the green route checks each one
+      const rooms = everyRoom(plan, ev, fi)
+      for (const r of rooms) out.push({ id: o.id, fi, roomId: r.id, key: ev.clave(fi, r), p: ev.nodos.get(ev.clave(fi, r)).c, n: 1, color: 'yellow' })
+      if (rooms.length) continue
+      room = floorRoom(plan, ev, fi); if (!room) continue; p = ev.nodos.get(ev.clave(fi, room)).c
+    }
     else {
       room = plan.floors[fi].rooms.find((r) => r.id === (loc.kind === 'room' ? loc.room_id : loc.anchor.room_id))
       if (!room || !dibujable(room)) continue
@@ -89,17 +100,22 @@ function dijkstra(ady, sources, useLen) {
   }
   return { d, pred }
 }
-// geometry of the path from the Dijkstra source to `to` (first point excluded: the source node's center)
+// geometry of the path from the Dijkstra source to `to` (first point excluded: the source node's center). A room the
+// route only passes through (door in, door out) is crossed in a straight line when that line stays inside the room,
+// instead of a detour to its center (zigzags in hallways); stops, stairs and the end keep the room's center.
+const inside = (room, a, b) => [0.15, 0.3, 0.5, 0.7, 0.85].every((t) => dentroSala([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], room))
 function legGeom(ev, pred, to) {
   const steps = []
   for (let k = to, g = 0; g < 1000; g++) { const p = pred.get(k); if (!p) break; steps.unshift({ k, ...p }); k = p.from }
   const out = []
-  for (const s of steps) {
-    const A = ev.nodos.get(s.from), B = ev.nodos.get(s.k)
+  steps.forEach((s, i) => {
+    const A = ev.nodos.get(s.from), B = ev.nodos.get(s.k), next = steps[i + 1]
     if (s.e.via.p) out.push({ p: s.e.via.p, fi: A.fi, near: s.e.near })
-    else out.push({ p: A.c, fi: B.fi, near: s.e.near, stairs: true })
-    out.push({ p: B.c, fi: B.fi, near: s.e.near })
-  }
+    // stairs: straight to the other floor's stair room (the viewer draws it along the stair run)
+    else { out.push({ p: B.c, fi: B.fi, near: s.e.near, stairs: s.e.via.ref_id || true }); return }
+    const pass = next && next.e.via.p && B.room && B.room.polygon && inside(B.room, s.e.via.p, next.e.via.p)
+    if (!pass) out.push({ p: B.c, fi: B.fi, near: s.e.near })
+  })
   return out
 }
 

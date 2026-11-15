@@ -53,9 +53,43 @@ export function loadCatalog(): Promise<CatalogEntry[]> {
     .then((l) => (catalogCache = l));
   return catalogP;
 }
-/** Matterport model id first, then catalog id (listing id such as 209217448, or a sample id such as sample-a). */
+/** Matterport model id first, then catalog id (listing id such as 209217448, or a sample id such as sample-a).
+ *  The loaded catalog also holds the house catalog entries already fetched by lookupHouse (appended to the same list). */
 export function findHouse(catalog: CatalogEntry[], id: string): CatalogEntry | null {
   return catalog.find((h) => h.matterportModelId === id) ?? catalog.find((h) => h.id === id) ?? null;
+}
+
+// ---- house catalog fallback (data/raw/catalog.csv, served by the house data service) ----
+// A listing id that is not in samples/index.json may still be a catalog house: GET /api/house-viewer/sample/<id> resolves
+// it (apps/web/server/handler.mjs). The entry is added to the loaded catalog, so findHouse (and the overlay's model id
+// lookup in useIncidentSocket) finds it afterwards. Unknown ids (404) are remembered; network errors are retried later.
+const LISTING_ID = /^[0-9]{1,20}$/;
+const extraP = new Map<string, Promise<CatalogEntry | null>>();
+function fetchCatalogHouse(id: string): Promise<CatalogEntry | null> {
+  let p = extraP.get(id);
+  if (!p) {
+    p = fetch(`/api/house-viewer/sample/${encodeURIComponent(id)}`)
+      .then(async (r) => {
+        if (r.status === 404) return null;
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = (await r.json()) as { id?: unknown; address?: unknown; matterportModelId?: unknown; no_scan?: unknown };
+        if (d?.id !== id) return null;
+        return { id, address: typeof d.address === "string" ? d.address : undefined, no_scan: d.no_scan === true,
+                 matterportModelId: typeof d.matterportModelId === "string" ? d.matterportModelId : null } as CatalogEntry;
+      })
+      .catch(() => { extraP.delete(id); return null; });
+    extraP.set(id, p);
+  }
+  return p;
+}
+/** The viewer catalog entry for id, else (listing ids only) the house catalog's through the house data service. */
+export async function lookupHouse(id: string): Promise<CatalogEntry | null> {
+  const catalog = await loadCatalog();
+  const h = findHouse(catalog, id);
+  if (h || !LISTING_ID.test(id)) return h;
+  const extra = await fetchCatalogHouse(id);
+  if (extra && catalogCache && !findHouse(catalogCache, id)) catalogCache.push(extra);
+  return extra;
 }
 export const hasPlan = (h: CatalogEntry | null) => !!h && !h.no_scan && !!h.matterportModelId;
 
@@ -65,20 +99,22 @@ export type ConfirmedHouse =
   | { state: "house"; buildingId: string; sampleId: string; address: string }
   | { state: "noScan"; buildingId: string; address: string | null };
 
-/** The live incident's confirmed building, matched against the viewer catalog. */
+/** The live incident's confirmed building, matched against the viewer catalog, then the house catalog (lookupHouse). */
 export function useConfirmedHouse(): ConfirmedHouse {
   const f = useLiveFeed();
   const bid = !TOWER && f.mode === "live" ? f.incident?.confirmed_building_id ?? null : null;
-  const [catalog, setCatalog] = useState<CatalogEntry[] | null>(() => catalogCache);
+  // the building's entry: synchronous when it is already known, else looked up (samples/index.json, then the house catalog)
+  const known = bid && catalogCache ? findHouse(catalogCache, bid) : null;
+  const [looked, setLooked] = useState<{ id: string; h: CatalogEntry | null } | null>(null);
   useEffect(() => {
-    if (!bid || catalog) return;
+    if (!bid || known || looked?.id === bid) return;
     let alive = true;
-    void loadCatalog().then((c) => alive && setCatalog(c));
+    void lookupHouse(bid).then((h) => alive && setLooked({ id: bid, h }));
     return () => { alive = false; };
-  }, [bid, catalog]);
+  }, [bid, known, looked]);
   if (!bid) return { state: "none" };
-  if (!catalog) return { state: "loading", buildingId: bid };
-  const h = findHouse(catalog, bid);
+  if (!known && looked?.id !== bid) return { state: "loading", buildingId: bid };
+  const h = known ?? looked!.h;
   const address = h ? [h.address, h.city].filter(Boolean).join(", ") : null;
   return hasPlan(h) ? { state: "house", buildingId: bid, sampleId: h!.id, address: address ?? h!.id } : { state: "noScan", buildingId: bid, address };
 }

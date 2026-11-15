@@ -12,6 +12,19 @@ let validatorP: Promise<Validate> | null = null;
 const loadValidator = () =>
   (validatorP ??= import(/* @vite-ignore */ `${BASE}incident/validate.js`).then((m: { validate: Validate }) => m.validate));
 
+/** A house catalog entry (data/raw/catalog.csv, not in samples/index.json) from the house data service's document, which
+ *  carries the same fields (id, address, matterportModelId, listing; city and market inside location). */
+function fromDoc(d: HouseDoc, sampleId: string): CatalogHouse | null {
+  const x = d as unknown as Partial<CatalogHouse> & { location?: { lat?: number; lon?: number; city?: string; market?: string } | null };
+  if (!x || x.id !== sampleId || typeof x.address !== "string") return null;
+  const loc = x.location, hasLatLon = typeof loc?.lat === "number" && typeof loc?.lon === "number";
+  return {
+    id: sampleId, address: x.address, city: loc?.city ?? undefined, market: loc?.market ?? undefined,
+    matterportModelId: x.matterportModelId ?? null, no_scan: x.no_scan, listing: x.listing ?? null,
+    location: hasLatLon ? { lat: loc!.lat!, lon: loc!.lon! } : null,
+  };
+}
+
 export function useHouseData(sampleId: string | null) {
   const [sample, setSample] = useState<CatalogHouse | null>(null);
   const [doc, setDoc] = useState<HouseDoc | null>(null);
@@ -28,7 +41,7 @@ export function useHouseData(sampleId: string | null) {
       fetch(`/api/house-viewer/sample/${encodeURIComponent(sampleId)}`).then(async (r) => { const j = await r.json().catch(() => null); if (!r.ok) throw new Error(j?.error ?? `HTTP ${r.status}`); return j; }),
     ]).then(([list, d]: [CatalogHouse[], HouseDoc]) => {
       if (!alive) return;
-      setSample(list.find((x) => x.id === sampleId) ?? null);
+      setSample(list.find((x) => x.id === sampleId) ?? fromDoc(d, sampleId));
       setDoc(d);
     }).catch((e: Error) => { if (alive) { setError(e.message); fetch(`${BASE}samples/index.json`).then((r) => r.json()).then((list: CatalogHouse[]) => alive && setSample(list.find((x) => x.id === sampleId) ?? null)).catch(() => {}); } });
     return () => { alive = false; };
