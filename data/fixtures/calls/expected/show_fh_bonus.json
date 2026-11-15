@@ -1,0 +1,71 @@
+{
+  "script_id": "SHOW_FH_BONUS",
+  "building": {
+    "id": "214905148",
+    "address": "18107 Fairhope Oak Street, Houston",
+    "plan_index": "data/raw/214905148/derived/plan_index.json"
+  },
+  "floor": {
+    "number": 2,
+    "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+  },
+  "any_extractor": {
+    "facts": {
+      "location.address": "18107 Fairhope Oak Street",
+      "incident.floor": 2
+    },
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {
+      "people.reported": true
+    },
+    "people": [
+      {
+        "who": "the caller's grandfather",
+        "count": 1,
+        "call_id": "c1",
+        "where": "sleeping upstairs (a bedroom, inferred)",
+        "precision": "candidates",
+        "inferred_from": "sleeping",
+        "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+        "resolve": {
+          "type": "bedroom",
+          "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+        },
+        "candidate_room_ids": [
+          "3ygfq6yfyyw3hi9x7u5rm2iqa",
+          "b2kez6wsw32fm2x3ui593u3hc",
+          "kuc0fpmsgqxff63egrxrycfud",
+          "peina19mpqedsku6a3huu38md"
+        ]
+      },
+      {
+        "who": "the caller's wife",
+        "count": 1,
+        "call_id": "c1",
+        "where": "in the dining room",
+        "precision": "room",
+        "room_id": "ddmxbn7k7wb",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "dining room"
+        }
+      }
+    ],
+    "fire": [
+      {
+        "kind": "flames",
+        "where": "the bonus room",
+        "room_id": "9sy6311hky7",
+        "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+        "resolve": {
+          "type": "bonus room"
+        }
+      }
+    ],
+    "hazards": [],
+    "contradictions": []
+  },
+  "notes": "People with precision 'candidates' match several plan rooms: one yellow occupant per candidate room (same group, status contradicted, key occupants.location_candidates). Rooms with room_id resolve uniquely (green)."
+}

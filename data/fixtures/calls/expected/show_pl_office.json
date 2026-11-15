@@ -1,0 +1,72 @@
+{
+  "script_id": "SHOW_PL_OFFICE",
+  "building": {
+    "id": "199958956",
+    "address": "13722 Playa Lucia Court, Houston",
+    "plan_index": "data/raw/199958956/derived/plan_index.json"
+  },
+  "floor": {
+    "number": 1,
+    "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "any_extractor": {
+    "facts": {
+      "location.address": "13722 Playa Lucia Court",
+      "incident.visible": [
+        "flames"
+      ]
+    },
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {
+      "people.reported": true
+    },
+    "people": [
+      {
+        "who": "the caller's son",
+        "count": 1,
+        "call_id": "c1",
+        "where": "in the bathroom",
+        "precision": "candidates",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "bathroom"
+        },
+        "candidate_room_ids": [
+          "010me5gyyfa",
+          "3m54yff1z7crxaywd8if9rb0d",
+          "b2kez6wsw32fm2x3ui593u3hc",
+          "n2yqr30509t7i8whfdf2htwic",
+          "u3gep7lqz1n"
+        ]
+      },
+      {
+        "who": "the caller's mother",
+        "count": 1,
+        "call_id": "c1",
+        "where": "in the living room",
+        "precision": "room",
+        "room_id": "938wac98fka",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "living room"
+        }
+      }
+    ],
+    "fire": [
+      {
+        "kind": "flames",
+        "where": "the office",
+        "room_id": "dsaby2t1uer",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "office"
+        }
+      }
+    ],
+    "hazards": [],
+    "contradictions": []
+  },
+  "notes": "People with precision 'candidates' match several plan rooms: one yellow occupant per candidate room (same group, status contradicted, key occupants.location_candidates). Rooms with room_id resolve uniquely (green)."
+}

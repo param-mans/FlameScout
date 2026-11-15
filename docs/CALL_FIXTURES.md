@@ -27,6 +27,13 @@ real plan with `resolve_place` (fire and people each land in exactly one room). 
 | `show_fairhope` / `SHOW_FAIRHOPE` | 18107 Fairhope Oak Street, `214905148` | "18107 Fairhope Oak Street! Media room's on fire, second floor." / "Anyone inside?" / "My dad's in the bedroom next to the bonus room, on oxygen!" (24 words, 9.6 s) | fire: media room `n81qfe51azs8iexnbqwspye6c` (floor 2); father: bedroom next to the bonus room `peina19mpqedsku6a3huu38md`; hazard: oxygen (LLM only) |
 | `show_playa` / `SHOW_PLAYA` | 13722 Playa Lucia Court, `199958956` (one floor) | "13722 Playa Lucia Court! The garage is on fire, gas cans inside." / "Anyone in the house?" / "My grandma, in the den. She can't get out!" (25 words, 9.3 s) | fire: garage `i9ib8b4tvob`; grandmother (trapped): den `kogpvjihnk0`; hazard: gas |
 
+| `show_fd_dryer` / `SHOW_FD_DRYER` | Fairdale, `209217448` | "9660 Fairdale Lane! The dryer's on fire!" / "Who's inside?" / "My husband's in the office. My daughter's in a bedroom downstairs." (20 words, 8.6 s) | fire: laundry `akdbyao21yx` (inferred from "dryer", far from the doors); husband: office (green); daughter: 3 bedrooms on floor 1 (yellow) |
+| `show_fh_bonus` / `SHOW_FH_BONUS` | Fairhope, `214905148` | "18107 Fairhope Oak Street! Fire in the bonus room, second floor!" / "Anyone inside?" / "Grandpa was sleeping upstairs. My wife's in the dining room." (23 words, 9.4 s) | fire: bonus room `9sy6311hky7` (floor 2); grandfather: 4 bedrooms on floor 2 (inferred from "sleeping", yellow); wife: dining room (green) |
+| `show_pl_office` / `SHOW_PL_OFFICE` | Playa, `199958956` | "13722 Playa Lucia Court! The office is on fire!" / "Anyone inside?" / "Mom's in the living room, and my son's in the bathroom." (22 words, 8.2 s) | fire: office `dsaby2t1uer`; mother: living room (green); son: 5 bathrooms (yellow) |
+
+In the last three the fire is away from the exterior doors, and each mixes green people (one room) with yellow ones (a
+description that matches several rooms: a candidate in each, `candidate_room_ids` in the expected file).
+
 The keyword extractor gets the address, flames and, where said literally, the floor (Fairdale 1, Fairhope 2) and the
 gas hazard; Playa adds `people.trapped`. Each showcase expected file also has a top-level `floor` (fire floor) and a
 `resolve` query on every fire/people entry, which the tests pass straight to `resolve_place`.
@@ -45,9 +52,9 @@ gas hazard; Playa adds `people.trapped`. Each showcase expected file also has a 
 - Exactly one visible script is `inconsistent` and its title contains `INCONSISTENT`.
 - Scripts that are missing from the manifest or have `visible: false` are hidden from the UI but still load by id.
 
-Visible: `SHOW_FAIRDALE`, `SHOW_FAIRHOPE`, `SHOW_PLAYA`, `S6_FAIRDALE` (the only inconsistent one: callers disagree on
-the children's floor), `S7_FAIRHOPE_OAK` (3 callers, same fire, consistent) and `S8_PLAYA_LUCIA` (vague caller, the
-system must abstain). Hidden: S1, S2, S3, S4, S4B, S4Q, S5, S6, S9_NWTC, S10_WILSHIRE.
+Visible: `SHOW_FAIRDALE`, `SHOW_FAIRHOPE`, `SHOW_PLAYA`, `SHOW_FD_DRYER`, `SHOW_FH_BONUS`, `SHOW_PL_OFFICE`, `S6_FAIRDALE` (the only inconsistent one: callers disagree on
+the children's floor), `S7_FAIRHOPE_OAK` (3 callers, same fire, consistent) and `S8_PLAYA_LUCIA` (vague caller: yellow
+candidates in every matching room). Hidden: S1, S2, S3, S4, S4B, S4Q, S5, S6, S9_NWTC, S10_WILSHIRE.
 
 ## Expected files
 

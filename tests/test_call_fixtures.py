@@ -25,7 +25,7 @@ PHONE = re.compile(r"(?:\+?1[\s.-]?)?\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]\d{4}\b")
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
 MANIFEST = CALLS / "manifest.json"  # UI listing contract, not a script
 SCENARIOS = sorted(p for p in CALLS.glob("*.json") if p != MANIFEST)
-SHOWCASE = ["show_fairdale", "show_fairhope", "show_playa"]
+SHOWCASE = ["show_fairdale", "show_fairhope", "show_playa", "show_fd_dryer", "show_fh_bonus", "show_pl_office"]
 EXTRA = ["test_cooking", "ambig_bathrooms"]   # fast path: room inferred from a cue; room candidates
 VIEWER_CATALOG = ROOT / "apps" / "web" / "public" / "house-viewer" / "samples" / "index.json"
 

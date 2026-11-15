@@ -1,0 +1,27 @@
+{
+  "script_id": "SHOW_FD_DRYER",
+  "description": "Showcase, one short call from 9660 Fairdale Lane, Houston (hero 209217448): dryer fire in the laundry (the only laundry, inferred from 'dryer', far from the doors); the husband is in the office (green); the daughter is in 'a bedroom downstairs' (3 bedrooms on floor 1: yellow in each). No contradictions between callers. Expected: data/fixtures/calls/expected/show_fd_dryer.json.",
+  "segments": [
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "9660 Fairdale Lane! The dryer's on fire!",
+      "t_start": 0.0,
+      "t_end": 2.6
+    },
+    {
+      "call_id": "c1",
+      "speaker": "call_taker",
+      "text": "Who's inside?",
+      "t_start": 2.9,
+      "t_end": 3.8
+    },
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "My husband's in the office. My daughter's in a bedroom downstairs.",
+      "t_start": 4.1,
+      "t_end": 8.6
+    }
+  ]
+}

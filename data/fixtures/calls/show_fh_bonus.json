@@ -1,0 +1,27 @@
+{
+  "script_id": "SHOW_FH_BONUS",
+  "description": "Showcase, one short call from 18107 Fairhope Oak Street, Houston (hero 214905148): fire in the bonus room upstairs (the only bonus room, far from the doors); the grandfather was sleeping upstairs (inferred bedroom, 3 bedrooms on floor 2: yellow in each); the wife is in the dining room (green). No contradictions between callers. Expected: data/fixtures/calls/expected/show_fh_bonus.json.",
+  "segments": [
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "18107 Fairhope Oak Street! Fire in the bonus room, second floor!",
+      "t_start": 0.0,
+      "t_end": 4.0
+    },
+    {
+      "call_id": "c1",
+      "speaker": "call_taker",
+      "text": "Anyone inside?",
+      "t_start": 4.3,
+      "t_end": 5.1
+    },
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "Grandpa was sleeping upstairs. My wife's in the dining room.",
+      "t_start": 5.4,
+      "t_end": 9.4
+    }
+  ]
+}

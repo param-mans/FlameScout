@@ -1,0 +1,27 @@
+{
+  "script_id": "SHOW_PL_OFFICE",
+  "description": "Showcase, one short call from 13722 Playa Lucia Court, Houston (hero 199958956): fire in the office (the only office, inside the house); the son is in 'the bathroom' (5 bathrooms: yellow in each); the mother is in the living room (green). No contradictions between callers. Expected: data/fixtures/calls/expected/show_pl_office.json.",
+  "segments": [
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "13722 Playa Lucia Court! The office is on fire!",
+      "t_start": 0.0,
+      "t_end": 3.0
+    },
+    {
+      "call_id": "c1",
+      "speaker": "call_taker",
+      "text": "Anyone inside?",
+      "t_start": 3.3,
+      "t_end": 4.1
+    },
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "Mom's in the living room, and my son's in the bathroom.",
+      "t_start": 4.4,
+      "t_end": 8.2
+    }
+  ]
+}

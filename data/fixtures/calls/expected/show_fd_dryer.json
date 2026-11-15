@@ -1,0 +1,72 @@
+{
+  "script_id": "SHOW_FD_DRYER",
+  "building": {
+    "id": "209217448",
+    "address": "9660 Fairdale Lane, Houston",
+    "plan_index": "data/raw/209217448/derived/plan_index.json"
+  },
+  "floor": {
+    "number": 1,
+    "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "any_extractor": {
+    "facts": {
+      "location.address": "9660 Fairdale Lane",
+      "incident.visible": [
+        "flames"
+      ]
+    },
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {
+      "people.reported": true
+    },
+    "people": [
+      {
+        "who": "the caller's husband",
+        "count": 1,
+        "call_id": "c1",
+        "where": "in the office",
+        "precision": "room",
+        "room_id": "rewssvxhpxq",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "office"
+        }
+      },
+      {
+        "who": "the caller's daughter",
+        "count": 1,
+        "call_id": "c1",
+        "where": "in a bedroom downstairs",
+        "precision": "candidates",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "bedroom",
+          "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+        },
+        "candidate_room_ids": [
+          "2qdmc5i9byxi79ry1pxdkqzea",
+          "d3slsxy3zlg",
+          "tt6gm2a0463x9wmnx7rn6gugc"
+        ]
+      }
+    ],
+    "fire": [
+      {
+        "kind": "flames",
+        "where": "the dryer (laundry, inferred)",
+        "inferred_from": "dryer",
+        "room_id": "akdbyao21yx",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "laundry"
+        }
+      }
+    ],
+    "hazards": [],
+    "contradictions": []
+  },
+  "notes": "People with precision 'candidates' match several plan rooms: one yellow occupant per candidate room (same group, status contradicted, key occupants.location_candidates). Rooms with room_id resolve uniquely (green)."
+}
