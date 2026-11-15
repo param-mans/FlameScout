@@ -1,0 +1,72 @@
+{
+  "script_id": "SHOW_EN_LAUNDRY",
+  "building": {
+    "id": "208401769",
+    "address": "3218 Enclave Lane, Houston",
+    "plan_index": "data/raw/208401769/derived/plan_index.json"
+  },
+  "floor": {
+    "number": 2,
+    "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+  },
+  "any_extractor": {
+    "facts": {
+      "location.address": "3218 Enclave Lane",
+      "incident.visible": [
+        "flames"
+      ]
+    },
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {
+      "people.reported": true
+    },
+    "people": [
+      {
+        "who": "the caller's father",
+        "count": 1,
+        "call_id": "c1",
+        "where": "in the office",
+        "precision": "room",
+        "room_id": "h26t7ky77ew74yb0pg8qqf5rd",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "office"
+        }
+      },
+      {
+        "who": "the caller's daughter",
+        "count": 1,
+        "call_id": "c1",
+        "where": "in a bathroom upstairs",
+        "precision": "candidates",
+        "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+        "resolve": {
+          "type": "bathroom",
+          "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+        },
+        "candidate_room_ids": [
+          "b2kez6wsw32fm2x3ui593u3hc",
+          "ediidma5zg15dufx3n0qyq21a",
+          "peina19mpqedsku6a3huu38md",
+          "tyz3uyd99x00wa88mxhmugrxa"
+        ]
+      }
+    ],
+    "fire": [
+      {
+        "kind": "flames",
+        "where": "the laundry room upstairs",
+        "room_id": "n2yqr30509t7i8whfdf2htwic",
+        "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+        "resolve": {
+          "type": "laundry"
+        }
+      }
+    ],
+    "hazards": [],
+    "contradictions": []
+  },
+  "notes": "People with precision 'candidates' match several plan rooms: one yellow occupant per candidate room (same group, status contradicted, key occupants.location_candidates). Rooms with room_id resolve uniquely (green). The plan is a catalog house's (data/raw/catalog.csv), cached by services/agents/tools/house_data_client.py from the house data service."
+}

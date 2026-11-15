@@ -1,0 +1,27 @@
+{
+  "script_id": "SHOW_EN_LAUNDRY",
+  "description": "Showcase, one short call from 3218 Enclave Lane, Houston (catalog house 208401769, plan fetched on demand from the house data service): fire in the laundry room upstairs (the only laundry, floor 2, 10.9 m from the nearest ground-floor door); the father is in the office downstairs (green); the daughter is in 'a bathroom upstairs' (4 bathrooms on floor 2: yellow in each). No contradictions between callers. Expected: data/fixtures/calls/expected/show_en_laundry.json.",
+  "segments": [
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "3218 Enclave Lane! Laundry room's on fire, upstairs!",
+      "t_start": 0.0,
+      "t_end": 3.2
+    },
+    {
+      "call_id": "c1",
+      "speaker": "call_taker",
+      "text": "Who's inside?",
+      "t_start": 3.5,
+      "t_end": 4.3
+    },
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "Dad's in the office. My daughter's in a bathroom upstairs.",
+      "t_start": 4.6,
+      "t_end": 8.4
+    }
+  ]
+}

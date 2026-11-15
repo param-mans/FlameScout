@@ -3,6 +3,7 @@ the existing ones. Offline, no models. Fusion is run in memory (FusionEngine, no
 scenarios; for s6-s10, which expected facts the keyword extractor recovers is reported in docs/CALL_FIXTURES.md, not
 asserted. Showcases (show_*) and the UI manifest (manifest.json) are asserted strictly, including the keyword facts and
 resolve_place on the real plan (skipped without data/raw)."""
+import csv
 import json
 import re
 from pathlib import Path
@@ -25,9 +26,12 @@ PHONE = re.compile(r"(?:\+?1[\s.-]?)?\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]\d{4}\b")
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
 MANIFEST = CALLS / "manifest.json"  # UI listing contract, not a script
 SCENARIOS = sorted(p for p in CALLS.glob("*.json") if p != MANIFEST)
-SHOWCASE = ["show_fairdale", "show_fairhope", "show_playa", "show_fd_dryer", "show_fh_bonus", "show_pl_office"]
+SHOWCASE = ["show_fairdale", "show_fairhope", "show_playa", "show_fd_dryer", "show_fh_bonus", "show_pl_office",
+            # catalog houses (data/raw/catalog.csv), plans cached on demand by services/agents/tools/house_data_client.py
+            "show_ef_stove", "show_om_office", "show_gp_pan", "show_en_laundry", "show_sr_upstairs"]
 EXTRA = ["test_cooking", "ambig_bathrooms"]   # fast path: room inferred from a cue; room candidates
 VIEWER_CATALOG = ROOT / "apps" / "web" / "public" / "house-viewer" / "samples" / "index.json"
+HOUSE_CATALOG = ROOT / "data" / "raw" / "catalog.csv"   # local only (data/raw is not in git)
 
 
 def _data(p: Path) -> dict:
@@ -142,10 +146,18 @@ def test_manifest_visible_scripts_have_no_unexpected_contradictions():
 
 
 def test_manifest_houses_are_in_the_viewer_catalog():
-    catalog = {x["id"] for x in json.loads(VIEWER_CATALOG.read_text())}
-    for r in _manifest():
-        if r["visible"]:
-            assert r["house"] in catalog, r
+    # a visible script's house is in the viewer samples, or in the house catalog (the web falls back to the house data
+    # service for those); the catalog part is skipped without data/raw/catalog.csv
+    samples = {x["id"] for x in json.loads(VIEWER_CATALOG.read_text())}
+    others = [r for r in _manifest() if r["visible"] and r["house"] not in samples]
+    if not others:
+        return
+    if not HOUSE_CATALOG.exists():
+        pytest.skip("data/raw/catalog.csv is local only (data/raw is not in git)")
+    with HOUSE_CATALOG.open(encoding="utf-8", newline="") as f:
+        catalog = {row["listing_id"] for row in csv.DictReader(f) if row.get("matterport_model_id")}
+    for r in others:
+        assert r["house"] in catalog, r
 
 
 @pytest.mark.parametrize("stem", SHOWCASE)
@@ -190,6 +202,21 @@ def test_showcase_resolves_on_the_real_plan(stem):
             if "resolve" in item:
                 assert resolve_place(index, **item["resolve"])["status"] != "resolved", item["where"]
     assert exp["floor"]["floor_id"] == llm["fire"][0]["floor_id"]
+
+
+@pytest.mark.parametrize("stem", SHOWCASE)
+def test_showcase_address_confirms_its_catalog_house(stem, monkeypatch):
+    # houses that are not viewer samples: the spoken address must auto-confirm the listing through the house catalog
+    exp = _data(EXPECTED / f"{stem}.json")
+    if exp["building"]["id"] in {x["id"] for x in json.loads(VIEWER_CATALOG.read_text())}:
+        return
+    if not HOUSE_CATALOG.exists():
+        pytest.skip("data/raw/catalog.csv is local only (data/raw is not in git)")
+    from services.agents import house_catalog
+    monkeypatch.setattr(house_catalog, "CATALOG_PATH", HOUSE_CATALOG)
+    m = house_catalog.match(exp["any_extractor"]["facts"]["location.address"])
+    assert m and m[0].listing_id == exp["building"]["id"] and m[0].score >= 0.8, m
+    assert len(m) == 1 or m[0].score - m[1].score >= 0.2, m
 
 
 def _contradictions(exp: dict) -> list:

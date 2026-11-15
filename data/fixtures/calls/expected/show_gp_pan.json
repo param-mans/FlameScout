@@ -1,0 +1,75 @@
+{
+  "script_id": "SHOW_GP_PAN",
+  "building": {
+    "id": "217757820",
+    "address": "13247 Gatton Park Drive, Houston",
+    "plan_index": "data/raw/217757820/derived/plan_index.json"
+  },
+  "floor": {
+    "number": 1,
+    "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "any_extractor": {
+    "facts": {
+      "location.address": "13247 Gatton Park Drive",
+      "incident.visible": [
+        "flames"
+      ]
+    },
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {
+      "people.reported": true
+    },
+    "people": [
+      {
+        "who": "the caller's wife",
+        "count": 1,
+        "call_id": "c1",
+        "where": "in the bonus room",
+        "precision": "room",
+        "room_id": "h26t7ky77ew74yb0pg8qqf5rd",
+        "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+        "resolve": {
+          "type": "bonus room"
+        }
+      },
+      {
+        "who": "the caller's son",
+        "count": 1,
+        "call_id": "c1",
+        "where": "in a bedroom upstairs",
+        "precision": "candidates",
+        "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+        "resolve": {
+          "type": "bedroom",
+          "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+        },
+        "candidate_room_ids": [
+          "19ab05tns5h6y4qm42esqqpea",
+          "2qdmc5i9byxi79ry1pxdkqzea",
+          "3m54yff1z7crxaywd8if9rb0d",
+          "a5f9age4zzxewres6iqux2emc",
+          "tt6gm2a0463x9wmnx7rn6gugc"
+        ]
+      }
+    ],
+    "fire": [
+      {
+        "kind": "flames",
+        "where": "a pan downstairs (kitchen, inferred)",
+        "inferred_from": "pan",
+        "room_id": "cdz3fkt38kae7tapstpt0eaeb",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "kitchen",
+          "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+        }
+      }
+    ],
+    "hazards": [],
+    "contradictions": []
+  },
+  "notes": "People with precision 'candidates' match several plan rooms: one yellow occupant per candidate room (same group, status contradicted, key occupants.location_candidates). Rooms with room_id resolve uniquely (green). The plan is a catalog house's (data/raw/catalog.csv), cached by services/agents/tools/house_data_client.py from the house data service."
+}

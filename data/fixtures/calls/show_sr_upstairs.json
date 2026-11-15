@@ -1,0 +1,27 @@
+{
+  "script_id": "SHOW_SR_UPSTAIRS",
+  "description": "Showcase, one short call from 14020 Schroeder Road, Houston (catalog house 182022608, plan fetched on demand from the house data service): fire in the bedroom upstairs (the only bedroom on floor 2, reached by the stairs; the ground-floor doors are below it); the mother is in the loft next to it (green); the brother is in the garage (green). Small two-storey house. No contradictions between callers. Expected: data/fixtures/calls/expected/show_sr_upstairs.json.",
+  "segments": [
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "14020 Schroeder Road! The bedroom upstairs is on fire!",
+      "t_start": 0.0,
+      "t_end": 3.4
+    },
+    {
+      "call_id": "c1",
+      "speaker": "call_taker",
+      "text": "Anyone inside?",
+      "t_start": 3.7,
+      "t_end": 4.6
+    },
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "Mom's in the loft. My brother's in the garage.",
+      "t_start": 4.9,
+      "t_end": 7.9
+    }
+  ]
+}

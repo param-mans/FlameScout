@@ -1,0 +1,27 @@
+{
+  "script_id": "SHOW_GP_PAN",
+  "description": "Showcase, one short call from 13247 Gatton Park Drive, Houston (catalog house 217757820, plan fetched on demand from the house data service): pan fire downstairs in the kitchen (the only kitchen, inferred from 'pan', 6.2 m from the nearest exterior door); the wife is in the bonus room upstairs (green); the son is in 'a bedroom upstairs' (5 bedrooms on floor 2: yellow in each). No contradictions between callers. Expected: data/fixtures/calls/expected/show_gp_pan.json.",
+  "segments": [
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "13247 Gatton Park Drive! A pan's on fire downstairs!",
+      "t_start": 0.0,
+      "t_end": 3.6
+    },
+    {
+      "call_id": "c1",
+      "speaker": "call_taker",
+      "text": "Anyone inside?",
+      "t_start": 3.9,
+      "t_end": 4.8
+    },
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "My wife's in the bonus room. My son's in a bedroom upstairs.",
+      "t_start": 5.1,
+      "t_end": 9.4
+    }
+  ]
+}

@@ -31,7 +31,22 @@ real plan with `resolve_place` (fire and people each land in exactly one room). 
 | `show_fh_bonus` / `SHOW_FH_BONUS` | Fairhope, `214905148` | "18107 Fairhope Oak Street! Fire in the bonus room, second floor!" / "Anyone inside?" / "Grandpa was sleeping upstairs. My wife's in the dining room." (23 words, 9.4 s) | fire: bonus room `9sy6311hky7` (floor 2); grandfather: 4 bedrooms on floor 2 (inferred from "sleeping", yellow); wife: dining room (green) |
 | `show_pl_office` / `SHOW_PL_OFFICE` | Playa, `199958956` | "13722 Playa Lucia Court! The office is on fire!" / "Anyone inside?" / "Mom's in the living room, and my son's in the bathroom." (22 words, 8.2 s) | fire: office `dsaby2t1uer`; mother: living room (green); son: 5 bathrooms (yellow) |
 
-In the last three the fire is away from the exterior doors, and each mixes green people (one room) with yellow ones (a
+Catalog houses (`data/raw/catalog.csv`, not viewer samples): the plan comes from the house data service
+(`GET /api/house-viewer/plan/<id>`, live read-only Matterport) and is cached by `services/agents/tools/house_data_client.py`
+in `data/raw/<id>/matterport/plan.json` and `derived/plan_index.json`. The spoken address auto-confirms the listing
+through `house_catalog.match` (one candidate, score 0.9). The web shows these houses through the same service
+(`/api/house-viewer/sample/<id>`) without adding them to `samples/index.json`.
+
+| Stem / id | Building | Text (caller / call taker) | Resolves to |
+|---|---|---|---|
+| `show_ef_stove` / `SHOW_EF_STOVE` | 5815 Effingham Drive, `226579006` (one floor, 1424 sqft) | "5815 Effingham Drive! The stove's on fire!" / "Anyone inside?" / "My son's in the garage. Grandma's in a bedroom." (18 words, 7.6 s) | fire: kitchen `xy2x8mpaaqknp7q2c3nnbw1ma` (inferred from "stove", 9.5 m from the nearest exterior door); son: garage (green); grandmother: 2 bedrooms (yellow) |
+| `show_om_office` / `SHOW_OM_OFFICE` | 4830 Omeara Drive, `227423982` (one floor, 2131 sqft) | "4830 Omeara Drive! The office is on fire!" / "Who's inside?" / "My wife's in the kitchen, and two kids in a bedroom." (21 words, 7.7 s) | fire: office `2qdmc5i9byxi79ry1pxdkqzea` (7.2 m from the nearest exterior door); wife: kitchen (green); two kids: 4 bedrooms (yellow) |
+| `show_gp_pan` / `SHOW_GP_PAN` | 13247 Gatton Park Drive, `217757820` (two floors, 2380 sqft) | "13247 Gatton Park Drive! A pan's on fire downstairs!" / "Anyone inside?" / "My wife's in the bonus room. My son's in a bedroom upstairs." (23 words, 9.4 s) | fire: kitchen `cdz3fkt38kae7tapstpt0eaeb` (floor 1, inferred from "pan", 6.2 m from the nearest door); wife: bonus room (green, floor 2); son: 5 bedrooms on floor 2 (yellow) |
+| `show_en_laundry` / `SHOW_EN_LAUNDRY` | 3218 Enclave Lane, `208401769` (two floors, 3076 sqft) | "3218 Enclave Lane! Laundry room's on fire, upstairs!" / "Who's inside?" / "Dad's in the office. My daughter's in a bathroom upstairs." (20 words, 8.4 s) | fire: laundry `n2yqr30509t7i8whfdf2htwic` (floor 2, 10.9 m from the nearest ground-floor door); father: office (green, floor 1); daughter: 4 bathrooms on floor 2 (yellow) |
+| `show_sr_upstairs` / `SHOW_SR_UPSTAIRS` | 14020 Schroeder Road, `182022608` (two floors, 1178 sqft) | "14020 Schroeder Road! The bedroom upstairs is on fire!" / "Anyone inside?" / "Mom's in the loft. My brother's in the garage." (20 words, 7.9 s) | fire: bedroom `lbbhtoyakj6` (the only one on floor 2, reached by the stairs); mother: loft next to it (green); brother: garage (green). No yellow: every room type is unique per floor |
+
+
+In the last three and the catalog ones the fire is away from the exterior doors, and each (except `SHOW_SR_UPSTAIRS`) mixes green people (one room) with yellow ones (a
 description that matches several rooms: a candidate in each, `candidate_room_ids` in the expected file).
 
 The keyword extractor gets the address, flames and, where said literally, the floor (Fairdale 1, Fairhope 2) and the
@@ -48,11 +63,13 @@ gas hazard; Playa adds `people.trapped`. Each showcase expected file also has a 
 ```
 
 - `group` is `showcase` or `test`; showcases come first and their titles start with `SHOWCASE · `.
-- `house` is the listing id in `apps/web/public/house-viewer/samples/index.json` (`id`), or `null` for fixture buildings.
+- `house` is the listing id in `apps/web/public/house-viewer/samples/index.json` (`id`) or in the house catalog
+  `data/raw/catalog.csv` (`listing_id`, checked only when the file exists), or `null` for fixture buildings.
 - Exactly one visible script is `inconsistent` and its title contains `INCONSISTENT`.
 - Scripts that are missing from the manifest or have `visible: false` are hidden from the UI but still load by id.
 
-Visible: `SHOW_FAIRDALE`, `SHOW_FAIRHOPE`, `SHOW_PLAYA`, `SHOW_FD_DRYER`, `SHOW_FH_BONUS`, `SHOW_PL_OFFICE`, `S6_FAIRDALE` (the only inconsistent one: callers disagree on
+Visible: `SHOW_FAIRDALE`, `SHOW_FAIRHOPE`, `SHOW_PLAYA`, `SHOW_FD_DRYER`, `SHOW_FH_BONUS`, `SHOW_PL_OFFICE`, `SHOW_EF_STOVE`,
+`SHOW_OM_OFFICE`, `SHOW_GP_PAN`, `SHOW_EN_LAUNDRY`, `SHOW_SR_UPSTAIRS`, `S6_FAIRDALE` (the only inconsistent one: callers disagree on
 the children's floor), `S7_FAIRHOPE_OAK` (3 callers, same fire, consistent) and `S8_PLAYA_LUCIA` (vague caller: yellow
 candidates in every matching room). Hidden: S1, S2, S3, S4, S4B, S4Q, S5, S6, S9_NWTC, S10_WILSHIRE.
 

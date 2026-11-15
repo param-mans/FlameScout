@@ -1,0 +1,67 @@
+{
+  "script_id": "SHOW_SR_UPSTAIRS",
+  "building": {
+    "id": "182022608",
+    "address": "14020 Schroeder Road, Houston",
+    "plan_index": "data/raw/182022608/derived/plan_index.json"
+  },
+  "floor": {
+    "number": 2,
+    "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+  },
+  "any_extractor": {
+    "facts": {
+      "location.address": "14020 Schroeder Road",
+      "incident.visible": [
+        "flames"
+      ]
+    },
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {
+      "people.reported": true
+    },
+    "people": [
+      {
+        "who": "the caller's mother",
+        "count": 1,
+        "call_id": "c1",
+        "where": "in the loft",
+        "precision": "room",
+        "room_id": "a5f9age4zzxewres6iqux2emc",
+        "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+        "resolve": {
+          "type": "loft"
+        }
+      },
+      {
+        "who": "the caller's brother",
+        "count": 1,
+        "call_id": "c1",
+        "where": "in the garage",
+        "precision": "room",
+        "room_id": "xy2x8mpaaqknp7q2c3nnbw1ma",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "garage"
+        }
+      }
+    ],
+    "fire": [
+      {
+        "kind": "flames",
+        "where": "the bedroom upstairs",
+        "room_id": "lbbhtoyakj6",
+        "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb",
+        "resolve": {
+          "type": "bedroom",
+          "floor_id": "pd0i1c4yq9w0y2zsb07ed23sb"
+        }
+      }
+    ],
+    "hazards": [],
+    "contradictions": []
+  },
+  "notes": "People with precision 'candidates' match several plan rooms: one yellow occupant per candidate room (same group, status contradicted, key occupants.location_candidates). Rooms with room_id resolve uniquely (green). The plan is a catalog house's (data/raw/catalog.csv), cached by services/agents/tools/house_data_client.py from the house data service."
+}

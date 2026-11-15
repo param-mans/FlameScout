@@ -1,0 +1,70 @@
+{
+  "script_id": "SHOW_EF_STOVE",
+  "building": {
+    "id": "226579006",
+    "address": "5815 Effingham Drive, Houston",
+    "plan_index": "data/raw/226579006/derived/plan_index.json"
+  },
+  "floor": {
+    "number": 1,
+    "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "any_extractor": {
+    "facts": {
+      "location.address": "5815 Effingham Drive",
+      "incident.visible": [
+        "flames"
+      ]
+    },
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {
+      "people.reported": true
+    },
+    "people": [
+      {
+        "who": "the caller's son",
+        "count": 1,
+        "call_id": "c1",
+        "where": "in the garage",
+        "precision": "room",
+        "room_id": "m592thew898",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "garage"
+        }
+      },
+      {
+        "who": "the caller's grandmother",
+        "count": 1,
+        "call_id": "c1",
+        "where": "in a bedroom",
+        "precision": "candidates",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "bedroom"
+        },
+        "candidate_room_ids": [
+          "3m54yff1z7crxaywd8if9rb0d",
+          "tt6gm2a0463x9wmnx7rn6gugc"
+        ]
+      }
+    ],
+    "fire": [
+      {
+        "kind": "flames",
+        "where": "the stove (kitchen, inferred)",
+        "inferred_from": "stove",
+        "room_id": "xy2x8mpaaqknp7q2c3nnbw1ma",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "kitchen"
+        }
+      }
+    ],
+    "hazards": [],
+    "contradictions": []
+  },
+  "notes": "People with precision 'candidates' match several plan rooms: one yellow occupant per candidate room (same group, status contradicted, key occupants.location_candidates). Rooms with room_id resolve uniquely (green). The plan is a catalog house's (data/raw/catalog.csv), cached by services/agents/tools/house_data_client.py from the house data service."
+}

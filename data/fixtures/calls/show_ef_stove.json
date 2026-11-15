@@ -1,0 +1,27 @@
+{
+  "script_id": "SHOW_EF_STOVE",
+  "description": "Showcase, one short call from 5815 Effingham Drive, Houston (catalog house 226579006, plan fetched on demand from the house data service): stove fire in the kitchen (the only kitchen, inferred from 'stove', 9.5 m from the nearest exterior door, the farthest room); the son is in the garage (green); the grandmother is in 'a bedroom' (2 bedrooms: yellow in each). No contradictions between callers. Expected: data/fixtures/calls/expected/show_ef_stove.json.",
+  "segments": [
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "5815 Effingham Drive! The stove's on fire!",
+      "t_start": 0.0,
+      "t_end": 2.8
+    },
+    {
+      "call_id": "c1",
+      "speaker": "call_taker",
+      "text": "Anyone inside?",
+      "t_start": 3.1,
+      "t_end": 4.0
+    },
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "My son's in the garage. Grandma's in a bedroom.",
+      "t_start": 4.3,
+      "t_end": 7.6
+    }
+  ]
+}

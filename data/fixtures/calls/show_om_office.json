@@ -1,0 +1,27 @@
+{
+  "script_id": "SHOW_OM_OFFICE",
+  "description": "Showcase, one short call from 4830 Omeara Drive, Houston (catalog house 227423982, plan fetched on demand from the house data service): fire in the office (the only office, 7.2 m from the nearest exterior door); the wife is in the kitchen (green); two children are in 'a bedroom' (4 bedrooms: yellow in each). No contradictions between callers. Expected: data/fixtures/calls/expected/show_om_office.json.",
+  "segments": [
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "4830 Omeara Drive! The office is on fire!",
+      "t_start": 0.0,
+      "t_end": 2.7
+    },
+    {
+      "call_id": "c1",
+      "speaker": "call_taker",
+      "text": "Who's inside?",
+      "t_start": 3.0,
+      "t_end": 3.8
+    },
+    {
+      "call_id": "c1",
+      "speaker": "caller",
+      "text": "My wife's in the kitchen, and two kids in a bedroom.",
+      "t_start": 4.1,
+      "t_end": 7.7
+    }
+  ]
+}

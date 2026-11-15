@@ -1,0 +1,71 @@
+{
+  "script_id": "SHOW_OM_OFFICE",
+  "building": {
+    "id": "227423982",
+    "address": "4830 Omeara Drive, Houston",
+    "plan_index": "data/raw/227423982/derived/plan_index.json"
+  },
+  "floor": {
+    "number": 1,
+    "floor_id": "tsmq1wak12rhgn0mawksxcwcd"
+  },
+  "any_extractor": {
+    "facts": {
+      "location.address": "4830 Omeara Drive",
+      "incident.visible": [
+        "flames"
+      ]
+    },
+    "contradictions": []
+  },
+  "llm_only": {
+    "facts": {
+      "people.reported": true
+    },
+    "people": [
+      {
+        "who": "the caller's wife",
+        "count": 1,
+        "call_id": "c1",
+        "where": "in the kitchen",
+        "precision": "room",
+        "room_id": "cdz3fkt38kae7tapstpt0eaeb",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "kitchen"
+        }
+      },
+      {
+        "who": "the caller's two children",
+        "count": 2,
+        "call_id": "c1",
+        "where": "in a bedroom",
+        "precision": "candidates",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "bedroom"
+        },
+        "candidate_room_ids": [
+          "3m54yff1z7crxaywd8if9rb0d",
+          "613htqkzf66zz7hf7n8kzszed",
+          "h26t7ky77ew74yb0pg8qqf5rd",
+          "xy2x8mpaaqknp7q2c3nnbw1ma"
+        ]
+      }
+    ],
+    "fire": [
+      {
+        "kind": "flames",
+        "where": "the office",
+        "room_id": "2qdmc5i9byxi79ry1pxdkqzea",
+        "floor_id": "tsmq1wak12rhgn0mawksxcwcd",
+        "resolve": {
+          "type": "office"
+        }
+      }
+    ],
+    "hazards": [],
+    "contradictions": []
+  },
+  "notes": "People with precision 'candidates' match several plan rooms: one yellow occupant per candidate room (same group, status contradicted, key occupants.location_candidates). Rooms with room_id resolve uniquely (green). The plan is a catalog house's (data/raw/catalog.csv), cached by services/agents/tools/house_data_client.py from the house data service."
+}
