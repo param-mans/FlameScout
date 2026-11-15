@@ -3,8 +3,8 @@
 // between floors, fire penalty on edges near a reported fire, never a block). Pure module (no DOM).
 //   housePeople(plan, ev, overlay) -> [{ fi, roomId, key, p, n, color: 'green' | 'yellow', id }]
 //     green: occupant in one room (room or anchor), not contradicted. yellow: each candidate of a contradicted group (or a
-//     contradicted occupant), and floor-level occupants (one in every room of that floor a person can be in).
-//     n = figures for that entity (count, or the top of count_range), 5 at most; 1 per room for a floor-level report.
+//     contradicted occupant), and floor-level occupants (one, in the floor's at_stairs room, else its largest room).
+//     n = figures for that entity (count, or the top of count_range), 5 at most; 1 for a floor-level report.
 //   houseRoutes(plan, ev, overlay, people) -> { red, green, entrance, unreachable }
 //     red: entrance -> room of the highest-confidence fire (length only). green: entrance -> every person (shortest order:
 //     all permutations up to 8 stops, nearest neighbour above) -> nearest exterior door, with the fire penalty.
@@ -24,12 +24,6 @@ export function floorRoom(plan, ev, fi) {
   return big(rooms.filter((r) => r.at_stairs === true)) || big(rooms)
 }
 
-// rooms a person can be in (no closets, hallways, stairs, porches...), in the evacuation graph
-const NOT_A_ROOM = new Set(['closet', 'hallway', 'staircase', 'stairs', 'landing', 'entrance', 'foyer', 'porch', 'patio', 'balcony', 'deck', 'void', 'other', 'pantry'])
-export function everyRoom(plan, ev, fi) {
-  return plan.floors[fi].rooms.filter((r) => dibujable(r) && !NOT_A_ROOM.has(String(r.type || 'other').toLowerCase()) && ev.nodos.has(ev.clave(fi, r)))
-}
-
 export function housePeople(plan, ev, overlay) {
   const out = []
   for (const o of overlay?.occupants || []) {
@@ -37,12 +31,9 @@ export function housePeople(plan, ev, overlay) {
     if (fi === null) continue
     const n = loc.kind === 'floor' ? 1 : Math.min(MAX_FIGURES, count(o))   // floor level: one yellow figure
     let room, p
-    if (loc.kind === 'floor') { // room unknown: a yellow figure in EVERY room of that floor, the green route checks each one
-      const rooms = everyRoom(plan, ev, fi)
-      for (const r of rooms) out.push({ id: o.id, fi, roomId: r.id, key: ev.clave(fi, r), p: ev.nodos.get(ev.clave(fi, r)).c, n: 1, color: 'yellow' })
-      if (rooms.length) continue
-      room = floorRoom(plan, ev, fi); if (!room) continue; p = ev.nodos.get(ev.clave(fi, room)).c
-    }
+    // floor level: one yellow figure (the backend already puts a candidate in every room that matches what the caller
+    // said; a floor-level report is one it could not narrow, e.g. a room type this floor does not have)
+    if (loc.kind === 'floor') { room = floorRoom(plan, ev, fi); if (!room) continue; p = ev.nodos.get(ev.clave(fi, room)).c }
     else {
       room = plan.floors[fi].rooms.find((r) => r.id === (loc.kind === 'room' ? loc.room_id : loc.anchor.room_id))
       if (!room || !dibujable(room)) continue

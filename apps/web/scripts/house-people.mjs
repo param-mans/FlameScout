@@ -33,7 +33,7 @@ const EX = path.join(WEB, "public", "house-viewer", "incident", "examples");
 const CASES = [
   { file: "fairdale_people_fire.json", green: 3, yellow: 2, total: "4", rooms: "Office 1 · Bedroom 2 · Bathroom ? 1", leak: true },
   { file: "fairdale_two_bathrooms.json", green: 0, yellow: 2, total: "1", rooms: "Bathroom ? 1" },
-  { file: "fairdale_floor_level.json", green: 0, yellow: 2, total: "1", rooms: "Floor 2 ? 1" },
+  { file: "fairdale_floor_level.json", green: 0, yellow: 1, total: "1", rooms: "Floor 2 ? 1" },
 ];
 const SHOTS = fs.mkdtempSync(path.join(os.tmpdir(), "house-people-"));
 let failures = 0;

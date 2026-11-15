@@ -381,10 +381,41 @@ def _floor_no(index: dict, room_id: str) -> Optional[int]:
     return _floor_of(index, [room_id])
 
 
-def _every_room(index: dict, loc: dict) -> list[str]:
-    """Rooms a person placed at floor level (that floor) or nowhere (the whole house) could be in, plan order."""
+# words a caller uses for a room type -> the plan index type
+TYPE_WORDS = {"bedroom": "bedroom", "bed room": "bedroom", "nursery": "bedroom", "bathroom": "bathroom",
+              "bath room": "bathroom", "restroom": "bathroom", "toilet": "bathroom", "kitchen": "kitchen",
+              "garage": "garage", "laundry": "laundry", "living room": "living room", "den": "den", "office": "office",
+              "study": "office", "loft": "loft", "dining": "dining room", "media room": "media room",
+              "bonus room": "bonus room"}
+_TYPE_RE = re.compile(r"\b(" + "|".join(sorted(map(re.escape, TYPE_WORDS), key=len, reverse=True)) + r")s?\b", re.I)
+
+
+def _said_type(e: "_FastReport", caller_text: str, taken: set[str] = frozenset()) -> Optional[set[str]]:
+    """The room type(s) the caller named for this person: the model's place type, else the note, else the caller's
+    words ("my daughter's in a bedroom downstairs" -> {bedroom}). Types already placed for someone else in the same
+    words are dropped ("husband's in the office, daughter's in a bedroom" -> {bedroom}); if several remain, all of them."""
+    if e.place is not None and e.place.type:
+        return {e.place.type.strip().lower()}
+    for text in (e.note or "", caller_text):
+        found = {TYPE_WORDS[m.lower()] for m in _TYPE_RE.findall(text)}
+        if len(found) > 1 and found - taken:
+            found -= taken
+        if found:
+            return found
+    return None
+
+
+def _every_room(index: dict, loc: dict, room_types: Optional[set[str]] = None) -> list[str]:
+    """Rooms a person placed at floor level (that floor) or nowhere (the whole house) could be in, plan order. When
+    the caller named a room type ("a bedroom downstairs"), only rooms of that type: never any room."""
     if not overlay_mod.has_scan(index) or loc.get("kind") not in ("floor", "unknown"):
         return []
+    if room_types:
+        floors = index.get("floors") or []
+        n = loc.get("floor_reported")
+        fid = floors[n - 1] if loc.get("kind") == "floor" and n and 0 < n <= len(floors) else None
+        return [rid for rid, r in (index.get("rooms") or {}).items()
+                if (r.get("type") or "").lower() in room_types and (fid is None or r.get("floor_id") == fid)]
     floors = index.get("floors") or []
     n = loc.get("floor_reported")
     fid = floors[n - 1] if loc.get("kind") == "floor" and n and 0 < n <= len(floors) else None
@@ -487,7 +518,9 @@ def _to_draft(out: FastOutput, index: dict, spans: Optional[list[Span]] = None
                 continue
             about = f"{e.note or e.id} ({e.id})"
             loc = _locate(index, e.place, about, e.evidence_ids, resolved, questions)
-            every = _every_room(index, loc) if expand and not e.group_id and e.status != "contradicted" else []
+            taken = {(index.get("rooms", {}).get(r) or {}).get("type", "").lower() for r in resolved}
+            every = (_every_room(index, loc, _said_type(e, _caller_text(e, by_span), taken))
+                     if expand and not e.group_id and e.status != "contradicted" else [])
             if len(every) >= 2:                     # "I think she's in a room": a yellow candidate in EVERY room
                 group = f"grp-{e.id}"
                 renames[e.id] = group

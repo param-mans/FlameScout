@@ -36,15 +36,17 @@ house and adds the Copilot suggestion "Address not in catalog".
   status `inferred`, confidence ≤ 0.6, note `inferred from: <cue>`; otherwise floor level.
 - Candidates: a description matching several rooms ("the bathroom", or an inferred type with several rooms: "sleeping"
   with 3 bedrooms) gives one occupant per room, same count and `group_id`, status `contradicted`, plus a
-  `contradictions` entry (yellow on screen). A person with no room ("I think she's in a room", "upstairs") gets a
-  candidate in every room of that floor (or of the house) a person can be in: no closets, hallways, stairs, porches.
+  `contradictions` entry (yellow on screen). A named type limits the candidates to that type ("a bedroom downstairs":
+  the bedrooms of floor 1 only, also when only the caller's words or the note carry the type). A person with no room
+  type at all ("I think she's in one of the rooms", "upstairs") gets a candidate in every room of that floor (or of
+  the house) a person can be in: no closets, hallways, stairs, porches.
 - Scripts: `TEST_COOKING` (visible, "TEST · cooking, room not named (inferred)") and the hidden `AMBIG_BATHROOMS`
   (ids are limited to 16 characters).
 
 ## House screen (layout=house)
 
 - Green figures: occupants in one room. Yellow: each candidate room of a contradicted group, and floor-level reports
-  (one figure in every room of that floor). Up to 5 figures per entity, no text.
+  (one figure in the floor's at_stairs room, else its largest). Up to 5 figures per entity, no text.
 - Fire: radial red glow (radius min(8 m, 35 % of the floor's largest side)) clipped to the house outline, 2D and 3D.
 - Routes: red entrance → fire room; green entrance → every person (shortest order) → exit, avoiding the fire. Rooms the scan left without a doorway are
   joined to the nearest connected room (penalised) so nobody is left out of the green route. Between floors the routes climb

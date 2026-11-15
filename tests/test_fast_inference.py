@@ -35,8 +35,9 @@ SPANS = [span("c1:0.0-3.0", "I was cooking eggs and the pan caught fire!"),
          span("c1:12.0-15.0", "My son is in the bathroom downstairs."),
          span("c1:15.0-18.0", "He's hiding in the closet."),
          span("c2:0.0-3.0", "The kids are in the bathroom.", "c2"),
-         span("c1:18.0-21.0", "Fire in the bathroom downstairs.")]
-COOK, SHOWER, DRYER, KITCHEN, SON, CLOSET, KIDS_C2, FIRE_BATH = (s.span_id for s in SPANS)
+         span("c1:18.0-21.0", "Fire in the bathroom downstairs."),
+         span("c1:21.0-24.0", "I think she's in one of the rooms.")]
+COOK, SHOWER, DRYER, KITCHEN, SON, CLOSET, KIDS_C2, FIRE_BATH, SOMEWHERE = (s.span_id for s in SPANS)
 
 
 def run(answer: dict, index=INDEX, spans=SPANS):
@@ -154,7 +155,7 @@ def test_callers_who_disagree_keep_their_own_group():
 
 def test_a_floor_only_occupant_is_a_candidate_in_every_room_of_that_floor():
     # "my son is upstairs": a yellow candidate in every room of floor 2 a person can be in (no closets or hallways)
-    ov, errors, _, _ = run({"occupants": [occ(SON, {"floor_reported": 2})]})
+    ov, errors, _, _ = run({"occupants": [occ(SOMEWHERE, {"floor_reported": 2})]})
     want = sorted(rid for rid, r in INDEX["rooms"].items()
                   if r["floor_id"] == "f2" and r["type"] not in ("closet", "hallway", "staircase"))
     got = sorted(o["location"]["room_id"] for o in ov["occupants"])
@@ -164,7 +165,7 @@ def test_a_floor_only_occupant_is_a_candidate_in_every_room_of_that_floor():
 
 
 def test_a_person_with_no_place_is_a_candidate_in_every_room():
-    ov, errors, _, _ = run({"occupants": [occ(SON, None)]})
+    ov, errors, _, _ = run({"occupants": [occ(SOMEWHERE, None)]})
     rooms = [r for r in INDEX["rooms"].values() if r["type"] not in ("closet", "hallway", "staircase")]
     assert errors == [] and len(ov["occupants"]) == len(rooms)
 
@@ -176,3 +177,13 @@ def test_nothing_the_checks_accept_is_ever_schema_invalid():
     for sid in (COOK, SHOWER, DRYER, SON, CLOSET):
         for p in places:
             run({"occupants": [occ(sid, p)], "fire": [fire(sid, p)]})
+
+
+def test_a_named_room_type_limits_the_candidates_to_that_type():
+    # the model gave only the floor, but the caller said "a bedroom": yellow in bedrooms only, never in any room
+    # "my son is in the bathroom downstairs" with only the floor from the model: the 2 bathrooms of floor 1, nothing else
+    ov, errors, _, _ = run({"occupants": [occ(SON, {"floor_reported": 1})]})
+    assert errors == [] and sorted(o["location"]["room_id"] for o in ov["occupants"]) == ["ba1", "ba2"]
+    # "she's in a bedroom" (the note) with no floor: every bedroom, never a kitchen or a garage
+    ov, errors, _, _ = run({"occupants": [occ(SOMEWHERE, None, note="the daughter, in a bedroom")]})
+    assert errors == [] and [o["location"].get("room_id") for o in ov["occupants"]] in (["be1"], [None])
