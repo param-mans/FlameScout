@@ -20,7 +20,7 @@ The databases stay managed: Postgres on Tiger Data (`TIGER_DATABASE_URL`) and th
 4. **SSH key:** add your public key (`cat ~/.ssh/id_ed25519.pub`).
 5. Deploy, then copy the instance's **public IPv4**.
 
-Optional: point a domain's A record at the IP. Without a domain, use `<ip-with-dashes>.sslip.io`, for example `45-77-1-2.sslip.io` for `45.77.1.2`. It resolves to your IP with no setup, and Caddy can get a real certificate for it.
+Optional: point a domain's A record at the IP. Without a domain, use `<ip-with-dashes>.sslip.io`, for example `203-0-113-10.sslip.io` for `203.0.113.10`. It resolves to your IP with no setup, and Caddy can get a real certificate for it.
 
 If MongoDB Atlas restricts network access, add the instance IP under **Network Access**.
 
@@ -29,7 +29,7 @@ If MongoDB Atlas restricts network access, add the instance IP under **Network A
 Run this from the repo root on your laptop:
 
 ```bash
-export VULTR_IP=45.77.1.2                      # your instance IP
+export VULTR_IP=203.0.113.10                      # your instance IP
 ssh root@$VULTR_IP "REPO_URL=$(git remote get-url origin) bash -s" < deploy/vultr-bootstrap.sh
 ```
 
@@ -40,7 +40,7 @@ This installs Docker, opens ports 22, 80 and 443 in `ufw`, clones the repo to `/
 Add the site address to your local `.env`:
 
 ```bash
-SITE_ADDRESS=45-77-1-2.sslip.io   # or your domain; ":80" = plain HTTP, no certificate
+SITE_ADDRESS=203-0-113-10.sslip.io   # or your domain; ":80" = plain HTTP, no certificate
 ```
 
 Check these values in `.env` too:

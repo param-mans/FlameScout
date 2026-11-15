@@ -25,6 +25,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Protocol
 
+from . import aerial
+
 log = logging.getLogger(__name__)
 
 FIXTURES = Path(__file__).resolve().parents[2] / "data" / "fixtures"
@@ -325,23 +327,36 @@ def raw_plan(bid: str) -> Optional[dict]:
 
 
 def raw_aerials(bid: str) -> list[dict]:
-    """Vexcel coverage metadata: one evidence item per capture. No image is stored, so no markers."""
+    """Vexcel: one evidence item per capture. When scripts/fetch_vexcel.py stored the images and Gemini read them
+    (aerial.py, data/raw/<id>/derived/aerial_reading.json), each view also carries what was read there: markers,
+    exposures (distances computed in code), entries and facts. Otherwise coverage metadata only, no markers."""
     path = _raw(bid, "vexcel", "metadata.json")
     if path is None:
         return []
     meta = _load(path)
-    views = [("ortho", "overhead (ortho)", meta.get("ortho") or {})]
-    views += [(f"oblique_{d}", f"oblique, camera facing {d}", o) for d, o in (meta.get("oblique") or {}).items()]
+    read = aerial.records(bid, meta, RAW_ROOT) or {}
+    views = [("ortho", "overhead (ortho, north up)", meta.get("ortho") or {})]
+    views += [(f"oblique-{d}", f"oblique, camera facing {d}", o) for d, o in (meta.get("oblique") or {}).items()]
     out = []
-    for key, view, v in views:
+    for name, view, v in views:
         if not v:
             continue
-        out.append({"evidence": {"id": f"ev_vx_{key}", "kind": "aerial_crop", "source": "vexcel",
-                                 "captured_at": v.get("captureDate"),
-                                 "locator": {"view": view, "collection": v.get("collection"), "layer": v.get("layer"),
-                                             "box_m": v.get("bbox_meters"), "images_stored": False,
-                                             "note": "coverage metadata only (Vexcel API 2.0); no image was analysed"}},
-                    "markers": [], "exposures": []})
+        rec = read.get(name)
+        locator = {"view": view, "collection": v.get("collection"), "layer": v.get("layer"),
+                   "box_m": v.get("bbox_meters"), "images_stored": bool(rec and rec["analysed"]["file"])}
+        if rec:
+            locator.update(file=rec["analysed"]["file"], vision_model=rec["analysed"]["model"],
+                           read_at=rec["analysed"]["read_at"],
+                           note="Vexcel API 2.0 image read by Gemini vision; positions and distances computed in code")
+        else:
+            locator["note"] = "coverage metadata only (Vexcel API 2.0); no image was analysed"
+        image = "aerial" if name == "ortho" else name
+        out.append({"evidence": {"id": aerial._ev_id(name), "kind": "aerial_crop", "source": "vexcel",
+                                 # the house viewer serves the same Vexcel view for the hero ids (apps/web/server)
+                                 "uri": f"/api/house-viewer/vexcel/{bid}/{image}.jpg" if rec else None,
+                                 "captured_at": v.get("captureDate"), "locator": locator},
+                    **{k: (rec or {}).get(k, {} if k == "facts" else [])
+                       for k in ("markers", "exposures", "exterior_entries", "facts")}})
     return out
 
 

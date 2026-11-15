@@ -38,6 +38,9 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
 - `services/agents/providers.py` - PRD 7.4 adapter Protocols. `Live*` adapters read the heroes' stored real API
   responses in `data/raw/<id>/` (gitignored, never commit) whenever that folder exists, else the fixtures.
   No network calls (`DATA_MODE=live` logs "not configured"). Read `data/raw/*/README.md` and `FIELD_NOTES.md` first.
+- `services/agents/aerial.py` - Vexcel images: one Gemini vision reading per image (`read_building`, run by
+  `scripts/fetch_vexcel.py <id>`, which also downloads them; needs VEXCEL_API_KEY), stored in
+  `data/raw/<id>/derived/aerial_reading.json`; then, with no LLM, the geometry: distances, sides, lat/lon, storeys.
 - `services/agents/locator.py` - candidate buildings for an incident via the CoStar adapter. No LLM.
 - `services/agents/brief.py` - deterministic Brief assembly, consideration checks (incl. at least one
   cross-layer consideration), `changes_since_last` diff. No LLM.

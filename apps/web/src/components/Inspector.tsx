@@ -25,7 +25,13 @@ function EvidenceItem({ e }: { e: Evidence }) {
         {e.id} · captured {e.captured_at ? e.captured_at.slice(0, 10) : "n/a"}
       </div>
       {loc?.text && <blockquote className="mt-1.5 border-l-2 border-line-hi pl-2 text-[12px] italic text-dim">“{loc.text}”</blockquote>}
-      {/* TODO: render scan frame / aerial crop from e.uri */}
+      {/* Vexcel view the vision model read (served by the house-data server for the hero buildings) */}
+      {e.kind === "aerial_crop" && e.uri?.startsWith("/api/") && (
+        <figure className="mt-1.5">
+          <img src={e.uri} alt={`Vexcel aerial, ${e.id}`} loading="lazy" className="w-full border border-line" />
+          <figcaption className="num mt-0.5 text-[10px] text-faint">© Vexcel Imaging</figcaption>
+        </figure>
+      )}
       {e.locator && !loc?.text && <pre className="num mt-1 whitespace-pre-wrap text-[11px] text-faint">{JSON.stringify(e.locator)}</pre>}
     </li>
   );

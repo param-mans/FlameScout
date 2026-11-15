@@ -299,3 +299,159 @@ def test_s6_fairdale_places_resolve_on_the_real_plan_index(monkeypatch):
     eng = FusionEngine("inc_s6")
     eng.ingest(CallSegment(**script["segments"][1]))
     assert find_candidates(eng.record)[0].building_id == "209217448"
+
+
+# ---------- Vexcel images read by Gemini vision (aerial.py) ----------
+#
+# A synthetic reading of a 100 m ortho (north up), so the geometry is easy to check by hand:
+# box_2d is [ymin, xmin, ymax, xmax] on 0-1000, the image centre is the building's point.
+
+def _seen(box, conf=0.8, **kw):
+    return {"label": kw.pop("label", "seen"), "box_2d": box, "confidence": conf, **kw}
+
+
+SYNTHETIC_READING = {
+    "building_id": HOUSE, "model": "test-vision", "prompt_version": 1, "read_at": "2026-11-14T20:00:00+00:00",
+    "views": {
+        "ortho": {"target_found": True, "target": [400, 400, 600, 600], "target_confidence": 0.9, "roof": "pitched",
+                  "roof_features": [_seen([420, 420, 450, 480], kind="solar_panels", label="panels on south slope")],
+                  "neighbours": [_seen([400, 700, 600, 800], kind="house", label="house"),          # 10 m east
+                                 _seen([450, 620, 550, 680], kind="garage_or_shed", label="shed"),  # 2 m east
+                                 _seen([0, 0, 50, 50], kind="house", label="far house"),            # 49.5 m: dropped
+                                 _seen([400, 100, 600, 200], 0.2, kind="house", label="unsure")],   # low confidence
+                  "site": [_seen([600, 450, 1000, 550], kind="driveway", label="driveway to the street"),
+                           _seen([700, 100, 800, 200], kind="pool", label="pool")]},
+        "oblique-north": {"target_visible": True, "stories": 2, "stories_confidence": 0.8,
+                          "entries": [_seen([500, 450, 600, 500], 0.9, kind="front_door", label="front door")]},
+        "oblique-east": {"target_visible": True, "stories": 2, "stories_confidence": 0.7, "entries": []},
+        "oblique-south": {"target_visible": True, "stories": 3, "stories_confidence": 0.5, "entries": []},
+        "oblique-west": {"target_visible": False, "stories": None, "stories_confidence": 0, "entries": []}}}
+
+
+def with_reading(root: Path, reading: dict = SYNTHETIC_READING) -> None:
+    meta = json.loads((root / HOUSE / "vexcel" / "metadata.json").read_text())
+    for d in ("east", "south", "west"):
+        meta["oblique"][d] = {**meta["oblique"]["north"], "productType": f"oblique-{d}"}
+    write(root / HOUSE / "vexcel" / "metadata.json", meta)
+    images = {"ortho": {"file": "ortho.jpg", "bbox_meters": 100}}
+    images |= {f"oblique-{d}": {"file": f"oblique-{d}.jpg", "bbox_meters": 90} for d in ("north", "east", "south", "west")}
+    write(root / HOUSE / "vexcel" / "images.json", {"images": images})
+    write(root / HOUSE / "derived" / "aerial_reading.json", reading)
+
+
+def test_aerial_geometry_is_computed_in_code():
+    from services.agents import aerial
+
+    target = aerial.to_metres([400, 400, 600, 600], 100)
+    assert target == pytest.approx((-10, -10, 10, 10))
+    assert aerial.gap_m(target, aerial.to_metres([400, 700, 600, 800], 100)) == pytest.approx(10)
+    assert aerial.gap_m(target, aerial.to_metres([450, 450, 550, 550], 100)) == 0   # overlapping
+    assert aerial.side_of(target, aerial.to_metres([0, 450, 100, 550], 100)) == "north"   # top of the image
+    assert aerial.side_of(target, aerial.to_metres([800, 800, 900, 900], 100)) == "southeast"
+    pos = aerial.lat_lon([0, 450, 100, 550], 100, 29.81, -95.68)   # 45 m north of the centre
+    assert pos == {"lat": pytest.approx(29.81 + 45 / 111_320, abs=1e-7), "lon": pytest.approx(-95.68)}
+
+
+@pytest.mark.parametrize("stories, expected", [
+    ({"n": (2, 0.8), "e": (2, 0.7), "s": (3, 0.5)}, {"value": 2, "views": ["e", "n"], "confidence": 0.7}),  # one-off 3
+    ({"n": (2, 0.9), "e": (1, 0.9), "s": (2, 0.75), "w": (1, 0.85)},                 # two storeys + a one-storey wing
+     {"value": 2, "views": ["n", "s"], "confidence": 0.75}),
+    ({"n": (2, 0.8), "e": (3, 0.8)}, None),                    # two views, no agreement
+    ({"n": (2, 0.3)}, None),                                   # too unsure to count
+    ({"n": (1, 0.9)}, {"value": 1, "views": ["n"], "confidence": 0.54}),   # one view only: reduced
+])
+def test_stories_the_obliques_agree_on(stories, expected):
+    from services.agents import aerial
+
+    views = {v: {"target_visible": True, "stories": s, "stories_confidence": c} for v, (s, c) in stories.items()}
+    assert aerial.stories_seen(views) == expected
+
+
+def test_vexcel_reading_gives_markers_exposures_and_facts(raw):
+    with_reading(raw)
+    layer = pull_layer("vexcel", HOUSE)
+    ortho = layer.evidence["ev_vx_ortho"]
+    assert ortho.uri == f"/api/house-viewer/vexcel/{HOUSE}/aerial.jpg"
+    assert ortho.locator["images_stored"] and ortho.locator["vision_model"] == "test-vision"
+    assert [(x["side"], x["distance_m"], x["evidence_ids"]) for x in layer.exposures] == [
+        ("east", 10, ["ev_vx_ortho"]), ("east", 2, ["ev_vx_ortho"])]   # far and unsure neighbours left out
+    assert all(x["confidence"] <= 0.6 and x["status"] == "inferred" for x in layer.exposures)
+    labels = {m.id: m.label for m in layer.markers}
+    assert labels["m_vx_roof_0"].startswith("Solar panels on the roof")
+    assert labels["m_vx_site_1"].startswith("Pool (possible drafting water)")
+    assert layer.markers[0].map_position["lat"] > 29.81   # panels sit north of the centre
+    stories = layer.facts["building.stories_aerial"]
+    assert (stories.value, stories.evidence_ids) == (2, ["ev_vx_oblique_east", "ev_vx_oblique_north"])  # south's 3: once
+    assert layer.facts["building.footprint_aerial_m"].value == [20, 20]
+    assert layer.facts["building.roof_aerial"].value == "pitched"
+    assert not any(m.kind == "entry" for m in layer.markers)   # entries only when there is no interior scan
+    entries = [m for m in pull_layer("vexcel", HOUSE, exterior_entries=True).markers if m.kind == "entry"]
+    assert [(m.label.split(" (")[0], m.confidence) for m in entries] == [("Front door on the south side", 0.5)]
+
+
+@pytest.mark.parametrize("aerial_stories, messages", [
+    (2, []),                                                                   # listing 2, scan 2, aerial 2
+    (3, ["Listing: 2 floors; aerial: 3. Verify the number of floors.",
+         "Scan: 2 floors; aerial: 3. Verify the number of floors (a basement is not visible from the air)."]),
+])
+def test_aerial_stories_are_checked_against_listing_and_scan(raw, aerial_stories, messages):
+    reading = json.loads(json.dumps(SYNTHETIC_READING))
+    for v in ("oblique-north", "oblique-east", "oblique-south"):
+        reading["views"][v]["stories"] = aerial_stories
+    with_reading(raw, reading)
+    found = [c for c in load_dossier(HOUSE).contradictions if "aerial" in c.message]
+    assert [c.message for c in found] == messages
+    if found:
+        assert [v.layer for v in found[0].values] == ["costar", "vexcel"]
+
+
+def test_read_aerial_evidence_can_make_a_consideration_cross_layer(raw):
+    from services.agents.brief import ConsiderationDraft, observed_evidence
+
+    with_reading(raw)
+    d = load_dossier(HOUSE)
+    assert {"ev_vx_ortho", "ev_vx_oblique_north"} <= observed_evidence(d)
+    record = FusionEngine("inc_h1").record
+    record.confirmed_building_id = HOUSE
+    exposure = ConsiderationDraft(category="exposure", title="Consider the house 10 m east",
+                                  rationale="Two-storey house; neighbour 10 m east.",
+                                  evidence_ids=["ev_cs_listing", "ev_vx_ortho"])
+    assert build_brief(record, d, [exposure]).considerations[0].cross_layer is True
+
+
+def test_read_building_reads_each_image_once(raw, monkeypatch):
+    from services.agents import aerial
+
+    with_reading(raw)
+    (raw / HOUSE / "derived" / "aerial_reading.json").unlink()
+    calls = []
+
+    def fake(kind, schema, messages, retries=2):
+        calls.append(schema.__name__)
+        return schema.model_validate(SYNTHETIC_READING["views"]["ortho" if schema is aerial.OrthoReading
+                                                                  else "oblique-north"])
+
+    monkeypatch.setattr(aerial, "structured", fake)
+    monkeypatch.setattr(aerial, "configured", lambda kind: True)
+    for f in ("ortho", "oblique-north", "oblique-east", "oblique-south", "oblique-west"):
+        (raw / HOUSE / "vexcel" / f"{f}.jpg").write_bytes(b"\xff\xd8fake")
+    reading = aerial.read_building(HOUSE, root=raw)
+    assert sorted(calls) == ["ObliqueReading"] * 4 + ["OrthoReading"] and set(reading["views"]) == {
+        "ortho", "oblique-north", "oblique-east", "oblique-south", "oblique-west"}
+    assert aerial.read_building(HOUSE, root=raw) == reading and len(calls) == 5   # stored: no second pass
+    monkeypatch.setattr(aerial, "configured", lambda kind: False)
+    (raw / HOUSE / "derived" / "aerial_reading.json").unlink()
+    assert aerial.read_building(HOUSE, root=raw) is None   # no vision model: nothing written
+
+
+def test_repeated_roof_features_are_counted_and_cut_outlines_have_no_footprint(raw):
+    reading = json.loads(json.dumps(SYNTHETIC_READING))
+    ortho = reading["views"]["ortho"]
+    ortho["target"] = [200, 0, 800, 1000]   # a warehouse wider than the image
+    ortho["roof_features"] = [_seen([300 + 10 * i, 300, 310 + 10 * i, 310], 0.8 - i / 100, kind="hvac_unit",
+                                    label="HVAC unit") for i in range(18)]
+    with_reading(raw, reading)
+    layer = pull_layer("vexcel", HOUSE)
+    [roof] = [m for m in layer.markers if m.id.startswith("m_vx_roof")]
+    assert roof.label == "18 x HVAC unit on the roof (aerial: HVAC unit)" and roof.confidence == 0.6
+    assert "building.footprint_aerial_m" not in layer.facts

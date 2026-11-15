@@ -79,11 +79,12 @@ def _checked(layer: LayerData) -> LayerData:
 
 def _from_records(layer: Layer, building_id: str, records: list[dict],
                   marker_keys: tuple[str, ...] = ("markers",), **extra) -> LayerData:
-    """Records are {evidence, extra_evidence?, markers?, exposures?}: everything in a record cites that
-    record's evidence; a marker may cite more of the record's extra_evidence by itself."""
+    """Records are {evidence, extra_evidence?, markers?, exposures?, facts?}: everything in a record cites that
+    record's evidence; a marker or fact may cite more evidence of the layer by itself."""
     evidence: dict[str, Evidence] = {}
     markers: list[Marker] = []
     exposures: list[dict] = []
+    facts: dict[str, Fact] = dict(extra.pop("facts", {}))
     for r in records:
         ev = Evidence.model_validate(r["evidence"])
         evidence[ev.id] = ev
@@ -92,7 +93,9 @@ def _from_records(layer: Layer, building_id: str, records: list[dict],
         markers += [Marker.model_validate({**m, "evidence_ids": list(dict.fromkeys([ev.id, *m.get("evidence_ids", [])]))})
                     for key in marker_keys for m in r.get(key, [])]
         exposures += [{**x, "evidence_ids": [ev.id]} for x in r.get("exposures", [])]
-    return _checked(LayerData(layer=layer, building_id=building_id, markers=_merge_markers(markers),
+        facts.update({k: Fact.model_validate({**f, "evidence_ids": list(dict.fromkeys([ev.id, *f.get("evidence_ids", [])]))})
+                      for k, f in r.get("facts", {}).items()})
+    return _checked(LayerData(layer=layer, building_id=building_id, facts=facts, markers=_merge_markers(markers),
                               exposures=exposures, evidence=evidence, **extra))
 
 
@@ -137,11 +140,19 @@ def pull_layer(layer: Layer, building_id: str, providers: Optional[Providers] = 
     return _PULL[layer](building_id, providers, **options)
 
 
-# Listing fact, scan fact, what it counts, what to do about a difference.
-LISTING_VS_SCAN = [
-    ("building.bedrooms", "building.bedrooms_plan", "bedroom", "Verify occupant count"),
-    ("building.bathrooms", "building.bathrooms_plan", "bathroom", "Verify the layout on arrival"),
-    ("building.stories", "building.floors_scanned", "floor", "Verify the number of floors"),
+# Two layers' facts that count the same thing: (layer, fact key, how the message names it) twice, what it
+# counts, what to do about a difference.
+LAYER_PAIRS = [
+    (("costar", "building.bedrooms", "Listing"), ("matterport", "building.bedrooms_plan", "scan"),
+     "bedroom", "Verify occupant count"),
+    (("costar", "building.bathrooms", "Listing"), ("matterport", "building.bathrooms_plan", "scan"),
+     "bathroom", "Verify the layout on arrival"),
+    (("costar", "building.stories", "Listing"), ("matterport", "building.floors_scanned", "scan"),
+     "floor", "Verify the number of floors"),
+    (("costar", "building.stories", "Listing"), ("vexcel", "building.stories_aerial", "aerial"),
+     "floor", "Verify the number of floors"),
+    (("matterport", "building.floors_scanned", "Scan"), ("vexcel", "building.stories_aerial", "aerial"),
+     "floor", "Verify the number of floors (a basement is not visible from the air)"),
 ]
 
 
@@ -149,29 +160,30 @@ def _count(n) -> str:
     return f"{n:g}" if isinstance(n, float) else str(n)
 
 
-def _agree(listing_key: str, listed: float, scanned: float) -> bool:
-    """Stories of 1.5 (a half storey under the roof) are scanned as 2 floors: compatible."""
-    if listing_key == "building.stories":
-        return math.ceil(listed) == scanned
-    return listed == scanned
+def _agree(key: str, a: float, b: float) -> bool:
+    """Listed stories of 1.5 (a half storey under the roof) are scanned or seen as 2 floors: compatible."""
+    if key == "building.stories":
+        return math.ceil(a) == b
+    return a == b
+
+
+def _number(f: Optional[Fact]) -> bool:
+    return f is not None and isinstance(f.value, (int, float)) and not isinstance(f.value, bool)
 
 
 def layer_contradictions(facts: dict[str, Fact]) -> list[DataContradiction]:
-    """The listing (CoStar) and the scan (Matterport) disagree. Only when both sides state a number."""
+    """Two data layers (listing, scan, aerial) disagree on a count. Only when both sides state a number."""
     out = []
-    for listing_key, scan_key, noun, action in LISTING_VS_SCAN:
-        listed, scanned = facts.get(listing_key), facts.get(scan_key)
-        if not (listed and scanned) or not all(isinstance(f.value, (int, float)) and not isinstance(f.value, bool)
-                                               for f in (listed, scanned)):
-            continue
-        if _agree(listing_key, listed.value, scanned.value):
+    for (layer_a, key_a, name_a), (layer_b, key_b, name_b), noun, action in LAYER_PAIRS:
+        a, b = facts.get(key_a), facts.get(key_b)
+        if not (_number(a) and _number(b)) or _agree(key_a, a.value, b.value):
             continue
         plural = lambda n: noun if n == 1 else f"{noun}s"  # noqa: E731
         out.append(DataContradiction(
-            key=listing_key,
-            message=f"Listing: {_count(listed.value)} {plural(listed.value)}; scan: {_count(scanned.value)}. {action}.",
-            values=[{"layer": "costar", "value": listed.value, "evidence_ids": listed.evidence_ids},
-                    {"layer": "matterport", "value": scanned.value, "evidence_ids": scanned.evidence_ids}]))
+            key=key_a,
+            message=f"{name_a}: {_count(a.value)} {plural(a.value)}; {name_b}: {_count(b.value)}. {action}.",
+            values=[{"layer": layer_a, "value": a.value, "evidence_ids": a.evidence_ids},
+                    {"layer": layer_b, "value": b.value, "evidence_ids": b.evidence_ids}]))
     return out
 
 
@@ -223,8 +235,9 @@ def digest(layer: LayerData) -> str:
     if layer.address:
         lines.append(f"Address: {layer.address}")
     if layer.layer == "matterport":
-        lines.append("Interior scan: " + (f"available, captured {layer.scan_captured_at.date()}"
-                                          if layer.scan_available and layer.scan_captured_at else "not available"))
+        lines.append("Interior scan: " + ("not available" if not layer.scan_available
+                                          else f"available, captured {layer.scan_captured_at.date()}"
+                                          if layer.scan_captured_at else "available (capture date not in the data)"))
     lines += [f"- {f.key} = {f.value!r} ({f.status}, conf {f.confidence}) {ev(f.evidence_ids)}"
               for f in [*layer.facts.values(), *layer.tenants]]
     lines += [f"- marker {m.id} ({m.kind}): {m.label} ({m.status}, conf {m.confidence}) {ev(m.evidence_ids)}"
