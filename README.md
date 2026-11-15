@@ -26,6 +26,30 @@ On arrival, a company officer spends minutes finding entries, stairs, occupancy 
 - **Deterministic first.** Distances, heights, counts, contradictions and **routes** are computed in code. Models only extract facts from one utterance, read images, draft considerations and critique. The agent never outputs coordinates or route geometry.
 - **Abstain over guess.** A building without an interior scan shows "No interior scan on file" and a list of gaps, never invented interior data.
 
+## Client consultation (Peri Forward Deployed Challenge)
+
+**Clients:** Dartmouth Safety and Security and the Hanover Fire Department.
+
+**Dartmouth Safety and Security.** We consulted Officer Bigelow by phone on Nov 14, 2026 at 13:04. The call was not recorded, because the office's policy doesn't allow a formal interview; he gave us personal permission to paraphrase. What he told us (paraphrased from our notes):
+
+- Safety and Security responds to every campus fire alarm and supports evacuation, building access, and escorting responders.
+- Command passes to Hanover Fire on arrival, and Safety and Security tells Hanover Fire the location and nature of the call.
+- Hanover Fire assesses the situation on scene before acting.
+- He took part in the Safety and Security response to the Morton Hall fire in 2016.
+
+**Hanover Fire Department.** What we know about Hanover Fire's role comes secondhand from Safety and Security, since they were busy.
+
+**Public record we checked:** the Morton Hall four-alarm fire of Oct 1, 2016 (Valley News, WMUR, The Dartmouth, Dartmouth news). Crews came from about ten Upper Valley departments. WMUR reported that the building's design challenged firefighters and that visibility on the fourth floor was near zero on arrival. The fire lasted about 6 hours.
+
+**Our premise.** Size-up is essential because it aligns the crew and sets priorities, but every minute spent gathering information at the curb is a minute not spent on rescue and suppression. We aim to have most of that information ready before arrival, so the on-scene size-up confirms and refines it instead of starting from nothing.
+
+**How it shaped our design**
+
+- **We follow the handoff, not replace it.** Officer Bigelow described the handoff to Hanover Fire as the location and nature of the call, followed by an on-scene assessment before action. FlameScout replaces neither the handoff nor the size-up. The MDT's top bar opens with the same two items, the confirmed address and the incident type, and the building detail (stories, use, hazards, exposures, routes) sits underneath.
+- **Advisory, because command sits with Hanover Fire.** Considerations use "Consider ..." wording, never orders. Command and judgment stay with the crew on arrival.
+- **Every brief shows how old its data is.** Morton Hall showed how much a building can change over the years, so the top bar of every brief shows the age of the interior scan and the date of the CoStar record, and the size-up lists when the building was built where the record has it. A building with no scan says so and lists its gaps.
+- **A building that fights back is why interior detail matters.** WMUR's report that the design challenged firefighters and that fourth-floor visibility was near zero is the case for knowing stairs, entries and floors before arrival, which is what the scan-based plan, routes and floor-level reports provide.
+
 ## Architecture
 
 ```
