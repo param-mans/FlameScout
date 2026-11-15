@@ -116,7 +116,8 @@ async function open(browserType, query) {
   await page.goto(`${BASE}/${query}`, { waitUntil: "load" });
   return { browser, page, errors, sockets, openSockets };
 }
-const text = async (page) => (await chip(page).count()) ? (await chip(page).innerText()).trim() : "";
+// status text from the hidden attribute (the house screen shows no chip; the chip elsewhere carries it too)
+const text = async (page) => (await chip(page).count()) ? ((await chip(page).first().getAttribute("data-live-status-text", { timeout: 300 }).catch(() => null)) ?? "").trim() : "";
 const liveSample = (page) => page.locator("[data-live-sample]").first().getAttribute("data-live-sample", { timeout: 300 }).catch(() => null);
 const shot = async (page, name) => { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await page.screenshot({ path: path.join(SHOTS, name) }); } };
 const NOT_FOUND = "404"; // briefs/latest + overlay/latest before the first brief (the real API answers 404 too)
@@ -213,8 +214,9 @@ try {
     if ((await liveSample(r.page)) === FAIRDALE) ok("viewer switched to Fairdale"); else fail(`viewer did not switch to Fairdale: ${await liveSample(r.page)}`);
     await shot(r.page, `${bt.name()}-live-v1.png`);
     if (await until(async () => (await text(r.page)) === "LIVE · v2" && (await version(r.page)) === "2", 20000, "LIVE · v2 and data-incident-version=2")) ok("LIVE · v2, data-incident-version=2");
-    const chipBox = await chip(r.page).boundingBox();
-    if (chipBox && chipBox.height >= 44) ok(`chip ${Math.round(chipBox.height)} px tall`); else fail(`chip under 44 px: ${chipBox?.height}`);
+    // house screen (confirmed catalog house): no visible chip; elsewhere the chip is 44 px tall
+    if (await r.page.locator("[data-house-mdt]").count()) { if (!(await chip(r.page).first().isVisible())) ok("house screen: live chip hidden"); else fail("house screen: live chip visible"); }
+    else { const chipBox = await chip(r.page).boundingBox(); if (chipBox && chipBox.height >= 44) ok(`chip ${Math.round(chipBox.height)} px tall`); else fail(`chip under 44 px: ${chipBox?.height}`); }
     // React StrictMode (dev) mounts effects twice: the first socket is opened and closed again; one stays open
     if (r.sockets.length && r.sockets.every((u) => u.endsWith("/ws/incidents/demo")) && r.openSockets.size === 1) ok(`WebSockets only to /ws/incidents/demo, one open (${r.sockets.length} opened)`);
     else fail(`WebSockets: ${JSON.stringify(r.sockets)}, open: ${r.openSockets.size}`);
