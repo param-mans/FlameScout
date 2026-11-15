@@ -9,6 +9,7 @@ import { BuildingViewer, HOUSE_VIEWER_DEFAULT } from "./viewer/BuildingViewer";
 import { HouseMdtView } from "../house/HouseMdtView";
 import { useConfirmedHouse } from "../house/liveFeed";
 import { ConfirmedHouseView } from "../house/ConfirmedHouseView";
+import { HouseMdt } from "../house/HouseMdt";
 
 // House viewer mode (HOUSE_VIEWER_DEFAULT or ?viewer=1; ?viewer=0 turns it off): one central "Floor plan + 3D" view
 // instead of the Map / Floor 2D / 3D scan tabs. It loads the incident building (sampleId) directly; the temporary
@@ -87,6 +88,7 @@ function MdtWaiting({ info, progress, waiting }: { info: IncidentInfo; progress?
 
 export function MdtView({ brief, ...rest }: MdtProps) {
   const house = useConfirmedHouse();   // live incident's confirmed building: its plan shows before the first brief
+  if (house.state === "house") return <HouseMdt house={house} brief={brief} />;   // catalog house with a stored plan
   if (!brief && house.state !== "none") return <ConfirmedHouseView house={house} info={rest.info} progress={rest.progress} waiting={rest.waiting} />;
   return brief ? <MdtBrief brief={brief} {...rest} /> : <MdtWaiting info={rest.info} progress={rest.progress} waiting={rest.waiting} />;
 }

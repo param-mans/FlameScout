@@ -13,6 +13,8 @@
         document.documentElement.classList.add('embed')
         // layout=split: 3D y 2D a la vez en la misma pagina; si no, una sola vista segun mode
         if (q.get('layout') === 'split') document.documentElement.classList.add('layout-split')
+        // layout=house: pantalla de casa del MDT (3D a la izquierda; plano 2D y Surroundings a la derecha, sin texto ni paneles)
+        else if (q.get('layout') === 'house') document.documentElement.classList.add('layout-house')
         else document.documentElement.classList.add(q.get('mode') === '2d' ? 'modo-2d' : 'modo-3d')
       }
     })()

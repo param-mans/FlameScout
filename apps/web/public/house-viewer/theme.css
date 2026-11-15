@@ -251,3 +251,28 @@ html.embed.layout-split.compacto #insp-split { position: fixed; left: 0; right: 
   padding-bottom: env(safe-area-inset-bottom); }
 html.embed.layout-split.compacto #insp-split.hoja-abierta { transform: none; z-index: 60; }
 html.embed.layout-split.compacto #insp-split > summary { display: none; }
+
+/* ---------------------------------------------------------------- Modo casa (?embed=1&layout=house): pantalla de casa del MDT
+   3D a toda la altura; a la derecha el plano 2D (~60 %) y Surroundings (~40 %) a la vez. Sin paneles, leyendas, menus ni textos
+   sobre el 3D; solo el selector de plantas ALL / 1 / 2. Los demas modos no cambian. */
+html.embed.layout-house main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 50%); height: 100%; }
+html.embed.layout-house #centro { position: relative; }
+html.embed.layout-house #der { display: grid; grid-template-rows: minmax(0, 60fr) minmax(0, 40fr); min-height: 0; border-left: 1px solid var(--border); background: transparent; }
+html.embed.layout-house #tabs2d, html.embed.layout-house #leyenda2d, html.embed.layout-house #tabla, html.embed.layout-house #leyenda,
+html.embed.layout-house #minipisos, html.embed.layout-house #inspector, html.embed.layout-house #inc-banner, html.embed.layout-house #inc-panel,
+html.embed.layout-house #aviso3d, html.embed.layout-house #escala, html.embed.layout-house #plantas3d .etq { display: none !important; }
+html.embed.layout-house #vista2d { height: auto; min-height: 0; margin: 6px 6px 0; }
+html.embed.layout-house #oblicuas { display: none; }
+html.embed.layout-house #casa-entorno { display: flex; flex-direction: column; min-height: 0; margin: 6px; }
+html.embed.layout-house .casa-tit { font: 600 12px/1 var(--fontUi, var(--font)); letter-spacing: .09em; text-transform: uppercase; color: var(--textDim); margin: 2px 0 6px; }
+html.embed.layout-house #oblicuas-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0; }
+html.embed.layout-house .obl-tabs { margin: 0 0 6px; }
+html.embed.layout-house .obl-img { flex: 1 1 0; min-height: 0; height: 0; aspect-ratio: auto; object-fit: cover; }
+html.embed.layout-house .obl-pie { margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#aviso-ruta { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 40; padding: 6px 10px; white-space: nowrap;
+  font: 12px/1.2 var(--fontUi, var(--font)); color: var(--text); background: var(--panel); border: 1px solid var(--borderHi); pointer-events: none; }
+#aviso-ruta[hidden] { display: none; }
+@media (max-width: 640px) {
+  html.embed.layout-house main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+  html.embed.layout-house #der { border-left: none; border-top: 1px solid var(--border); }
+}

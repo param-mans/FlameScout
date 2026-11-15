@@ -44,6 +44,10 @@ const areaTxt = (m2) => `${Math.round(m2 * FT2).toLocaleString('en-US')} sq ft (
 const fechaCorta = (iso) => (iso ? new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }) : null)
 const SPLIT = EMBED && Q.get('layout') === 'split' // 3D (izquierda, ~2/3) y 2D a la vez; apilados por debajo de 900 px
 const SOLO_2D = EMBED && !SPLIT && MODO === '2d'
+// layout=house (pantalla de casa del MDT): 3D + plano 2D + Surroundings, sin paneles ni textos; solo el nombre de la sala
+// seleccionada o con personas o fuego reportados. Tocar una sala solo dibuja su ruta de salida mas rapida.
+const HOUSE = EMBED && Q.get('layout') === 'house'
+const etiquetaCasa = (fi, r) => esSel(fi, r.id) || INC.salas.has(fi + ':' + r.id)
 const ORIGEN = location.origin // solo se aceptan y envian mensajes al mismo origen
 const avisarPadre = (msg) => { if (window.parent !== window) window.parent.postMessage(msg, ORIGEN) }
 const estadoEmbed = (t) => { const el = document.getElementById('estado-embed'); if (el) el.textContent = t || '' }
@@ -575,10 +579,10 @@ function aplicarPlantas() {
   caja.scale.set(b.maxX - b.minX + 0.4, top + 0.2, b.maxY - b.minY + 0.4)
   caja.position.set((b.minX + b.maxX) / 2, (top + 0.2) / 2 - 0.1, -(b.minY + b.maxY) / 2)
   caja.visible = S.detalle
-  rotPlanta.forEach((sp) => { const F = P[sp.userData.fi]; sp.position.set(sp.userData.x, F.cur.y + altura(F.fi) / 2, sp.userData.z); sp.material.opacity = S.foco === 'all' ? OP.floorLabel : 0; sp.visible = S.foco === 'all' })
+  rotPlanta.forEach((sp) => { const F = P[sp.userData.fi]; sp.position.set(sp.userData.x, F.cur.y + altura(F.fi) / 2, sp.userData.z); sp.material.opacity = S.foco === 'all' && !HOUSE ? OP.floorLabel : 0; sp.visible = S.foco === 'all' && !HOUSE })
   // etiquetas P1, P2... de las plantas fantasma
   P.forEach((F) => {
-    const fantasma = S.foco !== 'all' && !enfocada(F.fi) && !(F.fi > S.foco && S.ocultarSup)
+    const fantasma = !HOUSE && S.foco !== 'all' && !enfocada(F.fi) && !(F.fi > S.foco && S.ocultarSup)
     F.tag.position.set(F.tag.userData.x, F.cur.y + altura(F.fi), F.tag.userData.z)
     F.tag.material.opacity = fantasma ? OP.ghostTag : 0; F.tag.visible = fantasma
   })
@@ -589,7 +593,7 @@ function aplicarPlantas() {
     const k = !S.capas.stairs ? 0 : (S.foco === 'all' || S.foco === E.fi || S.foco === E.fi + 1) ? 1 : (E.fi + 1 < S.foco ? S.ctx * 0.7 : S.ocultarSup ? 0 : S.ctx * 0.7)
     mats.forEach(({ m, base }) => { m.opacity = base * k })
     grp.visible = k > 0.003
-    if (etq) { etq.position.copy(m3(cx[0], cx[1], y0 + (soloHuella ? 0.3 : gap + 0.25))); etq.material.opacity = 0.9 * k; etq.visible = k > 0.05 }
+    if (etq) { etq.position.copy(m3(cx[0], cx[1], y0 + (soloHuella ? 0.3 : gap + 0.25))); etq.material.opacity = 0.9 * k; etq.visible = !HOUSE && k > 0.05 }
   })
   lineasExplosion()
   dibujarRuta3D()
@@ -604,6 +608,7 @@ function rotulos() {
     const { room } = sp.userData
     let ok = S.capas.labels && visibleSala(room) && !!sp.material.map
     ok = ok && (S.detalle || S.foco === 'all' ? F.cur.v.slab > 0.5 : enfocada(F.fi)) // ALL: rotulos de todas las plantas, con colisiones
+    if (HOUSE) ok = ok && etiquetaCasa(F.fi, room)
     if (ok) cand.push(sp); else { sp.visible = false; sp.material.opacity = 0; sp.userData.oculto = false }
   }))
   cand.sort((a, b) => b.userData.area - a.userData.area)
@@ -650,7 +655,7 @@ function estilo3D() {
       const { t, aspecto, alto } = texturaRotulo(textoEtiqueta(F.fi, sp.userData.room))
       if (sp.material.map) sp.material.map.dispose()
       sp.material.map = t; sp.material.needsUpdate = true
-      const h = 0.26 * alto; legible(sp, h * aspecto, h, PX_LINEA * alto)
+      const h = 0.26 * alto; legible(sp, h * aspecto, h, (HOUSE ? 15 : PX_LINEA) * alto)
     })
   })
   aplicarPlantas(); rotSucio = true
@@ -686,10 +691,11 @@ function rayoEn(e) {
   raycaster.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camara)
   return raycaster.intersectObjects(objetivosRayo(), false)[0]
 }
-function recoger(e) { const hit = rayoEn(e); if (hit) seleccionar(hit.object.userData.entidad) }
+function recoger(e) { const hit = rayoEn(e); if (hit) seleccionar(hit.object.userData.entidad); else if (HOUSE && S.sel) seleccionar(null) }
 function sobrevolar(e) { const hit = rayoEn(e), ent = hit && hit.object.userData.entidad; ponerHover(ent && ent.kind === 'room' ? ent : null) }
 // hover comun al 3D y al 2D: la habitacion sube de luminosidad y su rotulo aparece aunque estuviera oculto por colision
 function ponerHover(ent) {
+  if (HOUSE) return // sin comportamiento solo al pasar el raton
   const a = S.hover
   if ((!a && !ent) || (a && ent && a.id === ent.id && a.fi === ent.fi)) return
   S.hover = ent
@@ -750,7 +756,7 @@ function render2D() {
     if (int > 0) gh += S.muros[gi].filter((m) => !m.ext).map((m) => `<line x1="${m.a[0]}" y1="${-m.a[1]}" x2="${m.b[0]}" y2="${-m.b[1]}" stroke="${T.inner}" stroke-opacity="${int}" stroke-width="1" ${ns}/>`).join('')
     gh += S.muros[gi].filter((m) => m.ext).map((m) => `<line x1="${m.a[0]}" y1="${-m.a[1]}" x2="${m.b[0]}" y2="${-m.b[1]}" stroke="${T.outer}" stroke-opacity="${ext}" stroke-width="1.2" stroke-dasharray="${abajo ? '' : '4 3'}" ${ns}/>`).join('')
     const bp = limitesPiso(g)
-    gh += `<text x="${bp.minX}" y="${-bp.maxY - fsTag * 0.3}" font-size="${fsTag}" font-family="${T.font}" fill="${T.textDim}" opacity="${OP.ghostTag}" pointer-events="none">P${gi + 1}</text>`
+    if (!HOUSE) gh += `<text x="${bp.minX}" y="${-bp.maxY - fsTag * 0.3}" font-size="${fsTag}" font-family="${T.font}" fill="${T.textDim}" opacity="${OP.ghostTag}" pointer-events="none">P${gi + 1}</text>`
     h += `<g pointer-events="none">${gh}</g>`
   })
   const salas = salasDe(f).filter(visibleSala).sort((a, b) => (b.areaM2 || 0) - (a.areaM2 || 0))
@@ -758,7 +764,7 @@ function render2D() {
     if (!poligonoValido(r)) return
     const d = anillo(r.polygon) + (r.holes || []).map(anillo).join(''), sel = esSel(fi, r.id), hov = esHover(fi, r)
     const op = sel ? OP.slabSel + 0.08 : S.color === 'evac' ? OP.slabHeat + (hov ? 0.2 : 0) : hov ? OP.slabHover + 0.05 : OP.slab + 0.04
-    h += `<path class="ent" data-kind="room" data-id="${esc(r.id)}" d="${d}" fill="${sel ? T.sel : colorSala(fi, r)}" fill-opacity="${op}" fill-rule="evenodd" ${sel ? `stroke="${T.sel}" stroke-width="1.6" ${ns} filter="url(#brillo)"` : ''}><title>${esc(nombreSala(r))}</title></path>`
+    h += `<path class="ent" data-kind="room" data-id="${esc(r.id)}" d="${d}" fill="${sel ? T.sel : colorSala(fi, r)}" fill-opacity="${op}" fill-rule="evenodd" ${sel ? `stroke="${T.sel}" stroke-width="1.6" ${ns} filter="url(#brillo)"` : ''}>${HOUSE ? '' : `<title>${esc(nombreSala(r))}</title>`}</path>`
     if (esEscalera(r)) h += `<path d="${d}" fill="url(#rayado)" fill-rule="evenodd" pointer-events="none"/>`
   })
   // muros unidos: exteriores brillantes y mas gruesos, interiores medios
@@ -776,7 +782,7 @@ function render2D() {
       s += `<line x1="${-w / 2}" y1="${-t / 2}" x2="${-w / 2}" y2="${t / 2}" stroke="${col}" stroke-width="1.2" ${ns}/><line x1="${w / 2}" y1="${-t / 2}" x2="${w / 2}" y2="${t / 2}" stroke="${col}" stroke-width="1.2" ${ns}/>`
       if (w <= 1.3) s += `<path d="M${-w / 2} ${-w}L${-w / 2} 0M${-w / 2} ${-w}A${w} ${w} 0 0 1 ${w / 2} 0" fill="none" stroke="${col}" stroke-opacity="${OP.doorArc + 0.15}" stroke-width="0.9" ${ns}/>`
     }
-    h += `<g data-kind="${esV ? 'window' : 'door'}" data-id="${esc(o.id)}" transform="translate(${o.center[0]} ${-o.center[1]}) rotate(${-o.angleDeg})" ${sel ? 'filter="url(#brillo)"' : ''}><title>${esV ? 'Window' : esSalida(fi, o) ? 'Exterior door (exit)' : 'Door'}</title>${s}</g>`
+    h += `<g data-kind="${esV ? 'window' : 'door'}" data-id="${esc(o.id)}" transform="translate(${o.center[0]} ${-o.center[1]}) rotate(${-o.angleDeg})" ${sel ? 'filter="url(#brillo)"' : ''}>${HOUSE ? '' : `<title>${esV ? 'Window' : esSalida(fi, o) ? 'Exterior door (exit)' : 'Door'}</title>`}${s}</g>`
   })
   // capas Sleeping areas (tinte y cama) e Ignition areas (rayado)
   if (S.capas.sleeping) salas.filter(esDormitorio).forEach((r) => { const c = centroSala(r); h += `<path d="${anillo(r.polygon)}" fill="${T.outer}" fill-opacity="0.13" pointer-events="none"/>` + (c ? `<g transform="translate(${c[0]} ${-c[1] + 0.55})" opacity="0.7" pointer-events="none"><rect x="-0.32" y="-0.12" width="0.64" height="0.24" rx="0.04" fill="none" stroke="${T.outer}" stroke-width="1.2" ${ns}/><rect x="-0.3" y="-0.1" width="0.16" height="0.2" fill="${T.outer}"/></g>` : '') })
@@ -784,9 +790,9 @@ function render2D() {
   if (S.salidaVista && S.salidaVista.fi === fi) { const o = f.openings.find((x) => x.id === S.salidaVista.id); if (o) h += `<circle cx="${o.center[0]}" cy="${-o.center[1]}" r="0.55" fill="none" stroke="${T.sel}" stroke-width="2.5" ${ns} filter="url(#brillo)"><animate attributeName="r" values="0.45;0.75;0.45" dur="1.4s" repeatCount="indefinite"/></circle>` }
   // rotulos: nombre o tipo (o la distancia), 70 %, con colisiones (gana la sala mas grande); al tocar una sala su rotulo aparece
   if (S.capas.labels) {
-    const vb = S.vb, escPx = Math.max(vb[2] / (cont.clientWidth || 400), vb[3] / (cont.clientHeight || 300)), fs = Math.max(0.16, 12 * escPx), ocupado = []
+    const vb = S.vb, escPx = Math.max(vb[2] / (cont.clientWidth || 400), vb[3] / (cont.clientHeight || 300)), fs = Math.max(0.16, (HOUSE ? 10 : 12) * escPx), ocupado = []
     salas.forEach((r) => {
-      if ((r.areaM2 || 0) < SALA_MIN && !esEscalera(r)) return
+      if (HOUSE ? !etiquetaCasa(fi, r) : (r.areaM2 || 0) < SALA_MIN && !esEscalera(r)) return
       const c = centroSala(r); if (!c) return
       const [l1, l2] = textoEtiqueta(fi, r), hov = esHover(fi, r) || esSel(fi, r.id)
       const ancho = Math.max(l1.length, (l2 || '').length * 0.8) * fs * 0.66, alto = fs * (l2 ? 2.3 : 1.2)
@@ -804,7 +810,7 @@ function render2D() {
     const e = E.e, R = E.rect, L = R.s1 - R.s0, pt = (sv, tv) => [e.m[0] + e.u[0] * sv + e.v[0] * tv, -(e.m[1] + e.u[1] * sv + e.v[1] * tv)]
     const op = E.fi === fi ? 1 : 0.55, dash = E.conf === 'clara' && E.estado === 'ok' ? '' : 'stroke-dasharray="4 3"'
     const fs = Math.max(0.11, 6.5 * Math.max(S.vb[2] / (cont.clientWidth || 400), S.vb[3] / (cont.clientHeight || 300)))
-    const rotulo = (txt, p) => `<text x="${p[0]}" y="${p[1]}" font-size="${fs}" font-family="${T.font}" text-anchor="middle" fill="${T.stairs}" opacity="${op * 0.9}">${txt}</text>`
+    const rotulo = (txt, p) => HOUSE ? '' : `<text x="${p[0]}" y="${p[1]}" font-size="${fs}" font-family="${T.font}" text-anchor="middle" fill="${T.stairs}" opacity="${op * 0.9}">${txt}</text>`
     let g = ''
     if (E.estado !== 'ok') {
       g += `<path d="${anillo(E.r.polygon)}" fill="none" stroke="${T.stairs}" stroke-opacity="${op}" stroke-width="1.2" stroke-dasharray="4 3" ${ns}/>`
@@ -824,7 +830,7 @@ function render2D() {
     }
     const motivo = E.estado === 'dudosa' ? 'location not confirmed: room outline unreliable' : E.estado === 'no_cabe' ? 'location not confirmed: footprint does not fit inside its room and the house even at 70 %' :
       (E.conf === 'clara' ? 'direction from entries at both ends' : 'direction estimated: ' + E.motivo) + (E.escala < 1 ? ' · footprint reduced to ' + Math.round(E.escala * 100) + ' %' : '')
-    h += `<g pointer-events="none"><title>Stairs (${esc(motivo)})</title>${g}</g>`
+    h += `<g pointer-events="none">${HOUSE ? '' : `<title>Stairs (${esc(motivo)})</title>`}${g}</g>`
   })
   // ruta de la habitacion seleccionada: blanca con resplandor
   const sel = S.sel
@@ -887,6 +893,13 @@ function montarSplit() {
   window.addEventListener('mousedown', (e) => { if (!barra.contains(e.target)) menu(false) })
   window.addEventListener('keydown', (e) => { if (e.key === 'Escape') menu(false) })
 }
+// layout=house: Surroundings siempre visible con un titulo fijo; aviso de una linea para "sin ruta"
+function montarCasa() {
+  // fuera del <details> (WebKit no estira su contenido): titulo fijo + cuerpo de las oblicuas
+  const ent = document.createElement('div'); ent.id = 'casa-entorno'
+  ent.innerHTML = '<div class="casa-tit">Surroundings</div>'; ent.appendChild($('oblicuas-body')); $('der').appendChild(ent)
+  const av = document.createElement('div'); av.id = 'aviso-ruta'; av.hidden = true; av.setAttribute('role', 'status'); document.body.appendChild(av)
+}
 function barraSplit() {
   if (!SPLIT || !S.plan || !$('pisos-split')) return
   $('pisos-split').innerHTML = `<button data-foco="all" class="${S.foco === 'all' ? 'on' : ''}" title="All floors">ALL</button>` +
@@ -928,6 +941,7 @@ function zoomPan2D() {
     if (movido) return
     const el = e.target.closest('[data-kind]')
     if (el) seleccionar({ kind: el.dataset.kind, id: el.dataset.id, fi: focoIdx() })
+    else if (HOUSE && S.sel) seleccionar(null)
   })
   cont.addEventListener('mousemove', (e) => {
     if (arr) return
@@ -951,12 +965,14 @@ async function leerOblicuas(url) {
   const vistas = Object.fromEntries(OBL_DIRS.map(([d]) => [d, j.views && j.views[d]]).filter(([, v]) => v && OBL_ARCHIVO.test(v.file || '')))
   return Object.keys(vistas).length ? { meta: { ...j, views: vistas } } : { error: 'no oblique views at this location' }
 }
+const dirsObl = () => (HOUSE ? OBL_DIRS.filter(([d]) => d !== 'aerial') : OBL_DIRS) // casa: solo N / E / S / W
+if (HOUSE) OBL.dir = 'north'
 async function cargarOblicuas(id) {
   OBL.id = id; OBL.meta = null; OBL.estado = 'cargando'; OBL.error = ''; pintarOblicuas()
   let res = null
   try { res = await leerOblicuas(OBL_API + encodeURIComponent(id)); if (res.meta) OBL.base = OBL_API + encodeURIComponent(id) + '/' } catch (e) { res = { error: 'imagery server not reachable' } }
   if (OBL.id !== id) return
-  if (res.meta) { OBL.meta = res.meta; OBL.estado = 'ok'; if (!res.meta.views[OBL.dir]) OBL.dir = Object.keys(res.meta.views)[0] }
+  if (res.meta) { OBL.meta = res.meta; OBL.estado = 'ok'; if (!res.meta.views[OBL.dir]) OBL.dir = (dirsObl().find(([d]) => res.meta.views[d]) || [Object.keys(res.meta.views)[0]])[0] }
   else { OBL.estado = 'nada'; OBL.error = res.error || '' }
   pintarOblicuas()
 }
@@ -968,9 +984,14 @@ function pintarOblicuas() {
     el.innerHTML = `<div class="obl-vacio">No oblique imagery for this sample.<br><span class="hint">${esc(ayuda)}</span></div>`; return
   }
   const m = OBL.meta, v = m.views[OBL.dir]
-  const tabs = '<div class="obl-tabs fila-btn">' + OBL_DIRS.map(([d, t]) => `<button data-obl="${d}" class="${d === OBL.dir ? 'on' : ''}">${t}</button>`).join('') + '</div>'
+  const tabs = '<div class="obl-tabs fila-btn">' + dirsObl().map(([d, t]) => `<button data-obl="${d}" class="${d === OBL.dir ? 'on' : ''}">${t}</button>`).join('') + '</div>'
   if (!v) { el.innerHTML = tabs + '<div class="obl-vacio">No imagery available</div><div class="obl-pie hint">N / E / S / W: direction the camera faces.</div>'; return }
   const url = OBL.base + v.file, cenital = OBL.dir === 'aerial'
+  if (HOUSE) { // una imagen sin enlace y una linea con la fecha de captura
+    el.innerHTML = tabs + `<img class="obl-img" src="${esc(url)}" alt="Oblique aerial view, camera facing ${esc(OBL.dir)}">` +
+      `<div class="obl-pie hint">Captured ${esc(v.captureDate ? fechaCorta(v.captureDate) : 'date not available')}</div>`
+    return
+  }
   el.innerHTML = tabs +
     `<a href="${esc(url)}" target="_blank" rel="noopener"><img class="obl-img" src="${esc(url)}" alt="${cenital ? 'Straight-down aerial photo' : `Oblique aerial view, camera facing ${esc(OBL.dir)}`}"></a>` +
     `<div class="obl-pie hint">Captured ${esc(v.captureDate ? fechaCorta(v.captureDate) : 'date not available')} · ${esc(m.copyright || '© Vexcel Imaging')} · ${cenital ? 'straight-down aerial photo' : 'aerial photos at an angle, not street level'}</div>` +
@@ -1021,6 +1042,7 @@ const ESTADOS = { verified: ['●', 'VER', 'Verified'], inferred: ['◆', 'INF',
 const chip = (k, nota) => `<span class="st st-${k}" title="${esc(ESTADOS[k][2] + (nota ? ': ' + nota : ''))}"><span aria-hidden="true">${ESTADOS[k][0]}</span>${ESTADOS[k][1]}</span>`
 function inspector() {
   const el = $('inspector'), s = S.sel
+  if (HOUSE) { el.style.display = 'none'; return } // casa: tocar una sala no abre ningun panel
   const hoja = $('insp-split'); if (hoja) { hoja.classList.toggle('hoja-abierta', !!s); if (s && document.documentElement.classList.contains('compacto')) hoja.open = true } // hoja inferior en modo compacto (sin resumen: siempre abierta)
   if (!s) {
     if (SPLIT) { el.innerHTML = '<div class="hint">Select a room, door or window in either view.</div>'; el.style.display = 'block' } else el.style.display = 'none'
@@ -1101,12 +1123,19 @@ function panelIzq() {
 
 // ---------------------------------------------------------------- seleccion y refresco
 function seleccionar(ent, desdePadre = false) {
+  if (HOUSE && ent && (ent.kind !== 'room' || (!desdePadre && S.sel && S.sel.id === ent.id && S.sel.fi === ent.fi))) ent = null // solo salas; segundo toque: quita la ruta
   S.sel = ent; S.salidaVista = null
   // la seleccion hecha por el usuario se comunica a la pagina que contiene el visor (no la que llega por mensaje)
   if (!desdePadre) avisarPadre({ type: 'select', id: ent ? ent.id : null, kind: ent ? ent.kind : null, floor: ent ? ent.fi + 1 : null })
   if (ent && ent.fi !== focoIdx()) { if (S.foco === 'all') S.f2d = ent.fi; else setFoco(ent.fi) }
   refrescar(); selectoresPlanta()
   const fl = document.querySelector('#tabla tr.sel'); if (fl) fl.scrollIntoView({ block: 'nearest' })
+  if (HOUSE && ent && !rutaSala(ent.fi, salaPorId(ent.fi, ent.id))) avisoRuta('No exit route from this room')
+}
+let avisoT = 0
+function avisoRuta(t) { // una linea, 2 s
+  const el = $('aviso-ruta'); if (!el) return
+  el.textContent = t; el.hidden = false; clearTimeout(avisoT); avisoT = setTimeout(() => { el.hidden = true }, 2000)
 }
 function refrescar() { estilo3D(); render2D(); tabla(); inspector(); notas(); barraSplit() }
 function setDetalle(v) { S.detalle = v; if (v) construirDetalle(); panelIzq(); aplicarPlantas(); rotSucio = true; render2D(); avisoHud() }
@@ -1220,7 +1249,7 @@ function tema(vars) {
 // la pagina contenedora. setIncident: si el plano aun no ha cargado se guarda el ultimo overlay y se aplica al cargar; las
 // versiones menores que la actual se ignoran (respuesta incidentRejected); se valida con incident/validate.js (port de
 // validate_overlay.py) contra el indice del plano cargado; si es valido se aplica y se guarda para el control de versiones.
-const INC = { index: null, versions: new Map(), actual: null, pendiente: null, vista: null, rutas: null, resaltar: new Set(), escenarios: [], escenario: null, bannerAbierto: null }
+const INC = { index: null, versions: new Map(), actual: null, pendiente: null, vista: null, rutas: null, resaltar: new Set(), escenarios: [], escenario: null, bannerAbierto: null, salas: new Set() }
 function prepararIncidente(plan) {
   INC.versions = new Map(); INC.actual = null; INC.vista = null; INC.rutas = null; INC.resaltar = new Set()
   try { INC.index = plan ? buildPlanIndex(plan) : emptyPlanIndex() } catch (e) { INC.index = null; avisarPadre({ type: 'planIndex', index: null, error: e.message }); return }
@@ -1284,6 +1313,8 @@ function lugar(e) {
 
 function reconstruirIncidente() {
   const ov = ovVista()
+  // salas con personas o fuego reportados (layout=house: llevan su nombre)
+  INC.salas = new Set(ov && S.plan ? [...(ov.occupants || []), ...(ov.fire || [])].map(lugar).filter((L) => L && L.room).map((L) => L.fi + ':' + L.room.id) : [])
   INC.rutas = ov && S.plan ? planRoutes(S.plan, ov, S.ev) : null
   if (INC.rutas) { // las rutas del planificador sustituyen a las del overlay y se validan como parte de el
     const errs = validarOverlay({ ...ov, routes: INC.rutas.routes }, INC.index)
@@ -1348,7 +1379,8 @@ function dibujarIncidente3D() {
   limpiarIncidente3D()
   const ov = ovVista()
   if (!ov || !S.capas.incident) return
-  const pon = (fi, o) => { P[fi].g.add(o); incG.push(o) }
+  // layout=house: ningun rotulo (todos los sprites de la capa son texto): personas, brillo rojo y rutas sin palabras
+  const pon = (fi, o) => { if (HOUSE && o.isSprite) { o.material.map?.dispose(); o.material.dispose(); return } P[fi].g.add(o); incG.push(o) }
   const H = alturaTotal() + 1.5
   const tinte = (fi, color, op) => salasDe(piso(fi)).filter(poligonoValido).forEach((r) => pon(fi, new THREE.Mesh(formaSala(r, 0.04), matInc(color, op))))
   // ocupantes
@@ -1478,7 +1510,7 @@ function svgIncidente2D(fi, ns) {
   let h = `<defs><radialGradient id="incFuego"><stop offset="0" stop-color="${IC.red}" stop-opacity="0.85"/><stop offset="0.6" stop-color="${IC.red}" stop-opacity="0.35"/><stop offset="1" stop-color="${IC.red}" stop-opacity="0"/></radialGradient>` +
     `<radialGradient id="incVerde"><stop offset="0" stop-color="${IC.green}" stop-opacity="0.7"/><stop offset="1" stop-color="${IC.green}" stop-opacity="0"/></radialGradient>` +
     `<pattern id="incRayas" patternUnits="userSpaceOnUse" width="0.35" height="0.35" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="0.35" stroke="${IC.amber}" stroke-width="0.14"/></pattern></defs>`
-  const txt = (x, y, lines, color, op) => { const w = Math.max(...lines.map((l) => l.length)) * fs * 0.62 + fs * 0.8, hh = lines.length * fs * 1.25 + fs * 0.4
+  const txt = (x, y, lines, color, op) => { if (HOUSE) return ''; const w = Math.max(...lines.map((l) => l.length)) * fs * 0.62 + fs * 0.8, hh = lines.length * fs * 1.25 + fs * 0.4
     return `<g opacity="${op}" pointer-events="none"><rect x="${x - w / 2}" y="${y - hh}" width="${w}" height="${hh}" fill="#080a0e" fill-opacity="0.82"/><rect x="${x - w / 2}" y="${y - hh}" width="${fs * 0.22}" height="${hh}" fill="${color}"/>` +
       lines.map((l, i) => `<text x="${x - w / 2 + fs * 0.5}" y="${y - hh + fs * 1.05 + i * fs * 1.25}" font-size="${fs}" font-family="${T.font}" font-weight="${i ? 500 : 700}" fill="${i ? '#e5e7eb' : color}">${esc(l)}</text>`).join('') + '</g>' }
   const anillo2 = (r) => anillo(r.polygon)
@@ -1529,7 +1561,7 @@ function svgIncidente2D(fi, ns) {
       if (a.fi !== fi || b.fi !== fi) continue
       h += `<line x1="${a.p[0]}" y1="${-a.p[1]}" x2="${b.p[0]}" y2="${-b.p[1]}" stroke="${b.near ? IC.nearFire : IC.route}" stroke-width="2.4" stroke-dasharray="${g.dashed ? '3 5' : '7 4'}" stroke-linecap="round" opacity="${g.dashed ? 0.75 : 1}" ${ns}><animate attributeName="stroke-dashoffset" from="22" to="0" dur="1s" repeatCount="indefinite"/></line>`
     }
-    pts.forEach((q, i) => { if (q.fi === fi) h += `<circle cx="${q.p[0]}" cy="${-q.p[1]}" r="${fs * 0.75}" fill="#080a0e" stroke="${q.near ? IC.nearFire : IC.route}" stroke-width="1.2" ${ns}/><text x="${q.p[0]}" y="${-q.p[1] + fs * 0.35}" font-size="${fs}" font-family="${T.font}" fill="#fff" text-anchor="middle" pointer-events="none">${i + 1}</text>` })
+    pts.forEach((q, i) => { if (q.fi === fi && !HOUSE) h += `<circle cx="${q.p[0]}" cy="${-q.p[1]}" r="${fs * 0.75}" fill="#080a0e" stroke="${q.near ? IC.nearFire : IC.route}" stroke-width="1.2" ${ns}/><text x="${q.p[0]}" y="${-q.p[1] + fs * 0.35}" font-size="${fs}" font-family="${T.font}" fill="#fff" text-anchor="middle" pointer-events="none">${i + 1}</text>` })
     const fin = pts[pts.length - 1]
     if (fin.fi === fi) h += txt(fin.p[0], -fin.p[1] - fs * 1.1, [`${r.kind.toUpperCase()} · ${r.objective_id}${g.dashed ? ' (candidate)' : ''}`, `~${piesM(r.length_m_estimate)} estimate${r.passes_near_fire ? ' · near fire' : ''}`], r.passes_near_fire ? IC.nearFire : IC.route, g.dashed ? 0.8 : 1)
   }
@@ -1637,10 +1669,10 @@ async function cargar(id) {
   $('carga').textContent = `Loaded in ${S.ms.total} ms`
   estadoEmbed('')
   avisoHud()
-  avisarPadre({ type: 'ready', sample: id, floors: plan.floors.length, mode: EMBED ? (SPLIT ? 'split' : MODO) : null })
+  avisarPadre({ type: 'ready', sample: id, floors: plan.floors.length, mode: EMBED ? (SPLIT ? 'split' : HOUSE ? 'house' : MODO) : null })
   prepararIncidente(plan)
   setTimeout(medirRendimiento, 2200) // los fps se cuentan cada segundo en el bucle; se miran tras 2 s
-  window.__casa = { S, THREE, ms: S.ms, id, INC, setFoco, setDetalle, ponerHover, get refs() { return refs }, get P() { return P }, get escG() { return escG }, get explG() { return explG }, // solo para las pruebas automaticas
+  window.__casa = { S, THREE, ms: S.ms, id, INC, setFoco, setDetalle, ponerHover, get refs() { return refs }, get P() { return P }, get escG() { return escG }, get explG() { return explG }, incSprites: () => incG.filter((o) => o.isSprite).length, // solo para las pruebas automaticas
     medir(n, fx) { const gl = renderer.getContext(), px = new Uint8Array(4), t0 = performance.now(); for (let i = 0; i < n; i++) { if (fx) composer.render(); else renderer.render(escena, camara); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px) } return (performance.now() - t0) / n } }
 }
 
@@ -1656,7 +1688,7 @@ function sinEscaneo(id, doc) {
   $('centro').appendChild(a)
   $('calidad').className = 'chip'; $('calidad').textContent = 'no scan'; $('carga').textContent = ''
   estadoEmbed(''); cargarOblicuas(id)
-  avisarPadre({ type: 'ready', sample: id, floors: 0, mode: EMBED ? (SPLIT ? 'split' : MODO) : null, no_scan: true })
+  avisarPadre({ type: 'ready', sample: id, floors: 0, mode: EMBED ? (SPLIT ? 'split' : HOUSE ? 'house' : MODO) : null, no_scan: true })
   prepararIncidente(null)
 }
 
@@ -1671,6 +1703,7 @@ let LISTA = [] // samples/index.json
 async function inicio() {
   if (SOLO_2D) $('der').appendChild($('inspector')) // en la vista embebida 2D el inspector va sobre el plano
   if (SPLIT) montarSplit()
+  if (HOUSE) montarCasa()
   eventos(); zoomPan2D()
   try {
     const r = await fetch('samples/index.json')

@@ -3,14 +3,15 @@ import { liveText, useIncidentSocket, type IncidentResult, type LiveIncident } f
 import { useConfirmedHouse } from "../../house/liveFeed";
 
 // Static house viewer from public/house-viewer, embedded in an iframe (same origin).
-// layout "split" -> 3D + 2D plan side by side in one iframe; otherwise mode "floor" (2D) or "scan3d" (3D).
+// layout "split" -> 3D + 2D plan side by side in one iframe; layout "house" -> the MDT house screen (3D, plan and
+// Surroundings, no panels or texts; src/house/HouseMdt.tsx); otherwise mode "floor" (2D) or "scan3d" (3D).
 // The viewer reports "ready" / "error" via postMessage.
 // The MDT shows the incident building directly (sampleId); the temporary sample-house picker lives in the
 // Dispatcher view's Demo / Controls section and keeps its choice in ?sample=<id>.
 /** Incident state reported by the viewer (validated by the host before use). */
 export type ViewerIncidentState = { overlay: Record<string, unknown> | null; version: number | null; versions: number[]; routes: Record<string, unknown>[]; noRoute: string[]; plannerMs: number | null };
 type Props = {
-  mode?: "floor" | "scan3d"; layout?: "single" | "split"; sampleId: string | null; sampleError?: string | null;
+  mode?: "floor" | "scan3d"; layout?: "single" | "split" | "house"; sampleId: string | null; sampleError?: string | null;
   /** inside the MDT house view: the host shows the considerations panel (the viewer hides its own) */
   host?: boolean;
   onIncidentState?: (s: ViewerIncidentState) => void;
@@ -143,9 +144,10 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId: p
   // Live overlay (only the split viewer; the app's live incident or ?incident=<id>, see house/useIncidentSocket.ts): the
   // overlay's house replaces the picked one, and the overlay is posted once the viewer reports that house ready.
   // Without an overlay, the live incident's confirmed building (when it is in the catalog with a plan) comes next.
-  const live = useIncidentSocket(layout === "split");
+  const multi = layout === "split" || layout === "house";
+  const live = useIncidentSocket(multi);
   const confirmed = useConfirmedHouse();
-  const sampleId = live.sampleId ?? (layout === "split" && confirmed.state === "house" ? confirmed.sampleId : null) ?? pickedId;
+  const sampleId = live.sampleId ?? (multi && confirmed.state === "house" ? confirmed.sampleId : null) ?? pickedId;
   const [result, setResult] = useState<IncidentResult | null>(null);
   const [lastApplied, setLastApplied] = useState<number | null>(null);
   const liveOn = useRef(live.enabled);
@@ -157,8 +159,8 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId: p
   const [status, setStatus] = useState<Status>(sampleId ? { kind: "loading" } : { kind: "idle" });
   const [loadSeq, setLoadSeq] = useState(0);
 
-  const split = layout === "split";
-  const view = split ? "layout=split" : `mode=${mode === "floor" ? "2d" : "3d"}`;
+  const split = multi;
+  const view = layout === "house" ? "layout=house" : split ? "layout=split" : `mode=${mode === "floor" ? "2d" : "3d"}`;
   // ?debug=1 (and the optional scenario / v) on the page is forwarded to the viewer (incident scenario selector)
   const page = new URLSearchParams(window.location.search);
   const debug = page.get("debug") === "1"
@@ -168,7 +170,7 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId: p
   const cb = useRef({ onIncidentState, onPlanIndex });
   cb.current = { onIncidentState, onPlanIndex };
   const [readySample, setReadySample] = useState<string | null>(null); // house the viewer last reported ready
-  const what = split ? "FLOOR PLAN + 3D" : mode === "floor" ? "FLOOR PLAN" : "3D SCAN";
+  const what = layout === "house" ? "BUILDING" : split ? "FLOOR PLAN + 3D" : mode === "floor" ? "FLOOR PLAN" : "3D SCAN";
 
   // Viewer replies from our own iframe only. On the first "ready" of each iframe document the app theme is sent and
   // the iframe stays hidden until "themeApplied" (or a short fallback), so the default viewer theme never flashes.
@@ -270,10 +272,18 @@ export function BuildingViewer({ mode = "scan3d", layout = "single", sampleId: p
   );
   if (!live.enabled) return viewer;
   const bad = result?.kind === "rejected" || !!live.unknownModel;
+  const statusText = liveText(live, result, lastApplied);
+  // house screen: no chip and no version text; the status stays in hidden attributes (tests, debugging)
+  if (layout === "house") return (
+    <div className="relative h-full w-full bg-bg" data-incident-version={lastApplied ?? undefined} data-live-sample={sampleId ?? undefined}>
+      <span hidden data-live-status data-live-status-text={statusText} />
+      {viewer}
+    </div>
+  );
   return (
     <div className="flex h-full w-full flex-col bg-bg" data-incident-version={lastApplied ?? undefined} data-live-sample={sampleId ?? undefined}>
       <div className="flex shrink-0 items-center justify-end border-b border-line bg-panel px-2 py-0.5">
-        <LiveChip live={live} text={liveText(live, result, lastApplied)} bad={bad} />
+        <LiveChip live={live} text={statusText} bad={bad} />
       </div>
       <div className="relative min-h-0 flex-1">{viewer}</div>
     </div>
@@ -301,7 +311,7 @@ function LiveChip({ live, text, bad }: { live: LiveIncident; text: string; bad: 
   return (
     <div ref={box} className="relative">
       <button
-        type="button" aria-live="polite" data-live-status aria-expanded={open} aria-haspopup="dialog"
+        type="button" aria-live="polite" data-live-status data-live-status-text={text} aria-expanded={open} aria-haspopup="dialog"
         onClick={() => setOpen((o) => !o)}
         className={`num flex min-h-[44px] items-center border px-3 text-[12px] ${bad ? "border-contradicted text-contradicted" : "border-accent text-accent"}`}
       >{text}</button>
