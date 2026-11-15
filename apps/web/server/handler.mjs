@@ -5,6 +5,9 @@
 //   GET /api/house-viewer/sample/<id>                         -> { id, address, location, matterportModelId, listing,
 //                                                                  quality, stairs, plan }   (plan from the Matterport API,
 //                                                                  plus plan.stairs[] and opening.exterior: plan-extras.mjs)
+//   GET /api/house-viewer/plan/<id>                           -> { id, model_id, plan_source, plan, plan_index }   (the same
+//                                                                  plan as /sample, plus its plan index built with the viewer's
+//                                                                  module; the backend caches both for on-demand houses)
 //   GET /api/house-viewer/vexcel/<id>                         -> { views: { dir: { file, captureDate } }, ... }
 //   GET /api/house-viewer/vexcel/<id>/oblique-<dir>.jpg       -> JPEG (Vexcel API)
 //
@@ -17,19 +20,25 @@ import { generar, planDesdeRespuesta, fechasModelo, MPError } from "./matterport
 import { evaluar } from "./house-quality.mjs";
 import { obliques, VXError } from "./vexcel.mjs";
 import { withPlanExtras } from "./plan-extras.mjs";
+import { createCatalogLookup } from "./house-catalog.mjs";
+import { buildPlanIndex } from "../public/house-viewer/incident/plan-index.js";
 
 export const PREFIX = "/api/house-viewer/";
 const TTL_MS = 6 * 3600 * 1000; // in-memory cache lifetime
 const RATE = { windowMs: 60_000, max: 120 }; // requests per IP per minute (a house load is ~6 requests)
 const ID_RE = /^[a-z0-9-]{1,64}$/;
 
-/** Only catalog ids are served (public/house-viewer/samples/index.json): never an arbitrary model id or location, so this is
+/** Only catalog ids are served (public/house-viewer/samples/index.json, then the house catalog data/raw/catalog.csv,
+ *  houseCatalog option, default <storedDir>/catalog.csv; see house-catalog.mjs): never an arbitrary model id or location, so this is
  *  not an open proxy. Responses never carry keys, auth headers or signed URLs. Per-IP rate limit and in-memory cache.
  *  Without Matterport credentials the plan comes from the stored raw API response, data/raw/<id>/matterport/raw_floors.json
  *  (star buildings), through the same pipeline.
  *  getEnv(name) -> value; catalogFile = samples/index.json; storedDir = data/raw; trustProxy = take the client IP from the
  *  last X-Forwarded-For hop (only behind our own reverse proxy). Returns (req, res, next) => void. */
-export function createHouseDataHandler({ getEnv, catalogFile, storedDir = null, trustProxy = false }) {
+export function createHouseDataHandler({ getEnv, catalogFile, storedDir = null, trustProxy = false, houseCatalog = undefined }) {
+  const catalogLookup = createCatalogLookup(houseCatalog === undefined ? (storedDir ? path.join(storedDir, "catalog.csv") : null) : houseCatalog);
+  /** samples/index.json first, then the house catalog; null for any other id */
+  const findSample = (id) => JSON.parse(fs.readFileSync(catalogFile, "utf8")).find((x) => x.id === id) || catalogLookup(id);
   const cache = new Map(); // key -> { t, value: Promise }
   const hits = new Map(); // ip -> { t0, n }
 
@@ -114,14 +123,19 @@ export function createHouseDataHandler({ getEnv, catalogFile, storedDir = null, 
     const url = new URL(req.url ?? "/", "http://local");
     if (req.method !== "GET" || !url.pathname.startsWith(PREFIX)) return next();
     const [kind, id, file, ...extra] = url.pathname.slice(PREFIX.length).replace(/^\/+|\/+$/g, "").split("/");
-    if (kind !== "sample" && kind !== "vexcel") return next();
+    if (kind !== "sample" && kind !== "vexcel" && kind !== "plan") return next();
     const wait = limited(req);
     if (wait) { res.setHeader("Retry-After", String(wait)); return send(res, 429, { error: "too many requests" }); }
     try {
       if (!ID_RE.test(id || "")) return send(res, 404, { error: "unknown sample" });
-      const s = JSON.parse(fs.readFileSync(catalogFile, "utf8")).find((x) => x.id === id);
-      if (!s || extra.length || (kind === "sample" && file)) return send(res, 404, { error: "unknown sample" });
+      const s = findSample(id);
+      if (!s || extra.length || ((kind === "sample" || kind === "plan") && file)) return send(res, 404, { error: "unknown sample" });
       if (kind === "sample") return send(res, 200, await sampleDoc(s));
+      if (kind === "plan") {
+        if (!s.matterportModelId) return send(res, 404, { error: "no interior scan for this sample" });
+        const { plan, source } = await memo(`plan:${s.id}`, () => loadPlan(s));
+        return send(res, 200, { id: s.id, model_id: s.matterportModelId, plan_source: source, plan, plan_index: buildPlanIndex(plan) });
+      }
       if (!s.location) return send(res, 404, { error: "no location for this sample" });
       const vx = await memo(`vexcel:${s.id}`, () => obliques(secret("VEXCEL_API_KEY"), s.location.lat, s.location.lon));
       if (!file) { const { source, copyright, convention, views } = vx.meta; return send(res, 200, { source, copyright, convention, views }); }

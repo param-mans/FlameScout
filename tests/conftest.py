@@ -45,6 +45,10 @@ def _offline_by_default(request, monkeypatch, tmp_path):
     monkeypatch.setattr(overlay, "FIXTURE_PLAN_ROOT", tmp_path / "fixture_plan_indexes")  # cedar: cedar_plan_index
     if "real_data" not in request.keywords:
         monkeypatch.setattr(providers, "RAW_ROOT", tmp_path / "raw")  # only fixtures, unless a test builds raw files
+    # the house catalog follows providers.RAW_ROOT (tmp unless real_data); never the real house data service
+    monkeypatch.setenv("HOUSE_DATA_URL", "off")
+    from services.agents.tools import house_data_client
+    house_data_client.forget_failures()
     if "live" not in request.keywords:
         monkeypatch.setenv("EXTRACTOR", "keyword")
         monkeypatch.setenv("LANGSMITH_TRACING", "false")

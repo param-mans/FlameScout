@@ -14,6 +14,7 @@ const handle = createHouseDataHandler({
   getEnv: (k) => process.env[k],
   catalogFile: process.env.HOUSE_CATALOG || path.join(here, "..", "public", "house-viewer", "samples", "index.json"),
   storedDir: process.env.HOUSE_DATA_RAW || path.join(here, "..", "data", "raw"),
+  houseCatalog: process.env.HOUSE_CATALOG_CSV || undefined, // default <storedDir>/catalog.csv (house-catalog.mjs)
   trustProxy: process.env.HOUSE_DATA_TRUST_PROXY === "1", // behind Caddy: client IP = last X-Forwarded-For hop
 });
 

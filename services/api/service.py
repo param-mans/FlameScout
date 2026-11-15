@@ -362,6 +362,10 @@ class IncidentService:
             confirmed_before = rec.confirmed_building_id   # an auto-confirm here already reads these changes
             if loc_after != loc_before and not confirmed_before:
                 candidates = self._locate(incident_id, rec)
+                open_after = [s for s in self.copilot(incident_id) if s.status == "open"]
+                if {s.id for s in open_after} != {s.id for s in open_now}:   # e.g. "Address not in catalog"
+                    self._emit(incident_id, "copilot.suggestion",
+                               {"suggestions": [s.model_dump() for s in open_after]})
                 self._maybe_auto_confirm(incident_id, candidates)
             if changes and confirmed_before:
                 self._queue_update(incident_id, changes, seg.call_id)
@@ -892,7 +896,23 @@ class IncidentService:
     def copilot(self, incident_id: str) -> list[CopilotSuggestion]:
         with self._lock(incident_id):
             rec = self._engine(incident_id).record
-            return copilot.suggestions(rec, self._copilot_states(incident_id))
+            out = copilot.suggestions(rec, self._copilot_states(incident_id))
+            if missing := self._not_in_catalog(incident_id, rec):
+                out.insert(0, missing)
+            return out
+
+    def _not_in_catalog(self, incident_id: str, rec: IncidentRecord) -> Optional[CopilotSuggestion]:
+        """An address was reported, nothing matched it (catalog, stored data, fixtures) and nothing is confirmed: the
+        dispatcher sees "Address not in catalog" in the copilot list (the UI's suggested questions)."""
+        address = rec.facts.get("location.address")
+        p = self._dir(incident_id) / "candidates.json"
+        if address is None or rec.confirmed_building_id or not p.exists() or self.ws.read_json(p):
+            return None
+        sid = copilot.suggestion_id(incident_id, "location.not_in_catalog")
+        status = self._copilot_states(incident_id).get(sid, "open")
+        return CopilotSuggestion(id=sid, incident_id=incident_id, field="location.address",
+                                 question=f"Address not in catalog: {address.value}. Can you confirm the address?",
+                                 status=status)  # type: ignore[arg-type]
 
     def set_suggestion(self, suggestion_id: str, status: str) -> CopilotSuggestion:
         incident_id, _ = copilot.split_suggestion_id(suggestion_id)

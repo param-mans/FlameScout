@@ -271,10 +271,44 @@ def _commercial(bid: str, folder: Path) -> dict:
             "facts": facts, "tenants": tenants, "evidence": evidence}
 
 
+def catalog_property(bid: str) -> Optional[dict]:
+    """A house of the catalog (data/raw/catalog.csv) without a stored CoStar record: its listing metadata only.
+    No coordinates in the catalog, so no aerial imagery for it."""
+    from . import house_catalog
+
+    row = house_catalog.get(bid)
+    if row is None:
+        return None
+    ev = "ev_cs_catalog"
+    evidence = {ev: {"id": ev, "kind": "costar_record", "source": "costar",
+                     "uri": f"costar-kit://residential-listings/{bid}",
+                     "locator": {"file": "data/raw/catalog.csv", "listing_id": bid,
+                                 "note": "house catalog row (scripts/build_house_catalog.mjs)"}}}
+    facts = {}
+
+    def put(key, column, cast, confidence=0.85):
+        raw = (row.get(column) or "").strip()
+        try:
+            value = cast(raw) if raw else None
+        except ValueError:
+            value = None
+        if value is not None:
+            facts[key] = _fact(key, value, ev, confidence)
+
+    num = lambda v: int(float(v)) if float(v).is_integer() else float(v)  # noqa: E731
+    put("building.year_built", "year_built", int, 0.9)
+    put("building.bedrooms", "bedrooms", num)
+    put("building.bathrooms", "bathrooms", num)
+    put("building.area_sqft", "sqft", num)
+    street = row.get("address") or ""
+    return {"property_id": bid, "name": street, "address": house_catalog.full_address(row),
+            "coordinates": {"lat": None, "lon": None}, "facts": facts, "tenants": [], "evidence": evidence}
+
+
 def raw_property(bid: str) -> Optional[dict]:
     folder = _raw(bid, "costar")
     if folder is None:
-        return None
+        return catalog_property(bid)
     if (folder / "listing.json").exists():
         return _residential(bid, folder)
     if (folder / "property.json").exists():
@@ -286,12 +320,67 @@ def _ev_id(original: str) -> str:
     return "ev_mp_" + original.removeprefix("ev_")
 
 
+VIEWER_PLAN_NOTE = "on-demand plan from the house data service (apps/web/server: Matterport API + plan-extras.mjs)"
+
+
+def _from_viewer_plan(plan: dict) -> dict:
+    """A cached on-demand plan (viewer layout: floors[{id, rooms, openings}], stairs[], from the house data service)
+    in the normalized layout's terms that raw_plan reads: evidence, facts, exits, stairs. Only counts and the extras the
+    service already computed (opening.exterior, stairs[]); nothing is recomputed."""
+    ev = {"id": "ev_plan", "kind": "scan_floorplan", "source": "matterport", "uri": None, "captured_at": None,
+          "locator": {"model_id": plan.get("modelId"), "api": "Matterport GraphQL model.floors (edges, openings, rooms)",
+                      "processed_by": VIEWER_PLAN_NOTE}}
+    floors = [f for f in plan.get("floors") or [] if any(r.get("type") != "Void" for r in f.get("rooms") or [])]
+    number = {f.get("id"): n for n, f in enumerate(floors, 1)}
+    rooms = [r for f in floors for r in f.get("rooms") or [] if r.get("type") != "Void" and (r.get("areaM2") or 0) >= 2]
+    count = lambda t: sum(1 for r in rooms if r.get("type") == t)  # noqa: E731
+    facts = [{"key": "building.floors_scanned", "value": len(floors), "status": "verified", "confidence": 0.9,
+              "evidence_ids": ["ev_plan"]},
+             {"key": "building.rooms", "value": len(rooms), "status": "verified", "confidence": 0.85,
+              "evidence_ids": ["ev_plan"]},
+             {"key": "building.bedrooms_plan", "value": count("Bedroom"), "status": "inferred", "confidence": 0.7,
+              "evidence_ids": ["ev_plan"]},
+             {"key": "building.bathrooms_plan", "value": count("Bathroom"), "status": "inferred", "confidence": 0.7,
+              "evidence_ids": ["ev_plan"]}]
+    exits = []
+    if floors:   # exterior doors of the lowest floor (the exterior flag is the service's evac.js rule)
+        ground = floors[0]
+        exits = [{"door_id": o["id"], "floor": 1, "from_room": None, "status": "inferred", "confidence": 0.7,
+                  "evidence_ids": ["ev_plan"]}
+                 for o in ground.get("openings") or [] if o.get("type") == "doorway" and o.get("exterior") and o.get("id")]
+        facts.append({"key": "building.exterior_exits", "value": len(exits), "status": "inferred", "confidence": 0.7,
+                      "evidence_ids": ["ev_plan"]})
+    stairs = [{**st, "lower_floor": number.get(st.get("lower_floor_id")), "upper_floor": number.get(st.get("upper_floor_id")),
+               "status": "inferred", "confidence": 0.75 if st.get("state") == "ok" else 0.5, "evidence_ids": ["ev_plan"]}
+              for st in plan.get("stairs") or [] if st.get("id")]
+    return {"model_id": plan.get("modelId"), "evidence": {"ev_plan": ev}, "facts": facts, "rooms": [], "exits": exits,
+            "stairs": stairs}
+
+
+def _plan_file(bid: str) -> Optional[Path]:
+    """data/raw/<bid>/matterport/plan.json; for a catalog house without it, fetched once from the house data service
+    (tools/house_data_client.py) and cached there. None = no interior scan."""
+    path = _raw(bid, "matterport", "plan.json")
+    if path is None and re.fullmatch(r"[0-9]+", bid or ""):
+        from .tools import house_data_client
+
+        if house_data_client.ensure_plan(bid, RAW_ROOT):
+            path = _raw(bid, "matterport", "plan.json")
+    return path
+
+
 def raw_plan(bid: str) -> Optional[dict]:
     """The normalized Matterport plan.json, mapped to our matterport layer (model + facts + markers)."""
-    path = _raw(bid, "matterport", "plan.json")
+    path = _plan_file(bid)
     if path is None:
         return None
-    plan = _load(path)
+    try:
+        plan = _load(path)
+    except (OSError, ValueError) as e:
+        log.warning("unreadable plan %s: %s", path, e)
+        return None
+    if "evidence" not in plan and "floors" in plan and "modelId" in plan:
+        plan = _from_viewer_plan(plan)
     cited: set[str] = set()
 
     def ids(evidence_ids) -> list[str]:
@@ -419,6 +508,8 @@ class LiveVexcelProvider:
         self._fixture = fixture
 
     def get_aerial(self, lat: float, lon: float, radius_m: int) -> list[dict]:
+        if lat is None or lon is None:   # a catalog house: no coordinates, no aerial imagery
+            return []
         out = []
         for bid in _raw_ids("vexcel"):
             loc = _load(RAW_ROOT / bid / "vexcel" / "metadata.json").get("location") or {}

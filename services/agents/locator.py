@@ -2,7 +2,9 @@
 
 - find_candidates(): the orchestrator's locator. Asks the CoStar adapter (providers.py) for
   properties matching what callers said (address and/or building name), scores them, says why
-  each matched (match_reasons), and asks the Matterport adapter whether it has a scan.
+  each matched (match_reasons), and asks the Matterport adapter whether it has a scan. The house
+  catalog (data/raw/catalog.csv, house_catalog.match: house number, street, city; spoken digits)
+  is an extra source; a house found both ways keeps the better score.
 - locate(): the services/api pipeline's locator (tools/providers.py). CoStar search on the
   reported name and address; when a geocoder is configured, candidates within GEO_MATCH_M of
   the geocoded address get a boost.
@@ -16,7 +18,8 @@ from typing import Optional
 
 from flamescout_schemas import BuildingCandidate, IncidentRecord, LocationCandidate
 
-from .providers import Providers, get_providers, tokens
+from . import house_catalog
+from .providers import Providers, _raw, get_providers, tokens
 from .tools.providers import Providers as ToolProviders
 from .tools.rules import haversine_m
 
@@ -42,8 +45,17 @@ def _reason(query: str, prop: dict) -> tuple[float, str]:
     return by_name, reason
 
 
+def _house_number(address: str) -> Optional[str]:
+    """The leading house number of an address, spoken digits included ("nine six six oh Fairdale" -> 9660)."""
+    toks = house_catalog.normalize(address)
+    return toks[0] if toks and toks[0].isdigit() else None
+
+
 def _scan_available(providers: Providers, building_id: str) -> Optional[bool]:
-    """Whether the Matterport adapter has a model for the building; None if it could not say."""
+    """Whether the Matterport adapter has a model for the building; None if it could not say. A catalog house
+    without a folder: True (the catalog lists scanned houses; its plan is fetched only once it is confirmed)."""
+    if house_catalog.get(building_id) is not None and _raw(building_id, "matterport", "plan.json") is None:
+        return True
     try:
         return providers.matterport.find_model({"property_id": building_id}) is not None
     except Exception as e:  # noqa: BLE001 - informational only; the dossier step decides for real
@@ -54,15 +66,27 @@ def _scan_available(providers: Providers, building_id: str) -> Optional[bool]:
 def find_candidates(incident: IncidentRecord, providers: Optional[Providers] = None) -> list[BuildingCandidate]:
     """Best match first. Empty when callers gave no location or nothing matches."""
     providers = providers or get_providers()
-    said = [str(incident.facts[k].value) for k in ("location.address", "location.name") if k in incident.facts]
+    said = [(k, str(incident.facts[k].value)) for k in ("location.address", "location.name") if k in incident.facts]
     found: dict[str, dict] = {}
-    for query in said:
+    for key, query in said:
+        number = _house_number(query) if key == "location.address" else None
         for p in providers.costar.search_property(query):
+            if number and _house_number(p["address"]) not in (None, number):
+                continue   # the caller said another house number: not this building
             score, reason = _reason(query, p)
             c = found.setdefault(p["property_id"], {"property": p, "score": 0.0, "reasons": []})
             c["score"] = max(c["score"], score)
             if reason not in c["reasons"]:
                 c["reasons"].append(reason)
+    if "location.address" in incident.facts:
+        for m in house_catalog.match(str(incident.facts["location.address"].value)):
+            c = found.get(m.listing_id)
+            if c is None:
+                p = {"property_id": m.listing_id, "name": m.row.get("address") or m.listing_id,
+                     "address": house_catalog.full_address(m.row), "coordinates": {}}
+                c = found.setdefault(m.listing_id, {"property": p, "score": 0.0, "reasons": []})
+            c["score"] = max(c["score"], m.score)
+            c["reasons"] += [r for r in m.reasons if r not in c["reasons"]]
     candidates = [BuildingCandidate(building_id=bid, name=c["property"]["name"], address=c["property"]["address"],
                                     coordinates=dict(c["property"].get("coordinates") or {}),
                                     score=round(c["score"], 2), match_reasons=c["reasons"],
