@@ -2,8 +2,12 @@
 transcribed in one go. Every open instance of the web app follows the call (/ws/calls); nobody answers
 and nothing is spoken back.
 
-- transcribe_monologue(wav): Gemini (GEMINI_FAST_MODEL, always the gemini provider: the others take no
-  audio), structured output {sentences}, one retry. [] = no clear speech.
+- transcribe_monologue(wav): tries LLM_PROVIDER, then LLM_FALLBACK_PROVIDER, on whichever has a key:
+    gemini  GEMINI_FAST_MODEL, structured output {sentences}, one retry on schema error
+    openai  audio transcriptions endpoint, OPENAI_TRANSCRIBE_MODEL (default whisper-1), OPENAI_BASE_URL
+    xai     POST https://api.x.ai/v1/stt (multipart `file`; format=true needs `language`, STT_LANGUAGE,
+            default en); response {text, language, duration, words}
+  The openai/xai text is split into sentences in code. [] = no clear speech.
 - timed(sentences, duration): deterministic timing for the transcript, spread over the recording by word
   count (the model's own timestamps would be guesses).
 """
@@ -12,6 +16,8 @@ from __future__ import annotations
 import base64
 import io
 import logging
+import os
+import re
 import wave
 from typing import Optional
 
@@ -46,8 +52,16 @@ def _get_chain():
     return _chain
 
 
-def transcribe_monologue(wav: bytes) -> list[str]:
-    """Raises on API failure (the endpoint answers 503); [] for no clear speech."""
+XAI_STT_URL = "https://api.x.ai/v1/stt"
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+
+def split_sentences(text: str) -> list[str]:
+    """Plain transcript -> sentences, split after . ! ? followed by whitespace."""
+    return [s.strip() for s in _SENTENCE_END.split(text.strip()) if s.strip()]
+
+
+def _gemini(wav: bytes) -> list[str]:
     msg = [("system", PROMPT),
            ("human", [{"type": "text", "text": "Transcribe this call."},
                       {"type": "media", "mime_type": "audio/wav", "data": base64.b64encode(wav).decode()}])]
@@ -60,7 +74,59 @@ def transcribe_monologue(wav: bytes) -> list[str]:
             continue
         if out is not None:
             return [s.strip() for s in out.sentences if s.strip()]
-    raise RuntimeError(f"transcription failed: {err!r}")
+    raise RuntimeError(f"gemini transcription failed: {err!r}")
+
+
+def _openai(wav: bytes) -> list[str]:
+    from openai import OpenAI
+
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], timeout=90, max_retries=1,
+                    base_url=os.getenv("OPENAI_BASE_URL", "").strip() or "https://api.openai.com/v1")
+    out = client.audio.transcriptions.create(model=os.getenv("OPENAI_TRANSCRIBE_MODEL", "whisper-1"),
+                                             file=("call.wav", wav, "audio/wav"))
+    return split_sentences(out.text)
+
+
+def _xai(wav: bytes) -> list[str]:
+    import httpx
+
+    # Option fields go before the file in the multipart body.
+    data = {"format": "true", "language": os.getenv("STT_LANGUAGE", "en")}
+    r = httpx.post(XAI_STT_URL, headers={"Authorization": f"Bearer {os.environ['XAI_API_KEY']}"},
+                   data=data, files={"file": ("call.wav", wav, "audio/wav")}, timeout=90)
+    r.raise_for_status()
+    return split_sentences(r.json().get("text") or "")
+
+
+_BACKENDS = {"gemini": _gemini, "openai": _openai, "xai": _xai}
+
+
+def providers() -> list[str]:
+    """LLM_PROVIDER, then LLM_FALLBACK_PROVIDER, each only if its API key is set (gemini also needs
+    GEMINI_FAST_MODEL)."""
+    from services.agents import llm
+
+    order = [llm.provider()]
+    fb = os.getenv("LLM_FALLBACK_PROVIDER", "").strip().lower()
+    if fb in llm.PROVIDERS and fb not in order:
+        order.append(fb)
+    return [p for p in order
+            if os.getenv(f"{p.upper()}_API_KEY") and (p != "gemini" or llm.configured("fast", "gemini"))]
+
+
+def transcribe_monologue(wav: bytes) -> list[str]:
+    """Raises when every provider fails (the endpoint answers 503); [] for no clear speech."""
+    order = providers()
+    if not order:
+        raise RuntimeError("no transcription provider configured")
+    err: Optional[Exception] = None
+    for p in order:
+        try:
+            return _BACKENDS[p](wav)
+        except Exception as e:  # noqa: BLE001 - quota, outage, bad key: try the next provider
+            log.warning("transcription on %s failed: %r", p, e)
+            err = e
+    raise RuntimeError(f"transcription failed on {', '.join(order)}: {err!r}")
 
 
 def duration_s(wav: bytes) -> float:

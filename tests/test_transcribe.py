@@ -127,3 +127,35 @@ def test_clear_cancels_open_calls_and_next_call_starts_a_new_incident(client):
     assert second["incident_id"] != first["incident_id"] and second["call_label"] == "c1"
     third = client.post("/api/calls/web/callin").json()      # without a clear, callers still join
     assert third["incident_id"] == second["incident_id"] and third["call_label"] == "c2"
+
+
+def test_split_sentences():
+    assert transcribe.split_sentences(" Smoke on 3. Kids inside!  Hurry? ok") == \
+        ["Smoke on 3.", "Kids inside!", "Hurry?", "ok"]
+    assert transcribe.split_sentences("   ") == []
+
+
+def test_primary_then_fallback_provider(monkeypatch):
+    for k in ("GEMINI_API_KEY", "GEMINI_FAST_MODEL", "XAI_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("LLM_FALLBACK_PROVIDER", "xai")
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
+    monkeypatch.setenv("GEMINI_FAST_MODEL", "m")
+    monkeypatch.setenv("XAI_API_KEY", "x")
+    assert transcribe.providers() == ["gemini", "xai"]
+    tried = []
+
+    def out_of_credits(wav):
+        tried.append("gemini")
+        raise RuntimeError("429 RESOURCE_EXHAUSTED")
+
+    monkeypatch.setitem(transcribe._BACKENDS, "gemini", out_of_credits)
+    monkeypatch.setitem(transcribe._BACKENDS, "xai", lambda wav: tried.append("xai") or ["Fire."])
+    assert transcribe.transcribe_monologue(b"") == ["Fire."] and tried == ["gemini", "xai"]
+
+    monkeypatch.setenv("LLM_PROVIDER", "openai")     # no OPENAI key: skipped
+    assert transcribe.providers() == ["xai"]
+    monkeypatch.delenv("XAI_API_KEY")
+    with pytest.raises(RuntimeError):
+        transcribe.transcribe_monologue(b"")

@@ -96,7 +96,7 @@ before the engine arrives. HackPrinceton Fall 2026 (main track: Healthcare). Sub
   Feedback goes through `memory.feedback()` only.
 - `services/api/transcribe.py` - Call in (header button, `apps/web/src/components/CallIn.tsx`): one device records the
   caller's whole monologue (`src/live/monologueRecorder.ts`, max 5 min); Done posts it to `/api/calls/web/callin/audio`,
-  Gemini transcribes it in one go (structured output, sentences) and each sentence becomes a caller segment. Every open
+  transcribed in one go by LLM_PROVIDER, then LLM_FALLBACK_PROVIDER (Gemini structured output; OpenAI transcriptions; xAI `/v1/stt`) and each sentence becomes a caller segment. Every open
   web app follows the call via `/ws/calls` (`src/live/callFeed.ts`; bus topic `_calls`, active calls sent on connect).
   The incident socket replays the transcript so far to a client that joins late.
   `services/api/calls.py`: the call registry (call -> incident + c1/c2; a call within `CALL_INCIDENT_WINDOW_S`, default

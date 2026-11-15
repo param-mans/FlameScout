@@ -243,8 +243,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.post("/api/calls/web/callin/audio")
     async def callin_audio(request: Request, incident_id: str = Query(pattern=r"^[A-Za-z0-9_-]{1,64}$"),
                            call_label: str = Query(pattern=r"^c[0-9]{1,3}$")) -> dict:
-        """The whole recording (audio/wav) at the end of the call: Gemini transcribes it in one go, each
-        sentence becomes a caller segment, then the call ends. 503 = transcription failed; the call stays
+        """The whole recording (audio/wav) at the end of the call: transcribed in one go, each
+        sentence becomes a caller segment, then the call ends (transcribe.py: LLM_PROVIDER, then the fallback). 503 = transcription failed; the call stays
         open so the device can retry or end it."""
         call = calls.get(incident_id, call_label)
         if call is None or not call.active:
