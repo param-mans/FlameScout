@@ -7,6 +7,7 @@ WORKDIR /app
 COPY apps/web/package.json ./package.json
 COPY apps/web/server ./server
 COPY apps/web/public/house-viewer/escaleras.js apps/web/public/house-viewer/evac.js ./public/house-viewer/
+COPY apps/web/public/house-viewer/incident/plan-index.js ./public/house-viewer/incident/plan-index.js
 COPY apps/web/public/house-viewer/samples/index.json ./public/house-viewer/samples/index.json
 # stored raw Matterport responses of the star buildings (served when no Matterport credentials are configured) are
 # mounted read-only at /app/data/raw by docker-compose.yml: sponsor data never goes into the image.
