@@ -35,17 +35,18 @@ export function DispatcherConsole({
   const isResolved = (key: string) => key in resolved;
 
   return (
-    <div className="flex h-full flex-col">
+    // Below lg (phones, iPad portrait): one scrolling column. lg+: three columns that scroll on their own.
+    <div className="flex h-full flex-col overflow-y-auto lg:overflow-hidden">
       {demo}
       {held && (
-        <div className="num flex items-center gap-4 border-b border-reported/50 bg-reported/10 px-3 py-1.5 text-[12px] text-reported">
+        <div className="num flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-reported/50 bg-reported/10 px-3 py-1.5 text-[12px] text-reported">
           <span className="font-semibold">■ BRIEF V{held.version} HELD FOR REVIEW</span>
           <span className="text-dim">{held.needsReview.length ? `Low confidence: ${held.needsReview.join(", ")}` : "A consideration is below 0.5 confidence."}</span>
           {onApproveHeld && <span className="ml-auto"><Btn onClick={onApproveHeld}>Publish as is</Btn></span>}
         </div>
       )}
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_300px_400px] gap-px bg-line">
-        <div className="flex min-h-0 flex-col gap-px bg-line">
+      <div className="grid flex-none grid-cols-[minmax(0,1fr)] gap-px bg-line lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_300px_400px]">
+        <div className="flex min-h-[50vh] flex-col gap-px bg-line lg:min-h-0">
           <Panel title="Live calls" right={`${incident.call_ids.length} calls`} className="flex-1">
             {segments.length === 0 && <div className="p-3 text-dim">{onSend ? "Listening… run a call, or type a line below." : "Listening…"}</div>}
             {segments.map((s, i) => {
@@ -68,7 +69,7 @@ export function DispatcherConsole({
           {onSend && <TranscriptComposer callIds={incident.call_ids} onSend={onSend} />}
         </div>
 
-        <Panel title="Incident record" right={`${Object.keys(incident.facts).length} facts`}>
+        <Panel title="Incident record" right={`${Object.keys(incident.facts).length} facts`} className="order-3 lg:order-none">
           {incident.contradictions.filter((c) => !c.resolved_by_dispatcher).map((c) =>
             isResolved(c.key) ? (
               <div key={c.key} className="num border-b border-line px-2.5 py-1.5 text-[12px] text-dim">
@@ -95,7 +96,7 @@ export function DispatcherConsole({
           ))}
         </Panel>
 
-        <div className="grid min-h-0 grid-rows-[auto_1fr] gap-px bg-line">
+        <div className="order-2 grid min-h-0 grid-rows-[auto_1fr] gap-px bg-line lg:order-none">
           <Panel title="Confirm location" right={busy ?? (confirmedId ? "confirmed" : "awaiting")} className="shadow-[inset_0_2px_0_var(--color-accent)]">
             {candidates.length === 0 && <div className="p-3 text-dim">Awaiting address…</div>}
             {candidates.map((c) => {

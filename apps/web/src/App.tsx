@@ -73,36 +73,18 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <nav className="flex h-9 shrink-0 items-center gap-1 border-b border-line bg-panel px-3">
-        <span className="mr-4 flex items-center gap-2 text-[12px] font-bold tracking-[0.18em]">
+      {/* Phones and iPad portrait: tabs + status on the first row, call controls wrap below. lg+: one row. */}
+      <nav className="flex min-h-9 shrink-0 flex-wrap items-center gap-x-1 gap-y-1.5 border-b border-line bg-panel px-3 py-1">
+        <span className="mr-2 flex items-center gap-2 text-[12px] font-bold tracking-[0.18em] sm:mr-4">
           <span className="inline-block h-2.5 w-2.5 bg-accent" aria-hidden />
           FLAMESCOUT
         </span>
         <Btn active={view === "dispatcher"} onClick={() => setView("dispatcher")}>Dispatcher</Btn>
         <Btn active={view === "mdt"} onClick={() => setView("mdt")}>MDT</Btn>
 
-        <div className="ml-auto flex items-center gap-2">
-          {isLive && (
-            <>
-              <select
-                value={scriptValue}
-                onChange={(e) => setScript(e.target.value)}
-                aria-label="Scripted call"
-                className="num border border-line-hi bg-bg px-1.5 py-0.5 text-[11px] text-ink"
-              >
-                {st.scripts.map((x) => <option key={x.script_id} value={x.script_id}>{x.script_id} · {x.segments} segments</option>)}
-                <option value="">Blank · type your own</option>
-              </select>
-              <Btn onClick={() => void live.startCall(scriptValue)}>
-                {scriptValue === "" ? (st.incidentId ? "New blank incident" : "Start blank incident") : st.incidentId ? "New call" : "Run call"}
-              </Btn>
-              {st.incidentId && <span className="num text-[11px] text-faint" title="Incident id">{st.incidentId}</span>}
-              <CallIn feed={activeCall} onStart={(c) => { void live.attach(c.incident_id); setView("dispatcher"); }}
-                canClear={!!st.incidentId} onClear={live.reset} />
-            </>
-          )}
+        <div className="ml-auto flex items-center gap-2 lg:order-last lg:ml-0">
           {st.mode === "mock" && <Btn onClick={live.retryApi}>Retry API</Btn>}
-          <span className="num text-[10px] font-semibold tracking-wider text-dim" title="Simulation only: no real emergency lines are called">SIMULATION</span>
+          <span className="num hidden text-[10px] font-semibold tracking-wider text-dim sm:inline" title="Simulation only: no real emergency lines are called">SIMULATION</span>
           <span
             className={`num border px-1.5 py-0.5 text-[10px] font-semibold tracking-wider ${
               isLive ? (st.conn === "open" || !st.incidentId ? "border-verified/60 text-verified" : "border-reported/60 text-reported")
@@ -113,6 +95,26 @@ export default function App() {
             {isLive ? (st.incidentId && st.conn !== "open" ? `● LIVE · ${st.conn.toUpperCase()}` : "● LIVE") : st.mode === "checking" ? "CHECKING API…" : "MOCK DATA"}
           </span>
         </div>
+
+        {isLive && (
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:ml-auto lg:w-auto lg:flex-nowrap">
+            <select
+              value={scriptValue}
+              onChange={(e) => setScript(e.target.value)}
+              aria-label="Scripted call"
+              className="num border border-line-hi bg-bg px-1.5 py-0.5 text-[11px] text-ink"
+            >
+              {st.scripts.map((x) => <option key={x.script_id} value={x.script_id}>{x.script_id} · {x.segments} segments</option>)}
+              <option value="">Blank · type your own</option>
+            </select>
+            <Btn onClick={() => void live.startCall(scriptValue)}>
+              {scriptValue === "" ? (st.incidentId ? "New blank incident" : "Start blank incident") : st.incidentId ? "New call" : "Run call"}
+            </Btn>
+            {st.incidentId && <span className="num hidden text-[11px] text-faint sm:inline" title="Incident id">{st.incidentId}</span>}
+            <CallIn feed={activeCall} onStart={(c) => { void live.attach(c.incident_id); setView("dispatcher"); }}
+              canClear={!!st.incidentId} onClear={live.reset} />
+          </div>
+        )}
       </nav>
 
       {st.error && (
