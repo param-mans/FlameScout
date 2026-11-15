@@ -35,7 +35,17 @@ export interface ScriptInfo {
   title?: string | null; group?: "showcase" | "test" | string | null; inconsistent?: boolean | null; house?: string | null;
 }
 
+export interface TimeToBrief {
+  source: "tiger" | "workspace";
+  n: number;
+  n_fallback?: number;
+  p50_ms: number | null;
+  p95_ms: number | null;
+}
+
 export const api = {
+  /** Measured time from a confirmed address to the first brief (Tiger Data view when configured). */
+  timeToBrief: () => request<TimeToBrief>("GET", "/api/metrics/time-to-brief", undefined, 8000),
   // Not /health: Vite (and the deploy proxy) only forward /api and /ws, so /health would return the page's HTML.
   scripts: (timeoutMs = 15000) => request<ScriptInfo[]>("GET", "/api/calls/scripts", undefined, timeoutMs),
   createIncident: () => request<IncidentRecord>("POST", "/api/incidents", {}),
@@ -57,6 +67,9 @@ export const api = {
   latestBrief: (id: string) => request<Brief>("GET", `/api/incidents/${id}/briefs/latest?published_only=true`),
   latestOverlay: (id: string) => request<{ version: number; overlay: Record<string, unknown> }>("GET", `/api/incidents/${id}/overlay/latest`),
   copilot: (id: string) => request<CopilotSuggestion[]>("GET", `/api/incidents/${id}/copilot`),
+  /** Crew feedback on a fact key or marker id of the latest brief; remembered for the building (long-term memory). */
+  feedback: (id: string, itemId: string, verdict: "confirmed" | "wrong" | "outdated", note?: string) =>
+    request<unknown>("POST", `/api/incidents/${id}/feedback`, { fact_key: itemId, verdict, note: note ?? null }),
   /** Call in: starts a call every open web app follows (/ws/calls). The recording goes to /api/calls/web/callin/audio. */
   callIn: () => request<{ incident_id: string; call_label: string }>("POST", "/api/calls/web/callin", {}),
   endCall: (c: { incident_id: string; call_label: string }) => request<unknown>("POST", "/api/calls/web/end", c),

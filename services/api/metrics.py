@@ -74,10 +74,11 @@ class Metrics:
         source = "tiger" if rows is not None else "workspace"
         if rows is None:
             rows = [{"ts": r["ts"], "incident_id": r["incident_id"], "ms": r["ms"],
-                     "cached_dossier": r.get("meta", {}).get("cached_dossier")}
+                     "cached_dossier": r.get("meta", {}).get("cached_dossier"), "fallback": False}
                     for r in self.ws.read_jsonl(self.ws.metrics_file()) if r["stage"] == "time_to_brief"][-limit:]
-        ms = sorted(r["ms"] for r in rows)
-        return {"source": source, "n": len(ms), "runs": rows,
+        # Percentiles only over runs where the agent produced the brief: a facts-only fallback is not a brief time.
+        ms = sorted(r["ms"] for r in rows if not r.get("fallback"))
+        return {"source": source, "n": len(ms), "n_fallback": len(rows) - len(ms), "runs": rows,
                 "p50_ms": round(statistics.median(ms), 1) if ms else None,
                 "p95_ms": round(ms[min(len(ms) - 1, int(0.95 * len(ms)))], 1) if ms else None}
 
@@ -92,11 +93,12 @@ class Metrics:
         import psycopg
         try:
             with psycopg.connect(self.tiger_url, connect_timeout=3) as conn:  # type: ignore[arg-type]
+                # The time_to_brief view of the Tiger schema in services/agents/db.py (seconds of agent work to brief v1).
                 cur = conn.execute(
-                    "SELECT ts, incident_id, ms, meta->>'cached_dossier' FROM stage_timings "
-                    "WHERE stage = 'time_to_brief' ORDER BY ts DESC LIMIT %s", (limit,))
-                return [{"ts": ts.isoformat(), "incident_id": i, "ms": ms, "cached_dossier": c == "true"}
-                        for ts, i, ms, c in reversed(cur.fetchall())]
+                    "SELECT ts, incident_id, seconds, prefetched, fallback FROM time_to_brief "
+                    "ORDER BY ts DESC LIMIT %s", (limit,))
+                return [{"ts": ts.isoformat(), "incident_id": i, "ms": round(s * 1000, 1), "cached_dossier": bool(p),
+                         "fallback": bool(f)} for ts, i, s, p, f in reversed(cur.fetchall())]
         except Exception as e:  # noqa: BLE001
             log.warning("tiger read failed, using workspace metrics: %s", e)
             return None
