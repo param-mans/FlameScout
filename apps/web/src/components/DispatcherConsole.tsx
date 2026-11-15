@@ -36,9 +36,11 @@ export function DispatcherConsole({
   const isResolved = (key: string) => key in resolved;
   const showConfirm = useShowConfirm(incident, candidates, confirmedId);   // hidden after an automatic confirmation
 
+  // Text one step larger than the shared components' defaults (Panel, KV, Btn, StatusTag, PlanList are also used by the
+  // MDT, which keeps its sizes): every size class below this root moves up (labels 13 px, body 14-15 px).
   return (
     // Below lg (phones, iPad portrait): one scrolling column. lg+: three columns that scroll on their own.
-    <div className="flex h-full flex-col overflow-y-auto lg:overflow-hidden">
+    <div className={String.raw`flex h-full flex-col overflow-y-auto lg:overflow-hidden text-[15px] [&_.label]:!text-[13px] [&_.text-\[10px\]]:!text-[13px] [&_.text-\[11px\]]:!text-[14px] [&_.text-\[12px\]]:!text-[14px] [&_.text-\[13px\]]:!text-[15px] [&_.text-\[15px\]]:!text-[17px]`}>
       {demo}
       {held && (
         <div className="num flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-reported/50 bg-reported/10 px-3 py-1.5 text-[12px] text-reported">
