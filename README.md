@@ -415,7 +415,7 @@ Measured during development (a few dozen runs, not a benchmark). Re-measure befo
 
 **Clients:** Dartmouth Safety and Security and the Hanover Fire Department.
 
-**Dartmouth Safety and Security.** We consulted Officer Bigelow by phone on Nov 14, 2026 at 13:04. The call was not recorded, because the office's policy doesn't allow a formal interview; he gave us personal permission to paraphrase. What he told us (paraphrased from our notes):
+**Dartmouth Safety and Security.** We consulted a officer from DOSS by phone on Nov 14, 2026 at 13:04. The call was not recorded, because the office's policy doesn't allow a formal interview; he gave us personal permission to paraphrase. What he told us (paraphrased from our notes):
 
 - Safety and Security responds to every campus fire alarm and supports evacuation, building access, and escorting responders.
 - Command passes to Hanover Fire on arrival, and Safety and Security tells Hanover Fire the location and nature of the call.
@@ -430,7 +430,7 @@ Measured during development (a few dozen runs, not a benchmark). Re-measure befo
 
 **How it shaped our design**
 
-- **We follow the handoff, not replace it.** Officer Bigelow described the handoff to Hanover Fire as the location and nature of the call, followed by an on-scene assessment before action. FlameScout replaces neither. The MDT's top bar opens with the same two items, the confirmed address and the incident type, and the building detail sits underneath.
+- **We follow the handoff, not replace it.** The Officer described the handoff to Hanover Fire as the location and nature of the call, followed by an on-scene assessment before action. FlameScout replaces neither. The MDT's top bar opens with the same two items, the confirmed address and the incident type, and the building detail sits underneath.
 - **Advisory, because command sits with Hanover Fire.** Considerations use "Consider ..." wording, never orders.
 - **Every brief shows how old its data is.** Morton Hall showed how much a building can change over the years, so the top bar shows the age of the interior scan and the date of the CoStar record, and the size-up lists when the building was built where the record has it. A building with no scan says so and lists its gaps.
 - **A building that fights back is why interior detail matters.** WMUR's report that the design challenged firefighters and that fourth-floor visibility was near zero is the case for knowing stairs, entries and floors before arrival, which is what the scan-based plan, routes and floor-level reports provide.
